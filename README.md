@@ -73,10 +73,11 @@ DISTRO_SOURCE_DIR="<path_to_lesotho_emr_src>" \
 openmrs-docker create <name> --build
 ```
 
-Alternatively, you can use the `TEMPLATE` environment variable to specify a pre-existing `env` file to use as a starting point:
+Every setting `create` writes falls back to a default only if it isn't already set in your shell —
+so you can override any of them the same way, including by sourcing an existing env file first:
 
 ```bash
-TEMPLATE=/path/to/existing/env/file \
+source /path/to/existing/env/file
 openmrs-docker create <name>
 ```
 
@@ -88,8 +89,8 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 
 | Variable | Required? | Purpose |
 |---|---|---|
-| `IMAGE_NAME` | Required (unless `TEMPLATE` supplies it) | OpenMRS image, no tag |
-| `PIH_CONFIG` | Required (unless `TEMPLATE` supplies it) | PIH config profile for this instance |
+| `IMAGE_NAME` | Required | OpenMRS image, no tag |
+| `PIH_CONFIG` | Required | PIH config profile for this instance |
 | `DISTRO_SOURCE_DIR` | Required for `build`/`--dev`/`--build` only | Path to the distro repo checkout |
 | `SEED_IMAGE_NAME` | Optional | Full seed image name (no tag) — used by `start` without `--fresh` |
 | `SERVICE_NAME` | Optional (defaults to the instance name) | Docker Compose project name |

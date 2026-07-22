@@ -36,12 +36,13 @@ usage() {
     echo "  OPENMRS_DOCKER_HOME   Where instance directories live (default: \$HOME/openmrs)"
     echo "  TOMCAT_HTTP_PORT      Port OpenMRS is exposed on (default: 8080)"
     echo ""
-    echo "create requires IMAGE_NAME and PIH_CONFIG (env vars), unless TEMPLATE already supplies"
-    echo "them. DISTRO_SOURCE_DIR is required only for build/--dev/--build, and can be set later"
-    echo "by editing the instance's env file. TEMPLATE=<path> copies an existing env file as a"
-    echo "starting point instead of the built-in defaults. SERVICES=<comma-separated> (default:"
-    echo "openmrs-db,openmrs) selects which canonical service fragments to copy into the new"
-    echo "instance directory."
+    echo "create requires IMAGE_NAME and PIH_CONFIG (env vars). DISTRO_SOURCE_DIR is required"
+    echo "only for build/--dev/--build, and can be set later by editing the instance's env file."
+    echo "Every other create-time setting (ports, memory limits, image tags, etc.) can be"
+    echo "overridden the same way create's own defaults are: set it in your shell (or source a"
+    echo "file that does) before running create, and that value is used instead of the built-in"
+    echo "default. SERVICES=<comma-separated> (default: openmrs-db,openmrs) selects which"
+    echo "canonical service fragments to copy into the new instance directory."
     exit 1
 }
 
@@ -55,12 +56,8 @@ if [ "$1" = "create" ]; then
         echo "Instance directory already exists: $INSTANCE_DIR"
         exit 1
     fi
-    # A TEMPLATE is expected to already supply IMAGE_NAME/PIH_CONFIG, so the
-    # requirement is only enforced without one; a malformed TEMPLATE missing
-    # them will still surface later, when a command that needs them actually
-    # runs, via the openmrs service fragment's own required-var guards.
-    if [ -z "${TEMPLATE:-}" ] && { [ -z "${IMAGE_NAME:-}" ] || [ -z "${PIH_CONFIG:-}" ]; }; then
-        echo "IMAGE_NAME and PIH_CONFIG must be set to create an instance (unless TEMPLATE already provides them)"
+    if [ -z "${IMAGE_NAME:-}" ] || [ -z "${PIH_CONFIG:-}" ]; then
+        echo "IMAGE_NAME and PIH_CONFIG must be set to create an instance"
         echo ""
         usage
     fi
@@ -71,39 +68,32 @@ if [ "$1" = "create" ]; then
         [ -f "$SERVICES_DIR/$svc.yaml" ] || { echo "No such service '$svc' (looked for $SERVICES_DIR/$svc.yaml)"; exit 1; }
     done
     mkdir -p "$INSTANCE_DIR"
-    if [ -n "${TEMPLATE:-}" ]; then
-        [ -f "$TEMPLATE" ] || { echo "TEMPLATE not found: $TEMPLATE"; exit 1; }
-        cp "$TEMPLATE" "$INSTANCE_DIR/env"
-    else
-        cat > "$INSTANCE_DIR/env" <<EOF
-OPENMRS_IMAGE_TAG=latest
-SEED_IMAGE_TAG=latest
-DB_IMAGE=mysql:5.6
-OMRS_DB_USER=openmrs
-OMRS_DB_PASSWORD=openmrs
-MYSQL_ROOT_PASSWORD=openmrs
-TOMCAT_HTTP_PORT=8080
-MYSQL_PORT=3306
-TOMCAT_DEBUG_PORT=1044
-ACTIVITYLOG_ENABLED=false
-DB_MEMORY_LIMIT=2g
-OPENMRS_MEMORY_LIMIT=4g
-OMRS_JAVA_MEMORY_OPTS="-Xms512m -Xmx2g -XX:NewSize=128m"
-DB_MAX_ALLOWED_PACKET=1G
-DB_INNODB_BUFFER_POOL_SIZE=2G
-TZ=UTC
+    # Every setting below is taken from the calling shell's environment if already
+    # set (e.g. `source myenv && openmrs-docker create ...`), falling back to these
+    # defaults otherwise.
+    cat > "$INSTANCE_DIR/env" <<EOF
+IMAGE_NAME="$IMAGE_NAME"
+PIH_CONFIG="$PIH_CONFIG"
+SEED_IMAGE_NAME="${SEED_IMAGE_NAME:-}"
+DISTRO_SOURCE_DIR="${DISTRO_SOURCE_DIR:-}"
+OPENMRS_IMAGE_TAG="${OPENMRS_IMAGE_TAG:-latest}"
+SEED_IMAGE_TAG="${SEED_IMAGE_TAG:-latest}"
+DB_IMAGE="${DB_IMAGE:-mysql:5.6}"
+OMRS_DB_USER="${OMRS_DB_USER:-openmrs}"
+OMRS_DB_PASSWORD="${OMRS_DB_PASSWORD:-openmrs}"
+MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-openmrs}"
+TOMCAT_HTTP_PORT="${TOMCAT_HTTP_PORT:-8080}"
+MYSQL_PORT="${MYSQL_PORT:-3306}"
+TOMCAT_DEBUG_PORT="${TOMCAT_DEBUG_PORT:-1044}"
+ACTIVITYLOG_ENABLED="${ACTIVITYLOG_ENABLED:-false}"
+DB_MEMORY_LIMIT="${DB_MEMORY_LIMIT:-2g}"
+OPENMRS_MEMORY_LIMIT="${OPENMRS_MEMORY_LIMIT:-4g}"
+OMRS_JAVA_MEMORY_OPTS="${OMRS_JAVA_MEMORY_OPTS:--Xms512m -Xmx2g -XX:NewSize=128m}"
+DB_MAX_ALLOWED_PACKET="${DB_MAX_ALLOWED_PACKET:-1G}"
+DB_INNODB_BUFFER_POOL_SIZE="${DB_INNODB_BUFFER_POOL_SIZE:-2G}"
+TZ="${TZ:-UTC}"
+SERVICE_NAME="$NAME"
 EOF
-    fi
-    {
-        # Always forces SERVICE_NAME to this instance's own name, even when TEMPLATE
-        # is a copy of another instance's env file — otherwise two instances would
-        # share one Compose project (and its containers/volumes) silently.
-        echo "SERVICE_NAME=$NAME"
-        [ -n "${IMAGE_NAME:-}" ] && echo "IMAGE_NAME=$IMAGE_NAME"
-        [ -n "${PIH_CONFIG:-}" ] && echo "PIH_CONFIG=$PIH_CONFIG"
-        [ -n "${SEED_IMAGE_NAME:-}" ] && echo "SEED_IMAGE_NAME=$SEED_IMAGE_NAME"
-        [ -n "${DISTRO_SOURCE_DIR:-}" ] && echo "DISTRO_SOURCE_DIR=$DISTRO_SOURCE_DIR"
-    } >> "$INSTANCE_DIR/env"
     # Copy validated service fragments
     for svc in "${SERVICE_LIST[@]}"; do
         cp "$SERVICES_DIR/$svc.yaml" "$INSTANCE_DIR/docker-compose.$svc.yml"
