@@ -103,7 +103,7 @@ cd "$DISTRO_SOURCE_DIR"
 case "$COMMAND" in
     create)
         if [ -z "$PIH_CONFIG" ]; then
-            echo "PIH_CONFIG must be set (e.g. PIH_CONFIG=lesotho,lesotho-botsabelo-demo $0 create ${SERVER_ID})"
+            echo "PIH_CONFIG must be set (e.g. PIH_CONFIG=lesotho,lesotho-kol-ci $0 create ${SERVER_ID})"
             echo ""
             usage
         fi

@@ -53,7 +53,7 @@ distribution-specific README files for these specific options.  Choose the optio
 type of environment you are setting up:
 
 `IMAGE_NAME` (eg. `partnersinhealth/lesotho-emr`)
-`PIH_CONFIG` (eg. `lesotho,lesotho-botsabelo-demo`)
+`PIH_CONFIG` (eg. `lesotho,lesotho-kol-ci`)
 
 These are the bare minimum required to create an instance.  For additional configuration options, consult the 
 usage documentation by running `openmrs-docker` with no arguments.
@@ -68,16 +68,34 @@ with the name of the instance you want to create (this can be any name you like)
 
 ```bash
 IMAGE_NAME=partnersinhealth/lesotho-emr \
-PIH_CONFIG=lesotho,lesotho-botsabelo-demo \
+PIH_CONFIG=lesotho,lesotho-kol-ci \
 DISTRO_SOURCE_DIR="<path_to_lesotho_emr_src>" \
 openmrs-docker create <name> --build
 ```
 
 Every setting `create` writes falls back to a default only if it isn't already set in your shell —
-so you can override any of them the same way, including by sourcing an existing env file first:
+so you can override any of them the same way, including by sourcing your own settings file first.
+That file needs to `export` each variable — plain `KEY=value` lines only set shell variables, which
+child processes (like `openmrs-docker`) never see:
 
 ```bash
-source /path/to/existing/env/file
+# kol-ci.sh
+export IMAGE_NAME=partnersinhealth/lesotho-emr
+export PIH_CONFIG=lesotho,lesotho-kol-ci
+export TOMCAT_HTTP_PORT=9090
+```
+
+```bash
+source kol-ci.sh
+openmrs-docker create <name>
+```
+
+To reuse one of the tool's own generated `env` files as a starting point instead, wrap the
+`source` in `set -a`/`set +a` — those files use plain `KEY=value` (no `export`), since they also
+have to work as a Docker Compose `--env-file`:
+
+```bash
+set -a; source ~/openmrs/other-instance/env; set +a
 openmrs-docker create <name>
 ```
 
@@ -219,16 +237,16 @@ on:
   workflow_dispatch:
 
 jobs:
-  botsabelo-demo:
+  kol-ci:
     if: github.repository_owner == 'PIH'
     concurrency:
-      group: build-seeded-images-botsabelo-demo-${{ github.ref }}
+      group: build-seeded-images-kol-ci-${{ github.ref }}
       cancel-in-progress: true
     uses: PIH/openmrs-contrib-distro-tools/.github/workflows/build-seeded-image.yml@main
     with:
       image_name: partnersinhealth/lesotho-emr
-      site: botsabelo-demo
-      pih_config: lesotho,lesotho-botsabelo-demo
+      site: kol-ci
+      pih_config: lesotho,lesotho-kol-ci
     secrets: inherit
 ```
 
