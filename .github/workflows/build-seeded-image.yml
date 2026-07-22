@@ -1,0 +1,126 @@
+name: Build seed image
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: OpenMRS image name, without tag
+        required: true
+        type: string
+      site:
+        description: Site name (matches the distro repo's openmrs-docker instance/site convention)
+        required: true
+        type: string
+      pih_config:
+        description: PIH config profile for this site
+        required: true
+        type: string
+      seed_image_name:
+        description: Full seed image name, without tag. Defaults to "<image_name>-seed-<site>".
+        required: false
+        type: string
+    secrets:
+      DOCKERHUB_PASSWORD:
+        required: true
+
+jobs:
+  build-seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - name: Check out calling repo
+        uses: actions/checkout@v4
+
+      - name: Check out openmrs-contrib-distro-tools
+        uses: actions/checkout@v4
+        with:
+          repository: PIH/openmrs-contrib-distro-tools
+          path: .openmrs-contrib-distro-tools
+
+      - name: Resolve seed image name
+        run: echo "SEED_IMAGE_NAME=${{ inputs.seed_image_name || format('{0}-seed-{1}', inputs.image_name, inputs.site) }}" >> $GITHUB_ENV
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 8
+          cache: 'maven'
+
+      - name: Extract pom version
+        run: echo "VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: pihci
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Create instance
+        env:
+          DISTRO_SOURCE_DIR: ${{ github.workspace }}
+          IMAGE_NAME: ${{ inputs.image_name }}
+          SEED_IMAGE_NAME: ${{ env.SEED_IMAGE_NAME }}
+          PIH_CONFIG: ${{ inputs.pih_config }}
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker create ${{ inputs.site }}
+
+      - name: Start stack
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ inputs.site }} start --fresh --build
+
+      - name: Wait for OpenMRS to be fully initialized
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ inputs.site }} wait
+
+      - name: Stop OpenMRS
+        run: |
+          docker compose --env-file "$HOME/openmrs/${{ inputs.site }}/env" \
+            -f .openmrs-contrib-distro-tools/docker/services/openmrs-db.yaml \
+            -f .openmrs-contrib-distro-tools/docker/services/openmrs.yaml \
+            stop openmrs
+
+      - name: Export database
+        run: |
+          DB_CONTAINER=$(docker compose --env-file "$HOME/openmrs/${{ inputs.site }}/env" \
+            -f .openmrs-contrib-distro-tools/docker/services/openmrs-db.yaml \
+            -f .openmrs-contrib-distro-tools/docker/services/openmrs.yaml \
+            ps -q openmrs-db)
+          docker exec "$DB_CONTAINER" \
+            sh -c 'mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" --databases openmrs' \
+            | gzip > dump.sql.gz
+          echo "dump.sql.gz size: $(du -sh dump.sql.gz | cut -f1)"
+
+      - name: Export openmrs-data volume
+        run: |
+          OPENMRS_CONTAINER=$(docker compose --env-file "$HOME/openmrs/${{ inputs.site }}/env" \
+            -f .openmrs-contrib-distro-tools/docker/services/openmrs-db.yaml \
+            -f .openmrs-contrib-distro-tools/docker/services/openmrs.yaml \
+            ps -q --all openmrs)
+          DATA_VOLUME=$(docker inspect "$OPENMRS_CONTAINER" \
+            --format '{{range .Mounts}}{{if eq .Destination "/openmrs/data"}}{{.Name}}{{end}}{{end}}')
+          echo "Exporting volume: $DATA_VOLUME"
+          docker run --rm \
+            -v "${DATA_VOLUME}:/data" \
+            alpine sh -c 'cd /data && tar czf - .' > data.tar.gz
+          echo "data.tar.gz size: $(du -sh data.tar.gz | cut -f1)"
+
+      - name: Destroy instance
+        if: always()
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ inputs.site }} destroy --force
+
+      - name: Build seed image
+        run: |
+          mkdir -p .seed-build-context
+          cp dump.sql.gz data.tar.gz .openmrs-contrib-distro-tools/docker/seed-entrypoint.sh .seed-build-context/
+          docker build \
+            -f .openmrs-contrib-distro-tools/docker/Dockerfile.seed \
+            -t "${{ env.SEED_IMAGE_NAME }}:${{ env.VERSION }}" \
+            -t "${{ env.SEED_IMAGE_NAME }}:latest" \
+            .seed-build-context/
+
+      - name: Push seed image
+        run: |
+          docker push "${{ env.SEED_IMAGE_NAME }}:${{ env.VERSION }}"
+          docker push "${{ env.SEED_IMAGE_NAME }}:latest"
+
+      - name: Clean up
+        if: always()
+        run: rm -rf dump.sql.gz data.tar.gz .seed-build-context

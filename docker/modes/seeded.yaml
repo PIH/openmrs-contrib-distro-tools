@@ -1,0 +1,38 @@
+# Overlay adding seeded-startup behavior: a transient `seed` service that populates
+# volumes from a seed image, then exits; disables auto-migration/table creation on
+# openmrs since the seed already contains a fully-migrated database. Included
+# whenever *not* --fresh.
+#
+# Required env vars: SEED_IMAGE_NAME (no site suffix appended here)
+# Optional: SEED_IMAGE_TAG (default: latest)
+#
+# For a clean re-seed: docker compose down -v (removes all volumes)
+
+services:
+  seed:
+    image: ${SEED_IMAGE_NAME:?SEED_IMAGE_NAME must be set}:${SEED_IMAGE_TAG:-latest}
+    volumes:
+      - openmrs-data:/target/data
+      - db-init:/target/db-init
+
+  openmrs-db:
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    volumes:
+      - db-init:/docker-entrypoint-initdb.d
+
+  openmrs:
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    environment:
+      OMRS_CONFIG_AUTO_UPDATE_DATABASE: "false"
+      OMRS_CONFIG_CREATE_TABLES: "false"
+      OMRS_EXTRA_ACTIVITYLOG__ENABLED: ${ACTIVITYLOG_ENABLED:-false}
+    healthcheck:
+      retries: 10
+      start_period: 120s
+
+volumes:
+  db-init:

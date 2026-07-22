@@ -1,0 +1,336 @@
+#!/bin/bash
+set -euo pipefail
+
+TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OPENMRS_DOCKER_HOME="${OPENMRS_DOCKER_HOME:-$HOME/openmrs}"
+SERVICES_DIR="$TOOL_DIR/docker/services"
+MODES_DIR="$TOOL_DIR/docker/modes"
+
+usage() {
+    echo "Usage:"
+    echo "  $0 create <name>          Create a new instance"
+    echo "  $0 list                   List existing instances"
+    echo "  $0 <name> <command> [options]"
+    echo ""
+    echo "Commands (for an existing instance):"
+    echo "  start                   Start the stack"
+    echo "  stop                    Stop the running stack"
+    echo "  update                  Stop then restart the stack"
+    echo "  sync                    Refresh this instance's copied service fragments from the tool's current templates"
+    echo "  add-service <svc>       Attach a canonical service fragment (e.g. 'add-service reporting-db')"
+    echo "  remove-service <svc>    Detach a service fragment and remove its now-orphaned container"
+    echo "  wait                    Block until OpenMRS finishes initializing (up to 60 minutes)"
+    echo "  build                   Build the distribution and Docker image from source"
+    echo "  pull                    Pull the images this instance would use, without starting anything"
+    echo "  logs                    Tail the container logs"
+    echo "  destroy                 Stop the stack, delete all volumes, and remove the instance directory"
+    echo ""
+    echo "Options:"
+    echo "  --build        Build the distribution from source before start/update"
+    echo "  --fresh        Start from scratch instead of using a pre-seeded image"
+    echo "  --dev          Expose debug ports and mount the locally-built distro over"
+    echo "                 whatever's in the image (combine with --build to build it first)"
+    echo "  --force        Skip the confirmation prompt (destroy only)"
+    echo ""
+    echo "Environment variable overrides:"
+    echo "  OPENMRS_DOCKER_HOME   Where instance directories live (default: \$HOME/openmrs)"
+    echo "  TOMCAT_HTTP_PORT      Port OpenMRS is exposed on (default: 8080)"
+    echo ""
+    echo "create requires IMAGE_NAME and PIH_CONFIG (env vars), unless TEMPLATE already supplies"
+    echo "them. DISTRO_SOURCE_DIR is required only for build/--dev/--build, and can be set later"
+    echo "by editing the instance's env file. TEMPLATE=<path> copies an existing env file as a"
+    echo "starting point instead of the built-in defaults. SERVICES=<comma-separated> (default:"
+    echo "openmrs-db,openmrs) selects which canonical service fragments to copy into the new"
+    echo "instance directory."
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+
+if [ "$1" = "create" ]; then
+    NAME="${2:-}"
+    [ -z "$NAME" ] && usage
+    INSTANCE_DIR="$OPENMRS_DOCKER_HOME/$NAME"
+    if [ -e "$INSTANCE_DIR" ]; then
+        echo "Instance directory already exists: $INSTANCE_DIR"
+        exit 1
+    fi
+    # A TEMPLATE is expected to already supply IMAGE_NAME/PIH_CONFIG, so the
+    # requirement is only enforced without one; a malformed TEMPLATE missing
+    # them will still surface later, when a command that needs them actually
+    # runs, via the openmrs service fragment's own required-var guards.
+    if [ -z "${TEMPLATE:-}" ] && { [ -z "${IMAGE_NAME:-}" ] || [ -z "${PIH_CONFIG:-}" ]; }; then
+        echo "IMAGE_NAME and PIH_CONFIG must be set to create an instance (unless TEMPLATE already provides them)"
+        echo ""
+        usage
+    fi
+    # Validate all requested service names have matching yaml files BEFORE creating anything.
+    # This prevents a half-created directory if any service name is invalid.
+    IFS=',' read -ra SERVICE_LIST <<< "${SERVICES:-openmrs-db,openmrs}"
+    for svc in "${SERVICE_LIST[@]}"; do
+        [ -f "$SERVICES_DIR/$svc.yaml" ] || { echo "No such service '$svc' (looked for $SERVICES_DIR/$svc.yaml)"; exit 1; }
+    done
+    mkdir -p "$INSTANCE_DIR"
+    if [ -n "${TEMPLATE:-}" ]; then
+        [ -f "$TEMPLATE" ] || { echo "TEMPLATE not found: $TEMPLATE"; exit 1; }
+        cp "$TEMPLATE" "$INSTANCE_DIR/env"
+    else
+        cat > "$INSTANCE_DIR/env" <<EOF
+OPENMRS_IMAGE_TAG=latest
+SEED_IMAGE_TAG=latest
+DB_IMAGE=mysql:5.6
+OMRS_DB_USER=openmrs
+OMRS_DB_PASSWORD=openmrs
+MYSQL_ROOT_PASSWORD=openmrs
+TOMCAT_HTTP_PORT=8080
+MYSQL_PORT=3306
+TOMCAT_DEBUG_PORT=1044
+ACTIVITYLOG_ENABLED=false
+DB_MEMORY_LIMIT=2g
+OPENMRS_MEMORY_LIMIT=4g
+OMRS_JAVA_MEMORY_OPTS="-Xms512m -Xmx2g -XX:NewSize=128m"
+DB_MAX_ALLOWED_PACKET=1G
+DB_INNODB_BUFFER_POOL_SIZE=2G
+TZ=UTC
+EOF
+    fi
+    {
+        # Always forces SERVICE_NAME to this instance's own name, even when TEMPLATE
+        # is a copy of another instance's env file — otherwise two instances would
+        # share one Compose project (and its containers/volumes) silently.
+        echo "SERVICE_NAME=$NAME"
+        [ -n "${IMAGE_NAME:-}" ] && echo "IMAGE_NAME=$IMAGE_NAME"
+        [ -n "${PIH_CONFIG:-}" ] && echo "PIH_CONFIG=$PIH_CONFIG"
+        [ -n "${SEED_IMAGE_NAME:-}" ] && echo "SEED_IMAGE_NAME=$SEED_IMAGE_NAME"
+        [ -n "${DISTRO_SOURCE_DIR:-}" ] && echo "DISTRO_SOURCE_DIR=$DISTRO_SOURCE_DIR"
+    } >> "$INSTANCE_DIR/env"
+    # Copy validated service fragments
+    for svc in "${SERVICE_LIST[@]}"; do
+        cp "$SERVICES_DIR/$svc.yaml" "$INSTANCE_DIR/docker-compose.$svc.yml"
+    done
+    echo "Created instance '$NAME' at $INSTANCE_DIR"
+    exit 0
+fi
+
+if [ "$1" = "list" ]; then
+    [ -d "$OPENMRS_DOCKER_HOME" ] && ls "$OPENMRS_DOCKER_HOME"
+    exit 0
+fi
+
+NAME="$1"
+COMMAND="${2:-}"
+shift 2 2>/dev/null || true
+
+INSTANCE_DIR="$OPENMRS_DOCKER_HOME/$NAME"
+ENV_FILE="$INSTANCE_DIR/env"
+[ -f "$ENV_FILE" ] || { echo "No instance found at $INSTANCE_DIR (run '$0 create $NAME' first)"; exit 1; }
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+[ -z "$COMMAND" ] && usage
+
+# add-service/remove-service take a service name as their one positional argument,
+# consumed here before the generic flag-parsing loop below.
+SERVICE_ARG=""
+case "$COMMAND" in
+    add-service|remove-service)
+        SERVICE_ARG="${1:-}"
+        [ -z "$SERVICE_ARG" ] && { echo "$COMMAND requires a service name"; usage; }
+        shift
+        ;;
+esac
+
+BUILD=false
+FRESH=false
+DEV=false
+FORCE=false
+for arg in "$@"; do
+    case "$arg" in
+        --build) BUILD=true ;;
+        --fresh) FRESH=true ;;
+        --dev) DEV=true ;;
+        --force) FORCE=true ;;
+        *) echo "Unknown option: '$arg'"; echo ""; usage ;;
+    esac
+done
+
+export SERVICE_NAME="${SERVICE_NAME:-$NAME}"
+
+# Rebuilds COMPOSE_FILES from the instance directory's *current* set of copied
+# service fragments plus the dev mode overlay this invocation's flags select.
+# Deliberately does NOT include modes/seeded.yaml — see stack_compose_files()
+# below. Called again after remove-service deletes a fragment, so the removal is
+# reflected immediately.
+compose_files() {
+    COMPOSE_FILES=(--env-file "$ENV_FILE")
+    for f in "$INSTANCE_DIR"/docker-compose.*.yml; do
+        [ -e "$f" ] || continue
+        COMPOSE_FILES+=(-f "$f")
+    done
+    if $DEV; then
+        COMPOSE_FILES+=(-f "$MODES_DIR/dev.yaml")
+    fi
+}
+compose_files
+
+# Same as compose_files(), plus modes/seeded.yaml unless --fresh. Only for commands
+# that actually bring the stack up (start/update/remove-service's follow-up `up -d`)
+# or need to fetch the matching images (pull) — modes/seeded.yaml requires
+# SEED_IMAGE_NAME, which an instance that only ever runs --fresh may never set, so
+# every other command (stop/logs/wait/destroy/build) must keep working without it,
+# same as before this tool copied fragments per instance.
+stack_compose_files() {
+    compose_files
+    if ! $FRESH; then
+        COMPOSE_FILES+=(-f "$MODES_DIR/seeded.yaml")
+    fi
+}
+
+require_distro_source() {
+    if [ -z "${DISTRO_SOURCE_DIR:-}" ]; then
+        echo "DISTRO_SOURCE_DIR must be set in $ENV_FILE for this command"
+        exit 1
+    fi
+}
+
+build_image() {
+    require_distro_source
+    cd "$DISTRO_SOURCE_DIR" && mvn clean package -U
+    # Always build explicitly rather than relying on `docker compose up -d` to
+    # build automatically: when a service has both `image:` and `build:`,
+    # Compose prefers pulling the named tag from a registry over building
+    # locally, and only falls back to building if the pull fails. Relying on
+    # that fallback would silently use whatever's published under IMAGE_NAME
+    # instead of this local build, whenever that tag exists in a reachable
+    # registry.
+    docker compose "${COMPOSE_FILES[@]}" build
+}
+
+start_stack() {
+    stack_compose_files
+    docker compose "${COMPOSE_FILES[@]}" up -d
+}
+
+# Advisory only — never blocks, never prompts, never modifies anything. See the
+# design doc's "Discoverability" section for why a blocking prompt was rejected.
+warn_on_drift() {
+    local drifted=()
+    local f svc canonical
+    for f in "$INSTANCE_DIR"/docker-compose.*.yml; do
+        [ -e "$f" ] || continue
+        svc=$(basename "$f" .yml); svc=${svc#docker-compose.}
+        canonical="$SERVICES_DIR/$svc.yaml"
+        [ -e "$canonical" ] || continue  # canonical service renamed/removed - not this check's concern
+        cmp -s "$f" "$canonical" || drifted+=("$svc")
+    done
+    if [ ${#drifted[@]} -gt 0 ]; then
+        echo "Note: newer service definitions available for: ${drifted[*]}" >&2
+        echo "Run '$0 $NAME sync' to update before the next start/update." >&2
+    fi
+}
+
+sync_services() {
+    local f svc canonical
+    for f in "$INSTANCE_DIR"/docker-compose.*.yml; do
+        [ -e "$f" ] || continue
+        svc=$(basename "$f" .yml); svc=${svc#docker-compose.}
+        canonical="$SERVICES_DIR/$svc.yaml"
+        if [ -e "$canonical" ]; then
+            cp "$canonical" "$f"
+            echo "Synced $svc"
+        else
+            echo "Skipped $svc (no canonical service found at $canonical)"
+        fi
+    done
+}
+
+case "$COMMAND" in
+    start)
+        if $DEV || $BUILD; then require_distro_source; fi
+        warn_on_drift
+        if $BUILD; then build_image; fi
+        start_stack
+        ;;
+    update)
+        if $DEV || $BUILD; then require_distro_source; fi
+        warn_on_drift
+        if $BUILD; then build_image; fi
+        stack_compose_files
+        docker compose "${COMPOSE_FILES[@]}" down
+        start_stack
+        ;;
+    sync)
+        sync_services
+        ;;
+    add-service)
+        dest="$INSTANCE_DIR/docker-compose.$SERVICE_ARG.yml"
+        [ -e "$dest" ] && { echo "error: $SERVICE_ARG already present on $NAME" >&2; exit 1; }
+        [ -e "$SERVICES_DIR/$SERVICE_ARG.yaml" ] || { echo "error: no such service '$SERVICE_ARG'" >&2; exit 1; }
+        cp "$SERVICES_DIR/$SERVICE_ARG.yaml" "$dest"
+        echo "Added $SERVICE_ARG. Run '$0 $NAME start' to bring it up."
+        ;;
+    remove-service)
+        target="$INSTANCE_DIR/docker-compose.$SERVICE_ARG.yml"
+        [ -e "$target" ] || { echo "error: $SERVICE_ARG not present on $NAME" >&2; exit 1; }
+        rm "$target"
+        stack_compose_files
+        docker compose "${COMPOSE_FILES[@]}" up -d --remove-orphans
+        echo "Removed $SERVICE_ARG."
+        ;;
+    wait)
+        OPENMRS_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -q openmrs)
+        echo "Waiting for OpenMRS to initialize (up to 60 minutes)..."
+        docker logs -f "$OPENMRS_CONTAINER" 2>&1 &
+        LOGS_PID=$!
+        for i in $(seq 1 120); do
+            if docker logs "$OPENMRS_CONTAINER" 2>&1 | grep -q "Distribution startup complete"; then
+                kill $LOGS_PID 2>/dev/null || true
+                break
+            fi
+            sleep 30
+            if [ "$i" -eq 120 ]; then
+                kill $LOGS_PID 2>/dev/null || true
+                echo "Timed out waiting for OpenMRS to initialize after 60 minutes"
+                exit 1
+            fi
+        done
+        echo "Waiting for OpenMRS to be accessible..."
+        for i in $(seq 1 20); do
+            if curl -sf "http://localhost:${TOMCAT_HTTP_PORT:-8080}/openmrs" > /dev/null 2>&1; then
+                echo "OpenMRS is ready."
+                exit 0
+            fi
+            sleep 15
+        done
+        echo "Timed out waiting for OpenMRS to become accessible"
+        exit 1
+        ;;
+    build)
+        build_image
+        ;;
+    pull)
+        stack_compose_files
+        docker compose "${COMPOSE_FILES[@]}" pull
+        ;;
+    stop)    docker compose "${COMPOSE_FILES[@]}" down --remove-orphans ;;
+    logs)    docker compose "${COMPOSE_FILES[@]}" logs -f ;;
+    destroy)
+        if ! $FORCE; then
+            echo "This will stop the stack, delete all volumes, and remove $INSTANCE_DIR."
+            read -r -p "Are you sure? [y/N] " confirm
+            [[ "$confirm" =~ ^[Yy]$ ]] || exit 0
+        fi
+        docker compose "${COMPOSE_FILES[@]}" down -v --remove-orphans
+        # modes/seeded.yaml's db-init volume isn't declared in services/openmrs-db.yaml, so an
+        # instance that ever ran seeded would leave it behind here. Removed by name directly
+        # rather than relying on -v to catch it, since whether this destroy call passed --fresh
+        # doesn't tell us whether the instance ever ran seeded in the past.
+        docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
+        rm -rf "$INSTANCE_DIR"
+        echo "Removed instance directory $INSTANCE_DIR"
+        ;;
+    *) echo "Unknown command: '$COMMAND'"; echo ""; usage ;;
+esac

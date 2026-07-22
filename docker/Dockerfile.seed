@@ -1,0 +1,6 @@
+FROM alpine:3.21
+COPY dump.sql.gz /seed/dump.sql.gz
+COPY data.tar.gz /seed/data.tar.gz
+COPY seed-entrypoint.sh /seed-entrypoint.sh
+RUN chmod +x /seed-entrypoint.sh
+ENTRYPOINT ["/seed-entrypoint.sh"]

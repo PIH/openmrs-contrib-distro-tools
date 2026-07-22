@@ -1,0 +1,42 @@
+name: ${SERVICE_NAME:-openmrs}
+
+services:
+  openmrs-db:
+    image: ${DB_IMAGE:-mysql:5.6}
+    command: >
+      mysqld
+      --character-set-server=utf8
+      --collation-server=utf8_general_ci
+      --log-bin=mysql-bin
+      --log_bin_trust_function_creators=1
+      --binlog_format=ROW
+      --max_binlog_size=100M
+      --server-id=1
+      --max_allowed_packet=${DB_MAX_ALLOWED_PACKET:-1G}
+      --innodb-buffer-pool-size=${DB_INNODB_BUFFER_POOL_SIZE:-2G}
+      --net_write_timeout=3600
+      --net_read_timeout=3600
+    environment:
+      MYSQL_DATABASE: openmrs
+      MYSQL_USER: ${OMRS_DB_USER:-openmrs}
+      MYSQL_PASSWORD: ${OMRS_DB_PASSWORD:-openmrs}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-openmrs}
+      TZ: ${TZ:-UTC}
+    ports:
+      - ${MYSQL_PORT:-3306}:3306
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${DB_MEMORY_LIMIT:-2g}
+
+volumes:
+  db-data:

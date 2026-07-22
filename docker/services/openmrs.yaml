@@ -1,0 +1,44 @@
+name: ${SERVICE_NAME:-openmrs}
+
+services:
+  openmrs:
+    image: ${IMAGE_NAME:?IMAGE_NAME must be set}:${OPENMRS_IMAGE_TAG:-latest}
+    build:
+      # Soft default rather than a required (:?) guard: Compose interpolates this on
+      # every invocation (stop/logs/wait/destroy/etc.), not just when actually
+      # building, so a hard requirement here would break instances that never build.
+      # openmrs-docker's require_distro_source() enforces the real requirement.
+      context: ${DISTRO_SOURCE_DIR:-.}/distro/target/distro/web
+    depends_on:
+      openmrs-db:
+        condition: service_healthy
+    ports:
+      - ${TOMCAT_HTTP_PORT:-8080}:8080
+    environment:
+      OMRS_CONFIG_MODULE_WEB_ADMIN: "true"
+      OMRS_CONFIG_AUTO_UPDATE_DATABASE: "true"
+      OMRS_CONFIG_CREATE_TABLES: "true"
+      OMRS_CONFIG_CONNECTION_SERVER: openmrs-db
+      OMRS_CONFIG_CONNECTION_DATABASE: openmrs
+      OMRS_CONFIG_CONNECTION_USERNAME: ${OMRS_DB_USER:-openmrs}
+      OMRS_CONFIG_CONNECTION_PASSWORD: ${OMRS_DB_PASSWORD:-openmrs}
+      OMRS_EXTRA_PIH_CONFIG: ${PIH_CONFIG:?PIH_CONFIG must be set}
+      OMRS_JAVA_MEMORY_OPTS: ${OMRS_JAVA_MEMORY_OPTS:--Xms512m -Xmx2g -XX:NewSize=128m}
+      OMRS_EXTRA_ACTIVITYLOG__ENABLED: ${ACTIVITYLOG_ENABLED:-true}
+      TZ: ${TZ:-UTC}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/openmrs"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 600s
+    volumes:
+      - openmrs-data:/openmrs/data/
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${OPENMRS_MEMORY_LIMIT:-4g}
+
+volumes:
+  openmrs-data:
