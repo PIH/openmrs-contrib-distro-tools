@@ -2,7 +2,7 @@ name: ${SERVICE_NAME:-openmrs}
 
 services:
   openmrs:
-    image: ${IMAGE_NAME:?IMAGE_NAME must be set}:${OPENMRS_IMAGE_TAG:-latest}
+    image: ${OPENMRS_IMAGE_NAME:?OPENMRS_IMAGE_NAME must be set}:${OPENMRS_IMAGE_TAG:-latest}
     build:
       # Soft default rather than a required (:?) guard: Compose interpolates this on
       # every invocation (stop/logs/wait/destroy/etc.), not just when actually

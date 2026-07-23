@@ -52,7 +52,7 @@ Each distribution has its own published Docker image, and its own set of support
 distribution-specific README files for these specific options.  Choose the options that best meet your needs for the
 type of environment you are setting up:
 
-`IMAGE_NAME` (eg. `partnersinhealth/lesotho-emr`)
+`OPENMRS_IMAGE_NAME` (eg. `partnersinhealth/lesotho-emr`)
 `PIH_CONFIG` (eg. `lesotho,lesotho-kol-ci`)
 
 These are the bare minimum required to create an instance.  For additional configuration options, consult the 
@@ -67,7 +67,7 @@ Once you have the appropriate environment variables determined, you pass them to
 with the name of the instance you want to create (this can be any name you like):
 
 ```bash
-IMAGE_NAME=partnersinhealth/lesotho-emr \
+OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr \
 PIH_CONFIG=lesotho,lesotho-kol-ci \
 DISTRO_SOURCE_DIR="<path_to_lesotho_emr_src>" \
 openmrs-docker create <name> --build
@@ -80,7 +80,7 @@ child processes (like `openmrs-docker`) never see:
 
 ```bash
 # kol-ci.sh
-export IMAGE_NAME=partnersinhealth/lesotho-emr
+export OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr
 export PIH_CONFIG=lesotho,lesotho-kol-ci
 export TOMCAT_HTTP_PORT=9090
 ```
@@ -107,7 +107,7 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 
 | Variable | Required? | Purpose |
 |---|---|---|
-| `IMAGE_NAME` | Required | OpenMRS image, no tag |
+| `OPENMRS_IMAGE_NAME` | Required | OpenMRS image, no tag |
 | `PIH_CONFIG` | Required | PIH config profile for this instance |
 | `DISTRO_SOURCE_DIR` | Required for `build`/`--dev`/`--build` only | Path to the distro repo checkout |
 | `SEED_IMAGE_NAME` | Optional | Full seed image name (no tag) — used by `start` without `--fresh` |

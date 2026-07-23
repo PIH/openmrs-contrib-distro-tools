@@ -59,7 +59,7 @@ jobs:
       - name: Create instance
         env:
           DISTRO_SOURCE_DIR: ${{ github.workspace }}
-          IMAGE_NAME: ${{ inputs.image_name }}
+          OPENMRS_IMAGE_NAME: ${{ inputs.image_name }}
           SEED_IMAGE_NAME: ${{ env.SEED_IMAGE_NAME }}
           PIH_CONFIG: ${{ inputs.pih_config }}
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker create ${{ inputs.site }}

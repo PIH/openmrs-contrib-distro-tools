@@ -36,7 +36,7 @@ usage() {
     echo "  OPENMRS_DOCKER_HOME   Where instance directories live (default: \$HOME/openmrs)"
     echo "  TOMCAT_HTTP_PORT      Port OpenMRS is exposed on (default: 8080)"
     echo ""
-    echo "create requires IMAGE_NAME and PIH_CONFIG (env vars). DISTRO_SOURCE_DIR is required"
+    echo "create requires OPENMRS_IMAGE_NAME and PIH_CONFIG (env vars). DISTRO_SOURCE_DIR is required"
     echo "only for build/--dev/--build, and can be set later by editing the instance's env file."
     echo "Every other create-time setting (ports, memory limits, image tags, etc.) can be"
     echo "overridden the same way create's own defaults are: set it in your shell (or source a"
@@ -56,8 +56,8 @@ if [ "$1" = "create" ]; then
         echo "Instance directory already exists: $INSTANCE_DIR"
         exit 1
     fi
-    if [ -z "${IMAGE_NAME:-}" ] || [ -z "${PIH_CONFIG:-}" ]; then
-        echo "IMAGE_NAME and PIH_CONFIG must be set to create an instance"
+    if [ -z "${OPENMRS_IMAGE_NAME:-}" ] || [ -z "${PIH_CONFIG:-}" ]; then
+        echo "OPENMRS_IMAGE_NAME and PIH_CONFIG must be set to create an instance"
         echo ""
         usage
     fi
@@ -72,7 +72,7 @@ if [ "$1" = "create" ]; then
     # set (e.g. `source myenv && openmrs-docker create ...`), falling back to these
     # defaults otherwise.
     cat > "$INSTANCE_DIR/env" <<EOF
-IMAGE_NAME="$IMAGE_NAME"
+OPENMRS_IMAGE_NAME="$OPENMRS_IMAGE_NAME"
 PIH_CONFIG="$PIH_CONFIG"
 SEED_IMAGE_NAME="${SEED_IMAGE_NAME:-}"
 DISTRO_SOURCE_DIR="${DISTRO_SOURCE_DIR:-}"
@@ -193,7 +193,7 @@ build_image() {
     # build automatically: when a service has both `image:` and `build:`,
     # Compose prefers pulling the named tag from a registry over building
     # locally, and only falls back to building if the pull fails. Relying on
-    # that fallback would silently use whatever's published under IMAGE_NAME
+    # that fallback would silently use whatever's published under OPENMRS_IMAGE_NAME
     # instead of this local build, whenever that tag exists in a reachable
     # registry.
     docker compose "${COMPOSE_FILES[@]}" build
