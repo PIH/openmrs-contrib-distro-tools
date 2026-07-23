@@ -15,14 +15,16 @@ usage() {
     echo "Commands (for an existing instance):"
     echo "  start                   Start the stack"
     echo "  stop                    Stop the running stack"
-    echo "  update                  Stop then restart the stack"
+    echo "  restart                 Restart the running containers in place (no rebuild, no recreate)"
+    echo "  status                  Show the state of this instance's containers"
+    echo "  update                  Pull latest images and reconcile the stack (recreates only what changed)"
     echo "  sync                    Refresh this instance's copied service fragments from the tool's current templates"
     echo "  add-service <svc>       Attach a canonical service fragment (e.g. 'add-service reporting-db')"
     echo "  remove-service <svc>    Detach a service fragment and remove its now-orphaned container"
     echo "  wait                    Block until OpenMRS finishes initializing (up to 60 minutes)"
     echo "  build                   Build the distribution and Docker image from source"
     echo "  pull                    Pull the images this instance would use, without starting anything"
-    echo "  logs                    Tail the container logs"
+    echo "  logs [service]          Tail the container logs; defaults to every service"
     echo "  destroy                 Stop the stack, delete all volumes, and remove the instance directory"
     echo ""
     echo "Options:"
@@ -122,14 +124,21 @@ set +a
 
 [ -z "$COMMAND" ] && usage
 
-# add-service/remove-service take a service name as their one positional argument,
-# consumed here before the generic flag-parsing loop below.
+# add-service/remove-service take a required service name as their one positional argument;
+# logs takes the same positional argument, but optionally. Consumed here before the generic
+# flag-parsing loop below, which would otherwise reject it as an unknown option.
 SERVICE_ARG=""
 case "$COMMAND" in
     add-service|remove-service)
         SERVICE_ARG="${1:-}"
         [ -z "$SERVICE_ARG" ] && { echo "$COMMAND requires a service name"; usage; }
         shift
+        ;;
+    logs)
+        if [ -n "${1:-}" ] && [[ "$1" != --* ]]; then
+            SERVICE_ARG="$1"
+            shift
+        fi
         ;;
 esac
 
@@ -249,7 +258,7 @@ case "$COMMAND" in
         warn_on_drift
         if $BUILD; then build_image; fi
         stack_compose_files
-        docker compose "${COMPOSE_FILES[@]}" down
+        docker compose "${COMPOSE_FILES[@]}" pull
         start_stack
         ;;
     sync)
@@ -306,7 +315,15 @@ case "$COMMAND" in
         docker compose "${COMPOSE_FILES[@]}" pull
         ;;
     stop)    docker compose "${COMPOSE_FILES[@]}" down --remove-orphans ;;
-    logs)    docker compose "${COMPOSE_FILES[@]}" logs -f ;;
+    restart) docker compose "${COMPOSE_FILES[@]}" restart ;;
+    status)  docker compose "${COMPOSE_FILES[@]}" ps ;;
+    logs)
+        if [ -n "$SERVICE_ARG" ]; then
+            docker compose "${COMPOSE_FILES[@]}" logs -f "$SERVICE_ARG"
+        else
+            docker compose "${COMPOSE_FILES[@]}" logs -f
+        fi
+        ;;
     destroy)
         if ! $FORCE; then
             echo "This will stop the stack, delete all volumes, and remove $INSTANCE_DIR."
