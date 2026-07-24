@@ -2,7 +2,7 @@ name: ${SERVICE_NAME:-openmrs}
 
 services:
   openmrs-db:
-    image: ${DB_IMAGE:-mysql:5.6}
+    image: ${OPENMRS_DB_IMAGE_NAME:-mysql}:${OPENMRS_DB_IMAGE_TAG:-5.6}
     command: >
       mysqld
       --character-set-server=utf8
@@ -12,22 +12,22 @@ services:
       --binlog_format=ROW
       --max_binlog_size=100M
       --server-id=1
-      --max_allowed_packet=${DB_MAX_ALLOWED_PACKET:-1G}
-      --innodb-buffer-pool-size=${DB_INNODB_BUFFER_POOL_SIZE:-2G}
+      --max_allowed_packet=${OPENMRS_DB_MAX_ALLOWED_PACKET:-1G}
+      --innodb-buffer-pool-size=${OPENMRS_DB_INNODB_BUFFER_POOL_SIZE:-2G}
       --net_write_timeout=3600
       --net_read_timeout=3600
     environment:
       MYSQL_DATABASE: openmrs
-      MYSQL_USER: ${OMRS_DB_USER:-openmrs}
-      MYSQL_PASSWORD: ${OMRS_DB_PASSWORD:-openmrs}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-openmrs}
+      MYSQL_USER: ${OPENMRS_DB_USER:-openmrs}
+      MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD:-openmrs}
+      MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD:-openmrs}
       TZ: ${TZ:-UTC}
     ports:
-      - ${MYSQL_PORT:-3306}:3306
+      - ${OPENMRS_DB_PORT:-3306}:3306
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysql", "-h", "127.0.0.1", "-u${OMRS_DB_USER:-openmrs}", "-p${OMRS_DB_PASSWORD:-openmrs}", "openmrs", "-e", "SELECT 1"]
+      test: ["CMD", "mysql", "-h", "127.0.0.1", "-u${OPENMRS_DB_USER:-openmrs}", "-p${OPENMRS_DB_PASSWORD:-openmrs}", "openmrs", "-e", "SELECT 1"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -36,7 +36,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${DB_MEMORY_LIMIT:-2g}
+          memory: ${OPENMRS_DB_MEMORY_LIMIT:-2g}
 
 volumes:
   db-data:

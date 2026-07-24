@@ -48,17 +48,17 @@ TODO
 
 ### Creating a server instance
 
-Each distribution has its own published Docker image, and its own set of supported PIH_CONFIG profiles.  Refer to the 
+Each distribution has its own published Docker image, and its own set of supported PIH config profiles.  Refer to the 
 distribution-specific README files for these specific options.  Choose the options that best meet your needs for the
 type of environment you are setting up:
 
 `OPENMRS_IMAGE_NAME` (eg. `partnersinhealth/lesotho-emr`)
-`PIH_CONFIG` (eg. `lesotho,lesotho-kol-ci`)
+`OPENMRS_PIH_CONFIG` (eg. `lesotho,lesotho-kol-ci`)
 
 These are the bare minimum required to create an instance.  For additional configuration options, consult the 
 usage documentation by running `openmrs-docker` with no arguments.
 
-For example, you can specify a different port for the Tomcat HTTP server by setting the `TOMCAT_HTTP_PORT` environment variable:
+For example, you can specify a different port for the Tomcat HTTP server by setting the `OPENMRS_HTTP_PORT` environment variable:
 
 **For developers**:  In order for some options to be available that support deployment of uncommited distribution changes, you should also
 set the `DISTRO_SOURCE_DIR` environment variable to the path of the distribution you want to use for local builds.
@@ -68,7 +68,7 @@ with the name of the instance you want to create (this can be any name you like)
 
 ```bash
 OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr \
-PIH_CONFIG=lesotho,lesotho-kol-ci \
+OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci \
 DISTRO_SOURCE_DIR="<path_to_lesotho_emr_src>" \
 openmrs-docker create <name> --build
 ```
@@ -81,8 +81,8 @@ child processes (like `openmrs-docker`) never see:
 ```bash
 # kol-ci.sh
 export OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr
-export PIH_CONFIG=lesotho,lesotho-kol-ci
-export TOMCAT_HTTP_PORT=9090
+export OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci
+export OPENMRS_HTTP_PORT=9090
 ```
 
 ```bash
@@ -108,14 +108,14 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | Variable | Required? | Purpose |
 |---|---|---|
 | `OPENMRS_IMAGE_NAME` | Required | OpenMRS image, no tag |
-| `PIH_CONFIG` | Required | PIH config profile for this instance |
+| `OPENMRS_PIH_CONFIG` | Required | PIH config profile for this instance |
 | `DISTRO_SOURCE_DIR` | Required for `build`/`--dev`/`--build` only | Path to the distro repo checkout |
 | `SEED_IMAGE_NAME` | Required for `initialize` only | Full seed image name (no tag) |
 | `SERVICE_NAME` | Optional (defaults to the instance name) | Docker Compose project name |
 | `OPENMRS_IMAGE_TAG`, `SEED_IMAGE_TAG` | Optional (`latest`) | Image tags |
-| `TOMCAT_HTTP_PORT`, `MYSQL_PORT`, `TOMCAT_DEBUG_PORT` | Optional | Port overrides — set differently per instance to run more than one at once |
+| `OPENMRS_HTTP_PORT`, `OPENMRS_DB_PORT`, `OPENMRS_DEBUG_PORT` | Optional | Port overrides — set differently per instance to run more than one at once |
 | `TZ` | Optional (`UTC`) | Container timezone |
-| `DB_IMAGE`, `OMRS_DB_USER`, `OMRS_DB_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `ACTIVITYLOG_ENABLED`, `DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OMRS_JAVA_MEMORY_OPTS`, `DB_MAX_ALLOWED_PACKET`, `DB_INNODB_BUFFER_POOL_SIZE` | Optional | Tuning knobs |
+| `OPENMRS_DB_IMAGE_NAME` (`mysql`), `OPENMRS_DB_IMAGE_TAG` (`5.6`), `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD`, `OPENMRS_ACTIVITYLOG_ENABLED`, `OPENMRS_DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS`, `OPENMRS_DB_MAX_ALLOWED_PACKET`, `OPENMRS_DB_INNODB_BUFFER_POOL_SIZE` | Optional | Tuning knobs |
 
 ### Initializing a server
 
@@ -146,7 +146,7 @@ openmrs-docker <name> wait
 ```
 
 When you see **OpenMRS is ready**, open a browser and go to **http://localhost:8080/openmrs** (or
-whatever `TOMCAT_HTTP_PORT` that instance was created with, if not the default).
+whatever `OPENMRS_HTTP_PORT` that instance was created with, if not the default).
 
 ### Tailing the logs
 

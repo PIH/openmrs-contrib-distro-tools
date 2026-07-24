@@ -36,9 +36,9 @@ usage() {
     echo ""
     echo "Environment variable overrides:"
     echo "  OPENMRS_DOCKER_HOME   Where instance directories live (default: \$HOME/openmrs)"
-    echo "  TOMCAT_HTTP_PORT      Port OpenMRS is exposed on (default: 8080)"
+    echo "  OPENMRS_HTTP_PORT     Port OpenMRS is exposed on (default: 8080)"
     echo ""
-    echo "create requires OPENMRS_IMAGE_NAME and PIH_CONFIG (env vars). DISTRO_SOURCE_DIR is required"
+    echo "create requires OPENMRS_IMAGE_NAME and OPENMRS_PIH_CONFIG (env vars). DISTRO_SOURCE_DIR is required"
     echo "only for build/--dev/--build, and can be set later by editing the instance's env file."
     echo "Every other create-time setting (ports, memory limits, image tags, etc.) can be"
     echo "overridden the same way create's own defaults are: set it in your shell (or source a"
@@ -58,8 +58,8 @@ if [ "$1" = "create" ]; then
         echo "Instance directory already exists: $INSTANCE_DIR"
         exit 1
     fi
-    if [ -z "${OPENMRS_IMAGE_NAME:-}" ] || [ -z "${PIH_CONFIG:-}" ]; then
-        echo "OPENMRS_IMAGE_NAME and PIH_CONFIG must be set to create an instance"
+    if [ -z "${OPENMRS_IMAGE_NAME:-}" ] || [ -z "${OPENMRS_PIH_CONFIG:-}" ]; then
+        echo "OPENMRS_IMAGE_NAME and OPENMRS_PIH_CONFIG must be set to create an instance"
         echo ""
         usage
     fi
@@ -74,27 +74,32 @@ if [ "$1" = "create" ]; then
     # set (e.g. `source myenv && openmrs-docker create ...`), falling back to these
     # defaults otherwise.
     cat > "$INSTANCE_DIR/env" <<EOF
-OPENMRS_IMAGE_NAME="$OPENMRS_IMAGE_NAME"
-PIH_CONFIG="$PIH_CONFIG"
-SEED_IMAGE_NAME="${SEED_IMAGE_NAME:-}"
-DISTRO_SOURCE_DIR="${DISTRO_SOURCE_DIR:-}"
-OPENMRS_IMAGE_TAG="${OPENMRS_IMAGE_TAG:-latest}"
-SEED_IMAGE_TAG="${SEED_IMAGE_TAG:-latest}"
-DB_IMAGE="${DB_IMAGE:-mysql:5.6}"
-OMRS_DB_USER="${OMRS_DB_USER:-openmrs}"
-OMRS_DB_PASSWORD="${OMRS_DB_PASSWORD:-openmrs}"
-MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-openmrs}"
-TOMCAT_HTTP_PORT="${TOMCAT_HTTP_PORT:-8080}"
-MYSQL_PORT="${MYSQL_PORT:-3306}"
-TOMCAT_DEBUG_PORT="${TOMCAT_DEBUG_PORT:-1044}"
-ACTIVITYLOG_ENABLED="${ACTIVITYLOG_ENABLED:-false}"
-DB_MEMORY_LIMIT="${DB_MEMORY_LIMIT:-2g}"
-OPENMRS_MEMORY_LIMIT="${OPENMRS_MEMORY_LIMIT:-4g}"
-OMRS_JAVA_MEMORY_OPTS="${OMRS_JAVA_MEMORY_OPTS:--Xms512m -Xmx2g -XX:NewSize=128m}"
-DB_MAX_ALLOWED_PACKET="${DB_MAX_ALLOWED_PACKET:-1G}"
-DB_INNODB_BUFFER_POOL_SIZE="${DB_INNODB_BUFFER_POOL_SIZE:-2G}"
+# instance
 TZ="${TZ:-UTC}"
 SERVICE_NAME="$NAME"
+DISTRO_SOURCE_DIR="${DISTRO_SOURCE_DIR:-}"
+# openmrs-db
+OPENMRS_DB_IMAGE_NAME="${OPENMRS_DB_IMAGE_NAME:-mysql}"
+OPENMRS_DB_IMAGE_TAG="${OPENMRS_DB_IMAGE_TAG:-5.6}"
+OPENMRS_DB_USER="${OPENMRS_DB_USER:-openmrs}"
+OPENMRS_DB_PASSWORD="${OPENMRS_DB_PASSWORD:-openmrs}"
+OPENMRS_DB_ROOT_PASSWORD="${OPENMRS_DB_ROOT_PASSWORD:-openmrs}"
+OPENMRS_DB_PORT="${OPENMRS_DB_PORT:-3306}"
+OPENMRS_DB_MEMORY_LIMIT="${OPENMRS_DB_MEMORY_LIMIT:-2g}"
+OPENMRS_DB_MAX_ALLOWED_PACKET="${OPENMRS_DB_MAX_ALLOWED_PACKET:-1G}"
+OPENMRS_DB_INNODB_BUFFER_POOL_SIZE="${OPENMRS_DB_INNODB_BUFFER_POOL_SIZE:-2G}"
+# openmrs
+OPENMRS_IMAGE_NAME="$OPENMRS_IMAGE_NAME"
+OPENMRS_IMAGE_TAG="${OPENMRS_IMAGE_TAG:-latest}"
+OPENMRS_PIH_CONFIG="$OPENMRS_PIH_CONFIG"
+OPENMRS_HTTP_PORT="${OPENMRS_HTTP_PORT:-8080}"
+OPENMRS_DEBUG_PORT="${OPENMRS_DEBUG_PORT:-1044}"
+OPENMRS_MEMORY_LIMIT="${OPENMRS_MEMORY_LIMIT:-4g}"
+OPENMRS_JAVA_MEMORY_OPTS="${OPENMRS_JAVA_MEMORY_OPTS:--Xms512m -Xmx2g -XX:NewSize=128m}"
+OPENMRS_ACTIVITYLOG_ENABLED="${OPENMRS_ACTIVITYLOG_ENABLED:-false}"
+# seed
+SEED_IMAGE_NAME="${SEED_IMAGE_NAME:-}"
+SEED_IMAGE_TAG="${SEED_IMAGE_TAG:-latest}"
 EOF
     # Copy validated service fragments
     for svc in "${SERVICE_LIST[@]}"; do
@@ -323,7 +328,7 @@ case "$COMMAND" in
         done
         echo "Waiting for OpenMRS to be accessible..."
         for i in $(seq 1 20); do
-            if curl -sf "http://localhost:${TOMCAT_HTTP_PORT:-8080}/openmrs" > /dev/null 2>&1; then
+            if curl -sf "http://localhost:${OPENMRS_HTTP_PORT:-8080}/openmrs" > /dev/null 2>&1; then
                 echo "OpenMRS is ready."
                 exit 0
             fi

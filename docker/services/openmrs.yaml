@@ -14,18 +14,18 @@ services:
         condition: service_healthy
         restart: true
     ports:
-      - ${TOMCAT_HTTP_PORT:-8080}:8080
+      - ${OPENMRS_HTTP_PORT:-8080}:8080
     environment:
       OMRS_CONFIG_MODULE_WEB_ADMIN: "true"
       OMRS_CONFIG_AUTO_UPDATE_DATABASE: "true"
       OMRS_CONFIG_CREATE_TABLES: "true"
       OMRS_CONFIG_CONNECTION_SERVER: openmrs-db
       OMRS_CONFIG_CONNECTION_DATABASE: openmrs
-      OMRS_CONFIG_CONNECTION_USERNAME: ${OMRS_DB_USER:-openmrs}
-      OMRS_CONFIG_CONNECTION_PASSWORD: ${OMRS_DB_PASSWORD:-openmrs}
-      OMRS_EXTRA_PIH_CONFIG: ${PIH_CONFIG:?PIH_CONFIG must be set}
-      OMRS_JAVA_MEMORY_OPTS: ${OMRS_JAVA_MEMORY_OPTS:--Xms512m -Xmx2g -XX:NewSize=128m}
-      OMRS_EXTRA_ACTIVITYLOG__ENABLED: ${ACTIVITYLOG_ENABLED:-true}
+      OMRS_CONFIG_CONNECTION_USERNAME: ${OPENMRS_DB_USER:-openmrs}
+      OMRS_CONFIG_CONNECTION_PASSWORD: ${OPENMRS_DB_PASSWORD:-openmrs}
+      OMRS_EXTRA_PIH_CONFIG: ${OPENMRS_PIH_CONFIG:?OPENMRS_PIH_CONFIG must be set}
+      OMRS_JAVA_MEMORY_OPTS: ${OPENMRS_JAVA_MEMORY_OPTS:--Xms512m -Xmx2g -XX:NewSize=128m}
+      OMRS_EXTRA_ACTIVITYLOG__ENABLED: ${OPENMRS_ACTIVITYLOG_ENABLED:-true}
       TZ: ${TZ:-UTC}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/openmrs"]

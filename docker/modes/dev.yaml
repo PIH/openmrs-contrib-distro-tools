@@ -13,6 +13,6 @@ services:
     environment:
       DEBUG: "true"
     ports:
-      - ${TOMCAT_DEBUG_PORT:-1044}:1044
+      - ${OPENMRS_DEBUG_PORT:-1044}:1044
     volumes:
       - ${DISTRO_SOURCE_DIR:?DISTRO_SOURCE_DIR must be set for --dev}/distro/target/distro/web:/openmrs/distribution
