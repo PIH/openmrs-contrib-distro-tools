@@ -13,6 +13,7 @@
 
 services:
   seed:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-seed
     image: ${SEED_IMAGE_NAME:?SEED_IMAGE_NAME must be set}:${SEED_IMAGE_TAG:-latest}
     volumes:
       - openmrs-data:/target/data
