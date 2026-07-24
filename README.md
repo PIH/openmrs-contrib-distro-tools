@@ -110,26 +110,36 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | `OPENMRS_IMAGE_NAME` | Required | OpenMRS image, no tag |
 | `PIH_CONFIG` | Required | PIH config profile for this instance |
 | `DISTRO_SOURCE_DIR` | Required for `build`/`--dev`/`--build` only | Path to the distro repo checkout |
-| `SEED_IMAGE_NAME` | Optional | Full seed image name (no tag) — used by `start` without `--fresh` |
+| `SEED_IMAGE_NAME` | Required for `initialize` only | Full seed image name (no tag) |
 | `SERVICE_NAME` | Optional (defaults to the instance name) | Docker Compose project name |
 | `OPENMRS_IMAGE_TAG`, `SEED_IMAGE_TAG` | Optional (`latest`) | Image tags |
 | `TOMCAT_HTTP_PORT`, `MYSQL_PORT`, `TOMCAT_DEBUG_PORT` | Optional | Port overrides — set differently per instance to run more than one at once |
 | `TZ` | Optional (`UTC`) | Container timezone |
 | `DB_IMAGE`, `OMRS_DB_USER`, `OMRS_DB_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `ACTIVITYLOG_ENABLED`, `DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OMRS_JAVA_MEMORY_OPTS`, `DB_MAX_ALLOWED_PACKET`, `DB_INNODB_BUFFER_POOL_SIZE` | Optional | Tuning knobs |
 
+### Initializing a server
 
-### Using a server instance
+If you have never started the server before, you can dramatically speed up the initial startup process 
+by initializing the database first from a seed image that is built nightly for each supported configuration profile.
+These will be documented in each distribution's README and requires an additional `SEED_IMAGE_NAME` and optional `SEED_IMAGE_TAG` environment variable.
+Running this command will start the services and populate their volumes with data from the seed image.
 
-Once you have created the instance, you can start it up by running the following command:
+```bash
+openmrs-docker <name> initialize
+```
+
+NOTE: This command is only supported immediately after the instance is created.  If it has previously been started, this
+command will fail so as not to overwrite any existing data.
+
+### Starting a server
+
+You can start up an existing server (whether it has been previously initialized or not) by running:
 
 ```bash
 openmrs-docker <name> start
 ```
 
-The first time you start, Docker will download the pre-initialized image from the internet. This can
-take 10–20 minutes depending on your connection. Subsequent starts will be much faster.
-
-Once the download is complete, run the following command to be notified when OpenMRS is fully ready:
+After running the start command, you can wait for the server to be ready to accept connections by running:
 
 ```bash
 openmrs-docker <name> wait

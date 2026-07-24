@@ -31,7 +31,7 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8080/openmrs"]
       interval: 30s
       timeout: 15s
-      retries: 3
+      retries: 10
       start_period: 600s
     volumes:
       - openmrs-data:/openmrs/data/

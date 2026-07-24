@@ -65,7 +65,7 @@ jobs:
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker create ${{ inputs.site }}
 
       - name: Start stack
-        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ inputs.site }} start --fresh --build
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ inputs.site }} start --build
 
       - name: Wait for OpenMRS to be fully initialized
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ inputs.site }} wait

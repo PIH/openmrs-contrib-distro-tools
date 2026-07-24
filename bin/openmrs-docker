@@ -13,6 +13,7 @@ usage() {
     echo "  $0 <name> <command> [options]"
     echo ""
     echo "Commands (for an existing instance):"
+    echo "  initialize              Pre-load a brand-new instance's data volumes from SEED_IMAGE_NAME (refuses to run if any data volume already exists)"
     echo "  start                   Start the stack"
     echo "  stop                    Stop the running stack"
     echo "  restart                 Restart the running containers in place (no rebuild, no recreate)"
@@ -29,7 +30,6 @@ usage() {
     echo ""
     echo "Options:"
     echo "  --build        Build the distribution from source before start/update"
-    echo "  --fresh        Start from scratch instead of using a pre-seeded image"
     echo "  --dev          Expose debug ports and mount the locally-built distro over"
     echo "                 whatever's in the image (combine with --build to build it first)"
     echo "  --force        Skip the confirmation prompt (destroy only)"
@@ -98,7 +98,7 @@ SERVICE_NAME="$NAME"
 EOF
     # Copy validated service fragments
     for svc in "${SERVICE_LIST[@]}"; do
-        cp "$SERVICES_DIR/$svc.yaml" "$INSTANCE_DIR/docker-compose.$svc.yml"
+        cp "$SERVICES_DIR/$svc.yaml" "$INSTANCE_DIR/$svc.yaml"
     done
     echo "Created instance '$NAME' at $INSTANCE_DIR"
     exit 0
@@ -143,13 +143,11 @@ case "$COMMAND" in
 esac
 
 BUILD=false
-FRESH=false
 DEV=false
 FORCE=false
 for arg in "$@"; do
     case "$arg" in
         --build) BUILD=true ;;
-        --fresh) FRESH=true ;;
         --dev) DEV=true ;;
         --force) FORCE=true ;;
         *) echo "Unknown option: '$arg'"; echo ""; usage ;;
@@ -159,13 +157,14 @@ done
 export SERVICE_NAME="${SERVICE_NAME:-$NAME}"
 
 # Rebuilds COMPOSE_FILES from the instance directory's *current* set of copied
-# service fragments plus the dev mode overlay this invocation's flags select.
-# Deliberately does NOT include modes/seeded.yaml — see stack_compose_files()
-# below. Called again after remove-service deletes a fragment, so the removal is
-# reflected immediately.
+# service fragments plus the dev mode overlay this invocation's flags select. Never
+# includes modes/seeded.yaml — that overlay is only ever used directly by `initialize`,
+# which needs SEED_IMAGE_NAME set; every other command must keep working without it.
+# Called again after remove-service deletes a fragment, so the removal is reflected
+# immediately.
 compose_files() {
     COMPOSE_FILES=(--env-file "$ENV_FILE")
-    for f in "$INSTANCE_DIR"/docker-compose.*.yml; do
+    for f in "$INSTANCE_DIR"/*.yaml; do
         [ -e "$f" ] || continue
         COMPOSE_FILES+=(-f "$f")
     done
@@ -174,19 +173,6 @@ compose_files() {
     fi
 }
 compose_files
-
-# Same as compose_files(), plus modes/seeded.yaml unless --fresh. Only for commands
-# that actually bring the stack up (start/update/remove-service's follow-up `up -d`)
-# or need to fetch the matching images (pull) — modes/seeded.yaml requires
-# SEED_IMAGE_NAME, which an instance that only ever runs --fresh may never set, so
-# every other command (stop/logs/wait/destroy/build) must keep working without it,
-# same as before this tool copied fragments per instance.
-stack_compose_files() {
-    compose_files
-    if ! $FRESH; then
-        COMPOSE_FILES+=(-f "$MODES_DIR/seeded.yaml")
-    fi
-}
 
 require_distro_source() {
     if [ -z "${DISTRO_SOURCE_DIR:-}" ]; then
@@ -209,7 +195,6 @@ build_image() {
 }
 
 start_stack() {
-    stack_compose_files
     docker compose "${COMPOSE_FILES[@]}" up -d
 }
 
@@ -217,13 +202,12 @@ start_stack() {
 # design doc's "Discoverability" section for why a blocking prompt was rejected.
 warn_on_drift() {
     local drifted=()
-    local f svc canonical
-    for f in "$INSTANCE_DIR"/docker-compose.*.yml; do
+    local f canonical
+    for f in "$INSTANCE_DIR"/*.yaml; do
         [ -e "$f" ] || continue
-        svc=$(basename "$f" .yml); svc=${svc#docker-compose.}
-        canonical="$SERVICES_DIR/$svc.yaml"
+        canonical="$SERVICES_DIR/$(basename "$f")"
         [ -e "$canonical" ] || continue  # canonical service renamed/removed - not this check's concern
-        cmp -s "$f" "$canonical" || drifted+=("$svc")
+        cmp -s "$f" "$canonical" || drifted+=("$(basename "$f")")
     done
     if [ ${#drifted[@]} -gt 0 ]; then
         echo "Note: newer service definitions available for: ${drifted[*]}" >&2
@@ -232,16 +216,15 @@ warn_on_drift() {
 }
 
 sync_services() {
-    local f svc canonical
-    for f in "$INSTANCE_DIR"/docker-compose.*.yml; do
+    local f canonical
+    for f in "$INSTANCE_DIR"/*.yaml; do
         [ -e "$f" ] || continue
-        svc=$(basename "$f" .yml); svc=${svc#docker-compose.}
-        canonical="$SERVICES_DIR/$svc.yaml"
+        canonical="$SERVICES_DIR/$(basename "$f")"
         if [ -e "$canonical" ]; then
             cp "$canonical" "$f"
-            echo "Synced $svc"
+            echo "Synced $(basename "$f")"
         else
-            echo "Skipped $svc (no canonical service found at $canonical)"
+            echo "Skipped $(basename "$f") (no canonical service found at $canonical)"
         fi
     done
 }
@@ -257,25 +240,67 @@ case "$COMMAND" in
         if $DEV || $BUILD; then require_distro_source; fi
         warn_on_drift
         if $BUILD; then build_image; fi
-        stack_compose_files
         docker compose "${COMPOSE_FILES[@]}" pull
         start_stack
+        ;;
+    initialize)
+        [ -z "${SEED_IMAGE_NAME:-}" ] && { echo "SEED_IMAGE_NAME must be set in $ENV_FILE to initialize from a seed" >&2; exit 1; }
+        for vol in openmrs-data db-data; do
+            if docker volume inspect "${SERVICE_NAME}_${vol}" >/dev/null 2>&1; then
+                echo "error: ${SERVICE_NAME}_${vol} already exists — initialize only runs against a" >&2
+                echo "brand-new instance with no existing data. Run '$0 $NAME destroy' first if you" >&2
+                echo "really want to start over." >&2
+                exit 1
+            fi
+        done
+        # Only openmrs-db (which pulls in seed via depends_on) — openmrs itself never needs to
+        # run here. seed's tar extraction directly into openmrs-data (mounted at /target/data)
+        # is already that volume's complete final state, and openmrs-db's own healthcheck is a
+        # genuine completion signal for the DB import: MySQL's entrypoint runs
+        # /docker-entrypoint-initdb.d/ against an internal socket-only instance and only starts
+        # accepting the TCP connections this healthcheck makes once that finishes — unlike
+        # OpenMRS's own curl healthcheck (see the `wait` command below), which flips to
+        # "healthy" as soon as Tomcat responds, long before OpenMRS actually finishes starting.
+        COMPOSE_FILES+=(-f "$MODES_DIR/seeded.yaml")
+        docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db
+        DB_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -q openmrs-db)
+        echo "Waiting for the seeded database to finish importing..."
+        for i in $(seq 1 40); do
+            STATUS=$(docker inspect --format '{{.State.Health.Status}}' "$DB_CONTAINER" 2>/dev/null || true)
+            [ "$STATUS" = "healthy" ] && break
+            if [ "$i" -eq 40 ]; then
+                echo "Timed out waiting for openmrs-db to become healthy after seeding" >&2
+                docker compose "${COMPOSE_FILES[@]}" down
+                # db-init already did its job (feeding openmrs-db's first-boot import) by this
+                # point regardless of the timeout, and nothing else ever reads it — see the
+                # matching removal in destroy for why it needs removing by name.
+                docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
+                exit 1
+            fi
+            sleep 15
+        done
+        docker compose "${COMPOSE_FILES[@]}" down
+        # db-init isn't declared in services/openmrs-db.yaml, only in modes/seeded.yaml, and
+        # nothing ever reads it again after this one-time import — removed by name directly
+        # since a plain `down` (no -v, to keep openmrs-data/db-data intact) won't catch it.
+        docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
+        echo "Initialized $NAME from seed image ${SEED_IMAGE_NAME}:${SEED_IMAGE_TAG:-latest}."
         ;;
     sync)
         sync_services
         ;;
     add-service)
-        dest="$INSTANCE_DIR/docker-compose.$SERVICE_ARG.yml"
+        dest="$INSTANCE_DIR/$SERVICE_ARG.yaml"
         [ -e "$dest" ] && { echo "error: $SERVICE_ARG already present on $NAME" >&2; exit 1; }
         [ -e "$SERVICES_DIR/$SERVICE_ARG.yaml" ] || { echo "error: no such service '$SERVICE_ARG'" >&2; exit 1; }
         cp "$SERVICES_DIR/$SERVICE_ARG.yaml" "$dest"
         echo "Added $SERVICE_ARG. Run '$0 $NAME start' to bring it up."
         ;;
     remove-service)
-        target="$INSTANCE_DIR/docker-compose.$SERVICE_ARG.yml"
+        target="$INSTANCE_DIR/$SERVICE_ARG.yaml"
         [ -e "$target" ] || { echo "error: $SERVICE_ARG not present on $NAME" >&2; exit 1; }
         rm "$target"
-        stack_compose_files
+        compose_files
         docker compose "${COMPOSE_FILES[@]}" up -d --remove-orphans
         echo "Removed $SERVICE_ARG."
         ;;
@@ -311,7 +336,6 @@ case "$COMMAND" in
         build_image
         ;;
     pull)
-        stack_compose_files
         docker compose "${COMPOSE_FILES[@]}" pull
         ;;
     stop)    docker compose "${COMPOSE_FILES[@]}" down --remove-orphans ;;
@@ -332,9 +356,9 @@ case "$COMMAND" in
         fi
         docker compose "${COMPOSE_FILES[@]}" down -v --remove-orphans
         # modes/seeded.yaml's db-init volume isn't declared in services/openmrs-db.yaml, so an
-        # instance that ever ran seeded would leave it behind here. Removed by name directly
-        # rather than relying on -v to catch it, since whether this destroy call passed --fresh
-        # doesn't tell us whether the instance ever ran seeded in the past.
+        # instance that ever ran `initialize` would leave it behind here. Removed by name
+        # directly rather than relying on -v to catch it, since this destroy invocation has no
+        # way to tell whether the instance was ever initialized from a seed in the past.
         docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
         rm -rf "$INSTANCE_DIR"
         echo "Removed instance directory $INSTANCE_DIR"

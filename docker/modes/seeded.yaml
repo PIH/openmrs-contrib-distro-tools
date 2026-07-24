@@ -1,12 +1,15 @@
-# Overlay adding seeded-startup behavior: a transient `seed` service that populates
-# volumes from a seed image, then exits; disables auto-migration/table creation on
-# openmrs since the seed already contains a fully-migrated database. Included
-# whenever *not* --fresh.
+# Overlay used exclusively by `openmrs-docker <name> initialize` — brings up a transient
+# `seed` service that populates the data/db-init volumes from a seed image, then exits, plus
+# the extra `openmrs-db` volume mount that lets MySQL's own first-boot import pick up the
+# seeded dump. `openmrs` itself is never brought up by `initialize` — the seed archive
+# extracted straight into openmrs-data via `seed` (mounted at /target/data) is already that
+# volume's complete, final state (that's how it was captured in the first place: a real prior
+# boot's fully-populated data dir, exported as-is), so there's nothing left for OpenMRS to do
+# to it. Never included by start/update/pull; nothing else needs it, since OpenMRS's own
+# migration runner is idempotent and safe to run against an already-migrated database too.
 #
 # Required env vars: SEED_IMAGE_NAME (no site suffix appended here)
 # Optional: SEED_IMAGE_TAG (default: latest)
-#
-# For a clean re-seed: docker compose down -v (removes all volumes)
 
 services:
   seed:
@@ -21,18 +24,6 @@ services:
         condition: service_completed_successfully
     volumes:
       - db-init:/docker-entrypoint-initdb.d
-
-  openmrs:
-    depends_on:
-      seed:
-        condition: service_completed_successfully
-    environment:
-      OMRS_CONFIG_AUTO_UPDATE_DATABASE: "false"
-      OMRS_CONFIG_CREATE_TABLES: "false"
-      OMRS_EXTRA_ACTIVITYLOG__ENABLED: ${ACTIVITYLOG_ENABLED:-false}
-    healthcheck:
-      retries: 10
-      start_period: 120s
 
 volumes:
   db-init:
