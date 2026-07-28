@@ -7,6 +7,11 @@ on:
         description: OpenMRS image name, without tag
         required: true
         type: string
+      maven_profiles:
+        description: Comma-separated Maven profiles to activate during deploy (e.g. distro-zip)
+        required: false
+        type: string
+        default: ''
     secrets:
       SONATYPE_USERNAME:
         required: true
@@ -33,7 +38,7 @@ jobs:
           server-password: SONATYPE_PASSWORD
 
       - name: Maven Deploy
-        run: mvn -B -U deploy --file pom.xml
+        run: mvn -B -U deploy --file pom.xml${{ inputs.maven_profiles != '' && format(' -P{0}', inputs.maven_profiles) || '' }}
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
