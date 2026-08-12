@@ -124,8 +124,14 @@ case "$COMMAND" in
         mvn openmrs-sdk:deploy -Ddistro="${DISTRO_SOURCE_DIR}/distro/target/classes/openmrs-distro.properties" -DserverId="${SERVER_ID}"
         ;;
     update-config)
-        mvn clean install -U -pl content
-        mvn openmrs-sdk:deploy -Ddistro="${DISTRO_SOURCE_DIR}/distro/target/classes/openmrs-distro.properties" -DserverId="${SERVER_ID}" -DconfigOnly=true
+        DISTRO_PROPERTIES="${DISTRO_SOURCE_DIR}/distro/target/classes/openmrs-distro.properties"
+        if [ ! -f "$DISTRO_PROPERTIES" ]; then
+            # distro module has never been built, so -pl content alone won't produce openmrs-distro.properties
+            mvn clean install -U
+        else
+            mvn clean install -U -pl content
+        fi
+        mvn openmrs-sdk:deploy -Ddistro="${DISTRO_PROPERTIES}" -DserverId="${SERVER_ID}" -DconfigOnly=true
         ;;
     run)
         # Set JMX_PORT to enable JMX remote monitoring (e.g. JMX_PORT=9000 openmrs-sdk run lesotho)
