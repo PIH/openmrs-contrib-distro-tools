@@ -348,6 +348,22 @@ memory=8GB
 
 ## CI: reusable workflows
 
+`.github/workflows/verify.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs `mvn clean verify` against the calling repo's root `pom.xml` on Java 8/temurin. A distro repo consumes it with a thin caller:
+
+```yaml
+name: Verify PRs
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/verify.yml@main
+```
+
+No secrets required.
+
 ## Seed image builds
 
 `.github/workflows/build-seeded-image.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it builds a distro
