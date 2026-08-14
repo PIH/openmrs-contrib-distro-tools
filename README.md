@@ -364,6 +364,22 @@ jobs:
 
 No secrets required.
 
+`.github/workflows/release.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs `mvn release:prepare release:perform -Prelease` against the calling repo's root `pom.xml`. Requires the calling repo to define a `release` Maven profile that GPG-signs artifacts (see `openmrs-config-pihemr`'s root `pom.xml` for the reference shape). A distro repo consumes it with a thin caller:
+
+```yaml
+name: Release new version
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/release.yml@main
+    secrets: inherit
+```
+
+Requires `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `SONATYPE_GPG_PASSPHRASE`, and `SONATYPE_GPG_PRIVATE_KEY` secrets available to the caller (passed via `secrets: inherit`).
+
 ## Seed image builds
 
 `.github/workflows/build-seeded-image.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it builds a distro
