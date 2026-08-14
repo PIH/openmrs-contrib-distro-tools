@@ -364,7 +364,13 @@ jobs:
 
 No secrets required.
 
-`.github/workflows/release.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs `mvn release:prepare release:perform -Prelease` against the calling repo's root `pom.xml`. Requires the calling repo to define a `release` Maven profile that GPG-signs artifacts (see `openmrs-config-pihemr`'s root `pom.xml` for the reference shape). A distro repo consumes it with a thin caller:
+`.github/workflows/release.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs `mvn release:prepare release:perform -Prelease` against the calling repo's root `pom.xml`. Requires the calling repo to define a `release` Maven profile that GPG-signs artifacts, plus a few other things the workflow silently depends on (see `openmrs-config-pihemr`'s root `pom.xml` for a reference that satisfies all of these):
+
+- **`maven-gpg-plugin` >= 3.2.0, configured with `<signer>bc</signer>`.** The workflow passes the signing key via the `MAVEN_GPG_KEY` env var, which only the Bouncy Castle signer reads — the plugin's default signer expects a populated GPG keyring instead, and versions before 3.2.0 don't support `MAVEN_GPG_KEY` at all.
+- **`<scm>` must use an HTTPS connection URL** (e.g. `scm:git:https://github.com/ORG/REPO.git`), not SSH. `release:perform` re-clones the repo via this URL, and only HTTPS picks up the credential `actions/checkout` persists into `.git/config` — an SSH `scm:git:git@github.com:...` URL has no credential configured and the clone fails.
+- **`distributionManagement`/publishing must use server id `central`**, matching the `server-id: central` configured in the workflow's `setup-java` step.
+
+A distro repo consumes it with a thin caller:
 
 ```yaml
 name: Release new version
@@ -372,11 +378,16 @@ name: Release new version
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   release:
     uses: PIH/openmrs-contrib-distro-tools/.github/workflows/release.yml@main
     secrets: inherit
 ```
+
+`permissions: contents: write` is required because `release:prepare` pushes commits and a tag to the default branch. In a reusable-workflow call, the effective token permissions are governed by the caller — a called workflow's own `permissions:` block can only narrow, never widen — so this must be declared here.
 
 Requires `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `SONATYPE_GPG_PASSPHRASE`, and `SONATYPE_GPG_PRIVATE_KEY` secrets available to the caller (passed via `secrets: inherit`).
 
