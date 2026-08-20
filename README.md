@@ -397,6 +397,8 @@ Requires `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `SONATYPE_GPG_PASSPHRASE`, an
 - **`<scm>` must use an HTTPS connection URL** (e.g. `scm:git:https://github.com/ORG/REPO.git`), not SSH, for the same re-clone-during-`release:perform` reason as `release-to-sonatype.yml` above.
 - **`distributionManagement`/publishing must use server id `openmrs-repo-modules-pih`**, matching the `server-id: openmrs-repo-modules-pih` configured in the workflow's `setup-java` step (see `openmrs-module-pihcore`'s root `pom.xml` for a reference).
 
+Optionally builds and pushes a Docker image of the released version too, the same way `build-and-deploy-to-openmrs-jfrog.yml` does for snapshots (below) — pass `image_name` to enable this; omit it for module repos with no distro to build (e.g. `openmrs-module-pihcore`, `openmrs-module-pihapps`). Since `release:perform` builds the release under `target/checkout` rather than the working copy's own `target/`, the Docker context is `target/checkout/distro/target/distro/web`, and the version tag is read from `target/checkout/pom.xml` rather than the (by-then-bumped-to-the-next-SNAPSHOT) working copy.
+
 A distro repo consumes it with a thin caller:
 
 ```yaml
@@ -411,12 +413,37 @@ permissions:
 jobs:
   release:
     uses: PIH/openmrs-contrib-distro-tools/.github/workflows/release-to-openmrs-jfrog.yml@main
+    with:
+      image_name: partnersinhealth/pihemr
     secrets: inherit
 ```
 
 `permissions: contents: write` is required for the same reason as `release-to-sonatype.yml` above.
 
-Requires `OPENMRS_MAVEN_USERNAME`, `OPENMRS_MAVEN_PASSWORD`, and `GHA_WRITE_TOKEN` secrets available to the caller (passed via `secrets: inherit`).
+Requires `OPENMRS_MAVEN_USERNAME`, `OPENMRS_MAVEN_PASSWORD`, and `GHA_WRITE_TOKEN` secrets available to the caller (passed via `secrets: inherit`); also `DOCKERHUB_PASSWORD` if `image_name` is set.
+
+`.github/workflows/build-and-deploy-to-openmrs-jfrog.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs `mvn deploy` against the calling repo's root `pom.xml` on every push, deploying SNAPSHOT builds to the OpenMRS JFrog `modules-pih-snapshots` repo, then builds and pushes a Docker image of the result. This is the JFrog-only counterpart to `build-and-deploy.yml` (which deploys SNAPSHOTs to Sonatype Central) — new callers should prefer this one, since mixing Sonatype for snapshots with JFrog for releases (or vice versa) just to shuffle credentials between the two is not worth the complexity; `build-and-deploy.yml` remains only for repos that haven't migrated their release workflow off `release-to-sonatype.yml` yet. Requires the same `distributionManagement` server id (`openmrs-repo-modules-pih`) as `release-to-openmrs-jfrog.yml` above.
+
+A distro repo consumes it with a thin caller:
+
+```yaml
+name: Build and deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build-and-publish:
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/build-and-deploy-to-openmrs-jfrog.yml@main
+    with:
+      image_name: partnersinhealth/pihemr
+      maven_profiles: distro-zip # only if the repo defines this profile
+    secrets: inherit
+```
+
+Requires `OPENMRS_MAVEN_USERNAME`, `OPENMRS_MAVEN_PASSWORD`, and `DOCKERHUB_PASSWORD` secrets available to the caller (passed via `secrets: inherit`).
 
 ## Seed image builds
 
