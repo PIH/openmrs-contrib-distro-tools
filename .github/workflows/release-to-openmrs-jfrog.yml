@@ -9,18 +9,16 @@ on:
         type: string
         default: ''
       maven_profiles:
-        description: Comma-separated additional Maven profiles to activate during release:perform (e.g. distro-zip), alongside the release profile
+        description: Comma-separated Maven profiles to activate during release:perform and the next-snapshot deploy (e.g. distro-zip)
         required: false
         type: string
         default: ''
     secrets:
-      SONATYPE_USERNAME:
+      OPENMRS_MAVEN_USERNAME:
         required: true
-      SONATYPE_PASSWORD:
+      OPENMRS_MAVEN_PASSWORD:
         required: true
-      SONATYPE_GPG_PASSPHRASE:
-        required: true
-      SONATYPE_GPG_PRIVATE_KEY:
+      GHA_WRITE_TOKEN:
         required: true
       DOCKERHUB_PASSWORD:
         required: false
@@ -37,7 +35,7 @@ jobs:
           distribution: 'temurin'
           java-version: 8
           cache: 'maven'
-          server-id: central
+          server-id: openmrs-repo-modules-pih
           server-username: MAVEN_DEPLOY_USERNAME
           server-password: MAVEN_DEPLOY_PASSWORD
 
@@ -46,14 +44,12 @@ jobs:
           git config user.name "Github Action"
           git config user.email "github-action@users.noreply.github.com"
 
-      - name: Deploy release
-        run: mvn -B release:prepare release:perform -Prelease${{ inputs.maven_profiles != '' && format(',{0}', inputs.maven_profiles) || '' }} --file pom.xml
+      - name: Maven Release Prepare and Perform
+        run: mvn -B -DpreparationGoals=clean -Darguments="-Dmaven.test.skip=true" release:prepare release:perform --file pom.xml${{ inputs.maven_profiles != '' && format(' -DreleaseProfiles={0}', inputs.maven_profiles) || '' }}
         env:
-          MAVEN_DEPLOY_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          MAVEN_DEPLOY_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.SONATYPE_GPG_PASSPHRASE }}
-          MAVEN_GPG_KEY: ${{ secrets.SONATYPE_GPG_PRIVATE_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAVEN_DEPLOY_USERNAME: ${{ secrets.OPENMRS_MAVEN_USERNAME }}
+          MAVEN_DEPLOY_PASSWORD: ${{ secrets.OPENMRS_MAVEN_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GHA_WRITE_TOKEN }}
 
       # release:perform builds the release under target/checkout (it never touches the working
       # copy's own target/), so the distro assembly - and the Docker context below - live there too.
@@ -76,15 +72,13 @@ jobs:
       # snapshot workflow: it's pushed using the default GITHUB_TOKEN (via actions/checkout above),
       # and GitHub's own loop-prevention means GITHUB_TOKEN-authored pushes never trigger other
       # workflow runs. So deploy the new next-development-version snapshot explicitly here instead.
-      # Unlike the release above, this is a plain deploy - no GPG signing, since Sonatype doesn't
-      # require signed snapshots.
       - name: Deploy next development version
         id: next-snapshot
         uses: PIH/openmrs-contrib-distro-tools/.github/actions/maven-deploy@main
         with:
           maven_profiles: ${{ inputs.maven_profiles }}
-          username: ${{ secrets.SONATYPE_USERNAME }}
-          password: ${{ secrets.SONATYPE_PASSWORD }}
+          username: ${{ secrets.OPENMRS_MAVEN_USERNAME }}
+          password: ${{ secrets.OPENMRS_MAVEN_PASSWORD }}
 
       - name: Build and Push Docker Image (next snapshot)
         if: inputs.image_name != ''

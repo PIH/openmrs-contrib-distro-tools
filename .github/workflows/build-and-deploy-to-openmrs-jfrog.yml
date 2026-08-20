@@ -1,0 +1,54 @@
+name: Build and deploy
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: OpenMRS image name, without tag
+        required: true
+        type: string
+      maven_profiles:
+        description: Comma-separated Maven profiles to activate during deploy (e.g. distro-zip)
+        required: false
+        type: string
+        default: ''
+    secrets:
+      OPENMRS_MAVEN_USERNAME:
+        required: true
+      OPENMRS_MAVEN_PASSWORD:
+        required: true
+      DOCKERHUB_PASSWORD:
+        required: true
+
+jobs:
+  build-and-publish:
+    name: Build and Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 8
+          cache: 'maven'
+          server-id: openmrs-repo-modules-pih
+          server-username: MAVEN_DEPLOY_USERNAME
+          server-password: MAVEN_DEPLOY_PASSWORD
+
+      - name: Maven Deploy
+        id: maven-deploy
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/maven-deploy@main
+        with:
+          maven_profiles: ${{ inputs.maven_profiles }}
+          username: ${{ secrets.OPENMRS_MAVEN_USERNAME }}
+          password: ${{ secrets.OPENMRS_MAVEN_PASSWORD }}
+
+      - name: Build and Push Docker Image
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/build-and-push-docker@main
+        with:
+          image_name: ${{ inputs.image_name }}
+          context: distro/target/distro/web
+          version: ${{ steps.maven-deploy.outputs.version }}
+          dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
