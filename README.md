@@ -445,6 +445,8 @@ jobs:
 
 Requires `OPENMRS_MAVEN_USERNAME`, `OPENMRS_MAVEN_PASSWORD`, and `DOCKERHUB_PASSWORD` secrets available to the caller (passed via `secrets: inherit`).
 
+All three workflows above that build a Docker image (`build-and-deploy.yml`, `build-and-deploy-to-openmrs-jfrog.yml`, `release-to-openmrs-jfrog.yml`) share the same QEMU/Buildx/login/build-push steps via the `.github/actions/build-and-push-docker` composite action, so that logic only needs to change in one place. It's an internal implementation detail of those workflows, not something a distro repo calls directly.
+
 ## Seed image builds
 
 `.github/workflows/build-seeded-image.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it builds a distro
