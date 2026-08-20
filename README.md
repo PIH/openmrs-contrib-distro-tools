@@ -391,6 +391,33 @@ jobs:
 
 Requires `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `SONATYPE_GPG_PASSPHRASE`, and `SONATYPE_GPG_PRIVATE_KEY` secrets available to the caller (passed via `secrets: inherit`).
 
+`.github/workflows/release-to-openmrs-jfrog.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs `mvn release:prepare release:perform` (no signing profile) against the calling repo's root `pom.xml`, deploying to the OpenMRS JFrog `modules-pih`/`modules-pih-snapshots` repos instead of Sonatype Central. Unlike `release-to-sonatype.yml`, there's no GPG signing step and no requirement that dependencies be non-SNAPSHOT — JFrog doesn't enforce Central's "no SNAPSHOT dependencies in a release" rule. Requires the calling repo's root `pom.xml` to satisfy:
+
+- **`maven-release-plugin` configured with `<allowTimestampedSnapshots>true</allowTimestampedSnapshots>`.** Without this, `release:prepare`'s own snapshot-dependency check fails the build on any SNAPSHOT dependency (the usual reason to use this workflow over `release-to-sonatype.yml` in the first place).
+- **`<scm>` must use an HTTPS connection URL** (e.g. `scm:git:https://github.com/ORG/REPO.git`), not SSH, for the same re-clone-during-`release:perform` reason as `release-to-sonatype.yml` above.
+- **`distributionManagement`/publishing must use server id `openmrs-repo-modules-pih`**, matching the `server-id: openmrs-repo-modules-pih` configured in the workflow's `setup-java` step (see `openmrs-module-pihcore`'s root `pom.xml` for a reference).
+
+A distro repo consumes it with a thin caller:
+
+```yaml
+name: Release new version
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/release-to-openmrs-jfrog.yml@main
+    secrets: inherit
+```
+
+`permissions: contents: write` is required for the same reason as `release-to-sonatype.yml` above.
+
+Requires `OPENMRS_MAVEN_USERNAME`, `OPENMRS_MAVEN_PASSWORD`, and `GHA_WRITE_TOKEN` secrets available to the caller (passed via `secrets: inherit`).
+
 ## Seed image builds
 
 `.github/workflows/build-seeded-image.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it builds a distro
