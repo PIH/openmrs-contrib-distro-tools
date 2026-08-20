@@ -370,6 +370,8 @@ No secrets required.
 - **`<scm>` must use an HTTPS connection URL** (e.g. `scm:git:https://github.com/ORG/REPO.git`), not SSH. `release:perform` re-clones the repo via this URL, and only HTTPS picks up the credential `actions/checkout` persists into `.git/config` — an SSH `scm:git:git@github.com:...` URL has no credential configured and the clone fails.
 - **`distributionManagement`/publishing must use server id `central`**, matching the `server-id: central` configured in the workflow's `setup-java` step.
 
+Optionally builds and pushes a Docker image of the released version too, the same way `build-and-deploy-to-sonatype.yml` does for snapshots (below) — pass `image_name` to enable this; omit it for module repos with no distro to build (e.g. `openmrs-module-pihcore`, `openmrs-module-pihapps`). Since `release:perform` builds the release under `target/checkout` rather than the working copy's own `target/`, the Docker context is `target/checkout/distro/target/distro/web`, and the version tag is read from `target/checkout/pom.xml` rather than the (by-then-bumped-to-the-next-SNAPSHOT) working copy.
+
 A distro repo consumes it with a thin caller:
 
 ```yaml
@@ -384,12 +386,14 @@ permissions:
 jobs:
   release:
     uses: PIH/openmrs-contrib-distro-tools/.github/workflows/release-to-sonatype.yml@main
+    with:
+      image_name: partnersinhealth/pihemr
     secrets: inherit
 ```
 
 `permissions: contents: write` is required because `release:prepare` pushes commits and a tag to the default branch. In a reusable-workflow call, the effective token permissions are governed by the caller — a called workflow's own `permissions:` block can only narrow, never widen — so this must be declared here.
 
-Requires `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `SONATYPE_GPG_PASSPHRASE`, and `SONATYPE_GPG_PRIVATE_KEY` secrets available to the caller (passed via `secrets: inherit`).
+Requires `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `SONATYPE_GPG_PASSPHRASE`, and `SONATYPE_GPG_PRIVATE_KEY` secrets available to the caller (passed via `secrets: inherit`); also `DOCKERHUB_PASSWORD` if `image_name` is set.
 
 `.github/workflows/release-to-openmrs-jfrog.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs `mvn release:prepare release:perform` (no signing profile) against the calling repo's root `pom.xml`, deploying to the OpenMRS JFrog `modules-pih`/`modules-pih-snapshots` repos instead of Sonatype Central. Unlike `release-to-sonatype.yml`, there's no GPG signing step and no requirement that dependencies be non-SNAPSHOT — JFrog doesn't enforce Central's "no SNAPSHOT dependencies in a release" rule. Requires the calling repo's root `pom.xml` to satisfy:
 
@@ -422,7 +426,7 @@ jobs:
 
 Requires `OPENMRS_MAVEN_USERNAME`, `OPENMRS_MAVEN_PASSWORD`, and `GHA_WRITE_TOKEN` secrets available to the caller (passed via `secrets: inherit`); also `DOCKERHUB_PASSWORD` if `image_name` is set.
 
-`.github/workflows/build-and-deploy-to-openmrs-jfrog.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs `mvn deploy` against the calling repo's root `pom.xml` on every push, deploying SNAPSHOT builds to the OpenMRS JFrog `modules-pih-snapshots` repo, then builds and pushes a Docker image of the result. This is the JFrog-only counterpart to `build-and-deploy.yml` (which deploys SNAPSHOTs to Sonatype Central) — new callers should prefer this one, since mixing Sonatype for snapshots with JFrog for releases (or vice versa) just to shuffle credentials between the two is not worth the complexity; `build-and-deploy.yml` remains only for repos that haven't migrated their release workflow off `release-to-sonatype.yml` yet. Requires the same `distributionManagement` server id (`openmrs-repo-modules-pih`) as `release-to-openmrs-jfrog.yml` above.
+`.github/workflows/build-and-deploy-to-openmrs-jfrog.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs `mvn deploy` against the calling repo's root `pom.xml` on every push, deploying SNAPSHOT builds to the OpenMRS JFrog `modules-pih-snapshots` repo, then builds and pushes a Docker image of the result. This is the JFrog counterpart to `build-and-deploy-to-sonatype.yml` (which deploys SNAPSHOTs to Sonatype Central) — new callers should prefer this one, since mixing Sonatype for snapshots with JFrog for releases (or vice versa) just to shuffle credentials between the two is not worth the complexity; `build-and-deploy-to-sonatype.yml` remains only for repos that haven't migrated their release workflow off `release-to-sonatype.yml` yet. Requires the same `distributionManagement` server id (`openmrs-repo-modules-pih`) as `release-to-openmrs-jfrog.yml` above.
 
 A distro repo consumes it with a thin caller:
 
@@ -445,7 +449,7 @@ jobs:
 
 Requires `OPENMRS_MAVEN_USERNAME`, `OPENMRS_MAVEN_PASSWORD`, and `DOCKERHUB_PASSWORD` secrets available to the caller (passed via `secrets: inherit`).
 
-All three workflows above that build a Docker image (`build-and-deploy.yml`, `build-and-deploy-to-openmrs-jfrog.yml`, `release-to-openmrs-jfrog.yml`) share the same QEMU/Buildx/login/build-push steps via the `.github/actions/build-and-push-docker` composite action, so that logic only needs to change in one place. It's an internal implementation detail of those workflows, not something a distro repo calls directly.
+All four workflows above that build a Docker image (`build-and-deploy-to-sonatype.yml`, `build-and-deploy-to-openmrs-jfrog.yml`, `release-to-sonatype.yml`, `release-to-openmrs-jfrog.yml`) share the same QEMU/Buildx/login/build-push steps via the `.github/actions/build-and-push-docker` composite action, so that logic only needs to change in one place. It's an internal implementation detail of those workflows, not something a distro repo calls directly.
 
 ## Seed image builds
 

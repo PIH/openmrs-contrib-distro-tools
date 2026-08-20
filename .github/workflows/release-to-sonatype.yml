@@ -2,6 +2,17 @@ name: Release new version
 
 on:
   workflow_call:
+    inputs:
+      image_name:
+        description: OpenMRS image name, without tag. Omit to skip building/pushing a Docker image (eg. for module repos with no distro to build).
+        required: false
+        type: string
+        default: ''
+      maven_profiles:
+        description: Comma-separated additional Maven profiles to activate during release:perform (e.g. distro-zip), alongside the release profile
+        required: false
+        type: string
+        default: ''
     secrets:
       SONATYPE_USERNAME:
         required: true
@@ -11,6 +22,8 @@ on:
         required: true
       SONATYPE_GPG_PRIVATE_KEY:
         required: true
+      DOCKERHUB_PASSWORD:
+        required: false
 
 jobs:
   release:
@@ -34,10 +47,25 @@ jobs:
           git config user.email "github-action@users.noreply.github.com"
 
       - name: Deploy release
-        run: mvn -B release:prepare release:perform -Prelease --file pom.xml
+        run: mvn -B release:prepare release:perform -Prelease${{ inputs.maven_profiles != '' && format(',{0}', inputs.maven_profiles) || '' }} --file pom.xml
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.SONATYPE_GPG_PASSPHRASE }}
           MAVEN_GPG_KEY: ${{ secrets.SONATYPE_GPG_PRIVATE_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # release:perform builds the release under target/checkout (it never touches the working
+      # copy's own target/), so the distro assembly - and the Docker context below - live there too.
+      - name: Extract released version
+        if: inputs.image_name != ''
+        run: echo "DOCKER_IMAGE_TAG_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout --file target/checkout/pom.xml)" >> $GITHUB_ENV
+
+      - name: Build and Push Docker Image
+        if: inputs.image_name != ''
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/build-and-push-docker@main
+        with:
+          image_name: ${{ inputs.image_name }}
+          context: target/checkout/distro/target/distro/web
+          version: ${{ env.DOCKER_IMAGE_TAG_VERSION }}
+          dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
