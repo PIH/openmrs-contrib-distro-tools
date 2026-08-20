@@ -38,8 +38,8 @@ jobs:
           java-version: 8
           cache: 'maven'
           server-id: central
-          server-username: SONATYPE_USERNAME
-          server-password: SONATYPE_PASSWORD
+          server-username: MAVEN_DEPLOY_USERNAME
+          server-password: MAVEN_DEPLOY_PASSWORD
 
       - name: Setup Git Config
         run: |
@@ -49,8 +49,8 @@ jobs:
       - name: Deploy release
         run: mvn -B release:prepare release:perform -Prelease${{ inputs.maven_profiles != '' && format(',{0}', inputs.maven_profiles) || '' }} --file pom.xml
         env:
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          MAVEN_DEPLOY_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          MAVEN_DEPLOY_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.SONATYPE_GPG_PASSPHRASE }}
           MAVEN_GPG_KEY: ${{ secrets.SONATYPE_GPG_PRIVATE_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -59,13 +59,38 @@ jobs:
       # copy's own target/), so the distro assembly - and the Docker context below - live there too.
       - name: Extract released version
         if: inputs.image_name != ''
-        run: echo "DOCKER_IMAGE_TAG_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout --file target/checkout/pom.xml)" >> $GITHUB_ENV
+        id: released-version
+        run: echo "version=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout --file target/checkout/pom.xml)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and Push Docker Image
+      - name: Build and Push Docker Image (released version)
         if: inputs.image_name != ''
         uses: PIH/openmrs-contrib-distro-tools/.github/actions/build-and-push-docker@main
         with:
           image_name: ${{ inputs.image_name }}
           context: target/checkout/distro/target/distro/web
-          version: ${{ env.DOCKER_IMAGE_TAG_VERSION }}
+          version: ${{ steps.released-version.outputs.version }}
+          dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      # release:prepare only bumps the working copy to the next SNAPSHOT and commits/pushes it -
+      # it never deploys that snapshot itself. That push also doesn't trigger the push-based
+      # snapshot workflow: it's pushed using the default GITHUB_TOKEN (via actions/checkout above),
+      # and GitHub's own loop-prevention means GITHUB_TOKEN-authored pushes never trigger other
+      # workflow runs. So deploy the new next-development-version snapshot explicitly here instead.
+      # Unlike the release above, this is a plain deploy - no GPG signing, since Sonatype doesn't
+      # require signed snapshots.
+      - name: Deploy next development version
+        id: next-snapshot
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/maven-deploy@main
+        with:
+          maven_profiles: ${{ inputs.maven_profiles }}
+          username: ${{ secrets.SONATYPE_USERNAME }}
+          password: ${{ secrets.SONATYPE_PASSWORD }}
+
+      - name: Build and Push Docker Image (next snapshot)
+        if: inputs.image_name != ''
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/build-and-push-docker@main
+        with:
+          image_name: ${{ inputs.image_name }}
+          context: distro/target/distro/web
+          version: ${{ steps.next-snapshot.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}

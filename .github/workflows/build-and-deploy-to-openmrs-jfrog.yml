@@ -34,22 +34,21 @@ jobs:
           java-version: 8
           cache: 'maven'
           server-id: openmrs-repo-modules-pih
-          server-username: OPENMRS_MAVEN_USERNAME
-          server-password: OPENMRS_MAVEN_PASSWORD
+          server-username: MAVEN_DEPLOY_USERNAME
+          server-password: MAVEN_DEPLOY_PASSWORD
 
       - name: Maven Deploy
-        run: mvn -B -U deploy --file pom.xml${{ inputs.maven_profiles != '' && format(' -P{0}', inputs.maven_profiles) || '' }}
-        env:
-          OPENMRS_MAVEN_USERNAME: ${{ secrets.OPENMRS_MAVEN_USERNAME }}
-          OPENMRS_MAVEN_PASSWORD: ${{ secrets.OPENMRS_MAVEN_PASSWORD }}
-
-      - name: Extract pom version
-        run: echo "DOCKER_IMAGE_TAG_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)" >> $GITHUB_ENV
+        id: maven-deploy
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/maven-deploy@main
+        with:
+          maven_profiles: ${{ inputs.maven_profiles }}
+          username: ${{ secrets.OPENMRS_MAVEN_USERNAME }}
+          password: ${{ secrets.OPENMRS_MAVEN_PASSWORD }}
 
       - name: Build and Push Docker Image
         uses: PIH/openmrs-contrib-distro-tools/.github/actions/build-and-push-docker@main
         with:
           image_name: ${{ inputs.image_name }}
           context: distro/target/distro/web
-          version: ${{ env.DOCKER_IMAGE_TAG_VERSION }}
+          version: ${{ steps.maven-deploy.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}

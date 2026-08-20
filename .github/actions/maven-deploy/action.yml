@@ -1,0 +1,34 @@
+name: Maven Deploy
+description: Runs 'mvn deploy' against the calling repo's root pom.xml and reports the project version that was deployed. Assumes actions/setup-java has already configured a Maven server matching the credentials passed here.
+
+inputs:
+  maven_profiles:
+    description: Comma-separated Maven profiles to activate during deploy (e.g. distro-zip)
+    required: false
+    default: ''
+  username:
+    description: Maven repository username, as configured via the setup-java server-username env var name
+    required: true
+  password:
+    description: Maven repository password, as configured via the setup-java server-password env var name
+    required: true
+
+outputs:
+  version:
+    description: The project.version that was deployed
+    value: ${{ steps.extract-version.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Maven Deploy
+      shell: bash
+      run: mvn -B -U deploy --file pom.xml${{ inputs.maven_profiles != '' && format(' -P{0}', inputs.maven_profiles) || '' }}
+      env:
+        MAVEN_DEPLOY_USERNAME: ${{ inputs.username }}
+        MAVEN_DEPLOY_PASSWORD: ${{ inputs.password }}
+
+    - name: Extract pom version
+      id: extract-version
+      shell: bash
+      run: echo "version=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)" >> "$GITHUB_OUTPUT"

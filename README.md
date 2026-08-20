@@ -372,6 +372,8 @@ No secrets required.
 
 Optionally builds and pushes a Docker image of the released version too, the same way `build-and-deploy-to-sonatype.yml` does for snapshots (below) — pass `image_name` to enable this; omit it for module repos with no distro to build (e.g. `openmrs-module-pihcore`, `openmrs-module-pihapps`). Since `release:perform` builds the release under `target/checkout` rather than the working copy's own `target/`, the Docker context is `target/checkout/distro/target/distro/web`, and the version tag is read from `target/checkout/pom.xml` rather than the (by-then-bumped-to-the-next-SNAPSHOT) working copy.
 
+`release:prepare` bumps the working copy to the next SNAPSHOT and pushes that commit, but never deploys it — and that push doesn't trigger `build-and-deploy-to-sonatype.yml`'s `on: push` either, since it's pushed with the default `GITHUB_TOKEN` (GitHub's own loop-prevention means GITHUB_TOKEN-authored pushes never trigger other workflow runs). So this workflow deploys the next snapshot itself as a final step (Maven and, if `image_name` is set, Docker), rather than depending on that push to trigger anything.
+
 A distro repo consumes it with a thin caller:
 
 ```yaml
@@ -402,6 +404,8 @@ Requires `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `SONATYPE_GPG_PASSPHRASE`, an
 - **`distributionManagement`/publishing must use server id `openmrs-repo-modules-pih`**, matching the `server-id: openmrs-repo-modules-pih` configured in the workflow's `setup-java` step (see `openmrs-module-pihcore`'s root `pom.xml` for a reference).
 
 Optionally builds and pushes a Docker image of the released version too, the same way `build-and-deploy-to-openmrs-jfrog.yml` does for snapshots (below) — pass `image_name` to enable this; omit it for module repos with no distro to build (e.g. `openmrs-module-pihcore`, `openmrs-module-pihapps`). Since `release:perform` builds the release under `target/checkout` rather than the working copy's own `target/`, the Docker context is `target/checkout/distro/target/distro/web`, and the version tag is read from `target/checkout/pom.xml` rather than the (by-then-bumped-to-the-next-SNAPSHOT) working copy.
+
+`release:prepare` bumps the working copy to the next SNAPSHOT and pushes that commit, but never deploys it — and that push doesn't trigger `build-and-deploy-to-openmrs-jfrog.yml`'s `on: push` either, since it's pushed with the default `GITHUB_TOKEN` (GitHub's own loop-prevention means GITHUB_TOKEN-authored pushes never trigger other workflow runs). So this workflow deploys the next snapshot itself as a final step (Maven and, if `image_name` is set, Docker), rather than depending on that push to trigger anything.
 
 A distro repo consumes it with a thin caller:
 
@@ -449,7 +453,7 @@ jobs:
 
 Requires `OPENMRS_MAVEN_USERNAME`, `OPENMRS_MAVEN_PASSWORD`, and `DOCKERHUB_PASSWORD` secrets available to the caller (passed via `secrets: inherit`).
 
-All four workflows above that build a Docker image (`build-and-deploy-to-sonatype.yml`, `build-and-deploy-to-openmrs-jfrog.yml`, `release-to-sonatype.yml`, `release-to-openmrs-jfrog.yml`) share the same QEMU/Buildx/login/build-push steps via the `.github/actions/build-and-push-docker` composite action, so that logic only needs to change in one place. It's an internal implementation detail of those workflows, not something a distro repo calls directly.
+All four workflows above that build a Docker image (`build-and-deploy-to-sonatype.yml`, `build-and-deploy-to-openmrs-jfrog.yml`, `release-to-sonatype.yml`, `release-to-openmrs-jfrog.yml`) share the same QEMU/Buildx/login/build-push steps via the `.github/actions/build-and-push-docker` composite action, so that logic only needs to change in one place. Similarly, all four also share the same `mvn deploy` + version-extraction steps via `.github/actions/maven-deploy` — the two snapshot workflows use it for their one deploy, and the two release workflows use it a second time, after `release:prepare`/`release:perform`, to deploy the next development version (see above). Both are internal implementation details of those workflows, not something a distro repo calls directly.
 
 ## Seed image builds
 

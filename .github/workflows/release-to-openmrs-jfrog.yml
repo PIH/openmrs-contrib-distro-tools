@@ -9,7 +9,7 @@ on:
         type: string
         default: ''
       maven_profiles:
-        description: Comma-separated Maven profiles to activate during release:perform (e.g. distro-zip)
+        description: Comma-separated Maven profiles to activate during release:perform and the next-snapshot deploy (e.g. distro-zip)
         required: false
         type: string
         default: ''
@@ -36,8 +36,8 @@ jobs:
           java-version: 8
           cache: 'maven'
           server-id: openmrs-repo-modules-pih
-          server-username: OPENMRS_MAVEN_USERNAME
-          server-password: OPENMRS_MAVEN_PASSWORD
+          server-username: MAVEN_DEPLOY_USERNAME
+          server-password: MAVEN_DEPLOY_PASSWORD
 
       - name: Setup Git Config
         run: |
@@ -47,21 +47,44 @@ jobs:
       - name: Maven Release Prepare and Perform
         run: mvn -B -DpreparationGoals=clean -Darguments="-Dmaven.test.skip=true" release:prepare release:perform --file pom.xml${{ inputs.maven_profiles != '' && format(' -DreleaseProfiles={0}', inputs.maven_profiles) || '' }}
         env:
-          OPENMRS_MAVEN_USERNAME: ${{ secrets.OPENMRS_MAVEN_USERNAME }}
-          OPENMRS_MAVEN_PASSWORD: ${{ secrets.OPENMRS_MAVEN_PASSWORD }}
+          MAVEN_DEPLOY_USERNAME: ${{ secrets.OPENMRS_MAVEN_USERNAME }}
+          MAVEN_DEPLOY_PASSWORD: ${{ secrets.OPENMRS_MAVEN_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GHA_WRITE_TOKEN }}
 
       # release:perform builds the release under target/checkout (it never touches the working
       # copy's own target/), so the distro assembly - and the Docker context below - live there too.
       - name: Extract released version
         if: inputs.image_name != ''
-        run: echo "DOCKER_IMAGE_TAG_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout --file target/checkout/pom.xml)" >> $GITHUB_ENV
+        id: released-version
+        run: echo "version=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout --file target/checkout/pom.xml)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and Push Docker Image
+      - name: Build and Push Docker Image (released version)
         if: inputs.image_name != ''
         uses: PIH/openmrs-contrib-distro-tools/.github/actions/build-and-push-docker@main
         with:
           image_name: ${{ inputs.image_name }}
           context: target/checkout/distro/target/distro/web
-          version: ${{ env.DOCKER_IMAGE_TAG_VERSION }}
+          version: ${{ steps.released-version.outputs.version }}
+          dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      # release:prepare only bumps the working copy to the next SNAPSHOT and commits/pushes it -
+      # it never deploys that snapshot itself. That push also doesn't trigger the push-based
+      # snapshot workflow: it's pushed using the default GITHUB_TOKEN (via actions/checkout above),
+      # and GitHub's own loop-prevention means GITHUB_TOKEN-authored pushes never trigger other
+      # workflow runs. So deploy the new next-development-version snapshot explicitly here instead.
+      - name: Deploy next development version
+        id: next-snapshot
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/maven-deploy@main
+        with:
+          maven_profiles: ${{ inputs.maven_profiles }}
+          username: ${{ secrets.OPENMRS_MAVEN_USERNAME }}
+          password: ${{ secrets.OPENMRS_MAVEN_PASSWORD }}
+
+      - name: Build and Push Docker Image (next snapshot)
+        if: inputs.image_name != ''
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/build-and-push-docker@main
+        with:
+          image_name: ${{ inputs.image_name }}
+          context: distro/target/distro/web
+          version: ${{ steps.next-snapshot.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
