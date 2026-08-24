@@ -1,0 +1,83 @@
+name: ${SERVICE_NAME:?SERVICE_NAME must be set}
+
+# The standard OpenHIM install: mongo (openhim-core's own datastore),
+# openhim-core, and openhim-console. Intentionally generic -- no
+# mediator-specific configuration lives here. One or more mediator service
+# fragments (e.g. openmrs-advapacs-mediator.yaml) get composed alongside this
+# one via SERVICES=/add-service, each reaching this fragment's services by
+# their bare service keys (mongo-db, openhim-core, openhim-console), which
+# must stay stable since those are the DNS names Compose hands out on the
+# instance's default network.
+
+services:
+  mongo-db:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-mongo-db
+    image: mongo:${MONGO_IMAGE_TAG:-4.0}
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+  openhim-core:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-core
+    image: jembi/openhim-core:${OPENHIM_CORE_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      mongo_url: mongodb://mongo-db/openhim-development
+      mongo_atnaUrl: mongodb://mongo-db/openhim-development
+      NODE_ENV: development
+      api_authenticationTypes: '["token", "basic", "openid", "local"]'
+      authentication_enableCustomTokenAuthentication: "true"
+      authentication_enableJWTAuthentication: "true"
+      authentication_jwt_secretOrPublicKey: secret
+      authentication_jwt_algorithms: HS256
+      authentication_jwt_issuer: openhim
+      openhimConsoleBaseUrl: http://localhost:${OPENHIM_CONSOLE_HOST_PORT:-9000}
+    # Bound to loopback, not 0.0.0.0: this instance's only legitimate callers
+    # of the router (5000/5001) are mediator containers, already reachable via
+    # the instance's default Docker network -- these host-published copies
+    # exist only for local host-side debugging (curl/console access), not for
+    # any real external caller. If push mode is ever used with an upstream
+    # system on a different host, the HTTPS port (default 5000, see
+    # OPENHIM_ROUTER_HTTPS_HOST_PORT below) should be the one re-published on
+    # a real interface, scoped/firewalled to that host, so inbound channel
+    # credentials aren't sent in cleartext across that network -- not the
+    # HTTP port (default 5001). Keep the HTTP port loopback-only even then.
+    # Host-side port numbers are all overridable via the instance's env file
+    # (defaults shown) -- an instance may run alongside other dockerized apps
+    # on a shared host, so any of these may need to move to avoid a
+    # collision. Only the host side changes; the container-internal ports
+    # (8080/5000/5001) stay fixed.
+    ports:
+      - "127.0.0.1:${OPENHIM_ADMIN_API_HOST_PORT:-8081}:8080"
+      - "127.0.0.1:${OPENHIM_ROUTER_HTTPS_HOST_PORT:-5000}:5000"
+      - "127.0.0.1:${OPENHIM_ROUTER_HTTP_HOST_PORT:-5001}:5001"
+    healthcheck:
+      # The reference healthcheck this is modeled on used curl, which this
+      # image doesn't have (confirmed via `docker exec ... which curl` ->
+      # not found, so that healthcheck always reported unhealthy). wget is
+      # present instead.
+      test: "wget --no-check-certificate -qO- https://openhim-core:8080/heartbeat || exit 1"
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  openhim-console:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-console
+    image: jembi/openhim-console:${OPENHIM_CONSOLE_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      # Tells the console UI (running in the operator's browser, not this
+      # container) which host port to reach the admin API on -- must track
+      # whatever OPENHIM_ADMIN_API_HOST_PORT actually publishes, not the
+      # container-internal 8080 a browser can't reach directly.
+      OPENHIM_MEDIATOR_API_PORT: ${OPENHIM_ADMIN_API_HOST_PORT:-8081}
+    ports:
+      - "127.0.0.1:${OPENHIM_CONSOLE_HOST_PORT:-9000}:80"
+    healthcheck:
+      test: "wget -qO- http://openhim-console || exit 1"
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+volumes:
+  mongo-data:
