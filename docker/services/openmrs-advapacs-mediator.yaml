@@ -36,7 +36,6 @@ services:
       OPENHIM_ROUTER_URL: http://openhim-core:5001
       ADVAPACS_CHANNEL_URL: http://openhim-core:5001/advapacs
       MEDIATOR_PORT: "3500"
-      MEDIATOR_STANDALONE: "false"
       # Instance-wide, shared with any other mediator on this instance.
       # TODO: Do we want to namespace these in some way, specifically the openmrs parameters? Would this be at the OpenHIM or AdvaPACS level?
       OPENHIM_USERNAME: ${OPENHIM_USERNAME}
