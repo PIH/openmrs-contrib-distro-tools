@@ -522,7 +522,7 @@ export ADVAPACS_CLIENT_SECRET=<advapacs-client-secret>
 export OPENMRS_USERNAME=<username-for-mediator-access-to-openmrs>
 export OPENMRS_PASSWORD=<password-for-mediator-access-to-openmrs>
 export ADVAPACS_PATIENT_IDENTIFIER_SYSTEM="http://www.pih.org/identifiers/lesotho/emr-id"
-export SERVICES=openmrs-db,openmrs,openhim,openmrs-advapacs-mediator
+export SERVICES=openmrs-db,openmrs,openhim,openhim-advapacs-mediator
 openmrs-docker create <name>
 openmrs-docker <name> initialize
 openmrs-docker <name> start

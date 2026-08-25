@@ -3,7 +3,7 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 # The standard OpenHIM install: mongo (openhim-core's own datastore),
 # openhim-core, openhim-console, and openhim-setup. Intentionally generic --
 # no mediator-specific configuration lives here. One or more mediator service
-# fragments (e.g. openmrs-advapacs-mediator.yaml) get composed alongside this
+# fragments (e.g. openhim-advapacs-mediator.yaml) get composed alongside this
 # one via SERVICES=/add-service, each reaching this fragment's services by
 # their bare service keys (mongo-db, openhim-core, openhim-console), which
 # must stay stable since those are the DNS names Compose hands out on the

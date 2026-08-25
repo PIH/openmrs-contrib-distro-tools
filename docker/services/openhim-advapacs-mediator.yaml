@@ -5,7 +5,7 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 # itself with, and is routed to by, that fragment's openhim-core. Waits on
 # that fragment's openhim-setup job.
 #
-# The service key below (openmrs-advapacs-mediator) is NOT just a naming
+# The service key below (openhim-advapacs-mediator) is NOT just a naming
 # convention -- it's pinned by this mediator's own mediatorConfig.json
 # (built into its image), which hardcodes its inbound channel's route host to
 # that exact string. Compose hands out a DNS alias equal to a service's key
@@ -17,9 +17,9 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 # on or could collide over.
 #
 services:
-  openmrs-advapacs-mediator:
-    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openmrs-advapacs-mediator
-    image: ${ADVAPACS_MEDIATOR_IMAGE_NAME:-partnersinhealth/omrs-advapacs-mediator}:${ADVAPACS_MEDIATOR_IMAGE_TAG:-latest}
+  openhim-advapacs-mediator:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-advapacs-mediator
+    image: ${ADVAPACS_MEDIATOR_IMAGE_NAME:-partnersinhealth/openhim-advapacs-mediator}:${ADVAPACS_MEDIATOR_IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       openhim-core:
