@@ -2,7 +2,8 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 
 # The AdvaPACS radiology-order mediator. Requires the openhim service
 # fragment (openhim.yaml) also be present on this instance -- it registers
-# itself with, and is routed to by, that fragment's openhim-core.
+# itself with, and is routed to by, that fragment's openhim-core. Waits on
+# that fragment's openhim-setup job.
 #
 # The service key below (openmrs-advapacs-mediator) is NOT just a naming
 # convention -- it's pinned by this mediator's own mediatorConfig.json
@@ -15,41 +16,21 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 # mediatorConfig.json -- there's no shared name the two would need to agree
 # on or could collide over.
 #
-# Env-var namespacing: vars below fall into three groups. (1) Topology facts
-# about this fragment's own network (OPENHIM_API_URL, OPENHIM_ROUTER_URL,
-# ADVAPACS_CHANNEL_URL, MEDIATOR_PORT, MEDIATOR_STANDALONE) are hardcoded
-# here, never read from the instance env file -- every mediator fragment does
-# this independently, so there's nothing to namespace. (2) Genuinely
-# instance-wide values (OPENHIM_USERNAME/PASSWORD, OPENMRS_*) are read from
-# the instance env file under their plain/shared names, since they're the
-# same OpenHIM admin account and OpenMRS instance every mediator on this
-# instance would use. (3) Values that sound generic but are actually
-# mediator-specific (LOG_LEVEL, MEDIATOR_INBOUND_SECRET,
-# ORDER_INGESTION_MODE, ORDER_POLL_INTERVAL_MS, OPENHIM_INBOUND_CLIENT_ID/
-# _PASSWORD, and this fragment's own image/tag vars) are
-# namespaced ADVAPACS_MEDIATOR_* at the instance-env-file layer and mapped
-# back down to the plain name this mediator's own code actually reads inside
-# its container -- a second mediator's fragment would use its own prefix
-# (e.g. OTHERMEDIATOR_LOG_LEVEL) for the same in-container var name with zero
-# collision. ADVAPACS_* business vars (ADVAPACS_BASE_URL/CLIENT_ID/etc.) are
-# already specific to this PACS integration and don't need the prefix.
-
 services:
   openmrs-advapacs-mediator:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openmrs-advapacs-mediator
-    # Always pulled, never built from source -- ADVAPACS_MEDIATOR_IMAGE_NAME may point at a
-    # locally-hosted registry or a manually-tagged local image if a published tag isn't wanted.
     image: ${ADVAPACS_MEDIATOR_IMAGE_NAME:-partnersinhealth/omrs-advapacs-mediator}:${ADVAPACS_MEDIATOR_IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       openhim-core:
         condition: service_healthy
+      openhim-setup:
+        condition: service_completed_successfully
     extra_hosts:
       # Lets this container reach OpenMRS running on the host machine.
       - "host.docker.internal:host-gateway"
     environment:
-      # Topology: hardcoded to this instance's openhim fragment, not read
-      # from the env file.
+      # Topology: hardcoded to the openhim-core service's network.'
       OPENHIM_API_URL: https://openhim-core:8080
       OPENHIM_TRUST_SELF_SIGNED: "true"
       OPENHIM_ROUTER_URL: http://openhim-core:5001
@@ -57,24 +38,23 @@ services:
       MEDIATOR_PORT: "3500"
       MEDIATOR_STANDALONE: "false"
       # Instance-wide, shared with any other mediator on this instance.
+      # TODO: Do we want to namespace these in some way, specifically the openmrs parameters? Would this be at the OpenHIM or OpenMRS level?
       OPENHIM_USERNAME: ${OPENHIM_USERNAME}
       OPENHIM_PASSWORD: ${OPENHIM_PASSWORD}
       OPENMRS_BASE_URL: ${OPENMRS_BASE_URL}
       OPENMRS_FHIR_PATH: ${OPENMRS_FHIR_PATH}
       OPENMRS_USERNAME: ${OPENMRS_USERNAME}
       OPENMRS_PASSWORD: ${OPENMRS_PASSWORD}
-      # Mediator-specific, namespaced at the instance-env-file layer (see
-      # comment above) but passed through to the plain name this mediator's
-      # code reads.
+      # Mediator-specific, namespaced at the instance-env-file layer but passed through to the plain name this mediator's
       LOG_LEVEL: ${ADVAPACS_MEDIATOR_LOG_LEVEL:-info}
       MEDIATOR_INBOUND_SECRET: ${ADVAPACS_MEDIATOR_INBOUND_SECRET}
-      ORDER_INGESTION_MODE: ${ADVAPACS_MEDIATOR_ORDER_INGESTION_MODE:-push}
+      ORDER_INGESTION_MODE: ${ADVAPACS_MEDIATOR_ORDER_INGESTION_MODE:-poll}
       ORDER_POLL_INTERVAL_MS: ${ADVAPACS_MEDIATOR_ORDER_POLL_INTERVAL_MS:-60000}
       OPENHIM_INBOUND_CLIENT_ID: ${ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_ID:-openmrs}
       OPENHIM_INBOUND_CLIENT_PASSWORD: ${ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD}
       # AdvaPACS-specific business config, already unique to this
       # integration -- no namespacing needed.
-      PATIENT_IDENTIFIER_SYSTEM: ${PATIENT_IDENTIFIER_SYSTEM}
+      PATIENT_IDENTIFIER_SYSTEM: ${ADVAPACS_PATIENT_IDENTIFIER_SYSTEM}
       ADVAPACS_BASE_URL: ${ADVAPACS_BASE_URL}
       ADVAPACS_CLIENT_ID: ${ADVAPACS_CLIENT_ID}
       ADVAPACS_CLIENT_SECRET: ${ADVAPACS_CLIENT_SECRET}

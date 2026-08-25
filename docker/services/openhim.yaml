@@ -1,13 +1,20 @@
 name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 
 # The standard OpenHIM install: mongo (openhim-core's own datastore),
-# openhim-core, and openhim-console. Intentionally generic -- no
-# mediator-specific configuration lives here. One or more mediator service
+# openhim-core, openhim-console, and openhim-setup. Intentionally generic --
+# no mediator-specific configuration lives here. One or more mediator service
 # fragments (e.g. openmrs-advapacs-mediator.yaml) get composed alongside this
 # one via SERVICES=/add-service, each reaching this fragment's services by
 # their bare service keys (mongo-db, openhim-core, openhim-console), which
 # must stay stable since those are the DNS names Compose hands out on the
 # instance's default network.
+#
+# openhim-setup is a one-shot job, not a long-running service: on a fresh
+# Mongo volume, openhim-core's own image hardcodes its root account as
+# root@openhim.org / openhim-password. openhim-setup changes the real password to
+# match OPENHIM_PASSWORD once openhim-core is healthy; mediator fragments
+# should depend on it via `service_completed_successfully` so they never race it.
+# Idempotent and safe to rerun.
 
 services:
   mongo-db:
@@ -36,30 +43,56 @@ services:
     # of the router (5000/5001) are mediator containers, already reachable via
     # the instance's default Docker network -- these host-published copies
     # exist only for local host-side debugging (curl/console access), not for
-    # any real external caller. If push mode is ever used with an upstream
+    # any real external caller. When/if ever used with an upstream
     # system on a different host, the HTTPS port (default 5000, see
     # OPENHIM_ROUTER_HTTPS_HOST_PORT below) should be the one re-published on
     # a real interface, scoped/firewalled to that host, so inbound channel
-    # credentials aren't sent in cleartext across that network -- not the
-    # HTTP port (default 5001). Keep the HTTP port loopback-only even then.
-    # Host-side port numbers are all overridable via the instance's env file
-    # (defaults shown) -- an instance may run alongside other dockerized apps
-    # on a shared host, so any of these may need to move to avoid a
-    # collision. Only the host side changes; the container-internal ports
-    # (8080/5000/5001) stay fixed.
+    # credentials aren't sent in cleartext across that network.
     ports:
       - "127.0.0.1:${OPENHIM_ADMIN_API_HOST_PORT:-8081}:8080"
       - "127.0.0.1:${OPENHIM_ROUTER_HTTPS_HOST_PORT:-5000}:5000"
       - "127.0.0.1:${OPENHIM_ROUTER_HTTP_HOST_PORT:-5001}:5001"
     healthcheck:
-      # The reference healthcheck this is modeled on used curl, which this
-      # image doesn't have (confirmed via `docker exec ... which curl` ->
-      # not found, so that healthcheck always reported unhealthy). wget is
-      # present instead.
       test: "wget --no-check-certificate -qO- https://openhim-core:8080/heartbeat || exit 1"
       interval: 30s
       timeout: 30s
       retries: 3
+
+  openhim-setup:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-setup
+    image: curlimages/curl:8.11.1
+    restart: "no"
+    depends_on:
+      openhim-core:
+        condition: service_healthy
+    environment:
+      OPENHIM_PASSWORD: ${OPENHIM_PASSWORD:-openhim-password}
+    entrypoint: ["/bin/sh", "-c"]
+    # $$-escaped throughout: Compose interpolates any unescaped $var in a compose
+    # file itself (against its own host-side variable context) before this string
+    # ever reaches the container.
+    command:
+      - |
+        set -eu
+        base="https://openhim-core:8080"
+        email="root@openhim.org"
+        default_password="openhim-password"
+        # Already matches -- either a prior run of this same job already changed
+        # it, or OPENHIM_PASSWORD was left at its own default. Either way, nothing
+        # to do.
+        code=$$(curl -sk -o /dev/null -w '%{http_code}' -u "$$email:$$OPENHIM_PASSWORD" "$$base/users")
+        if [ "$$code" = "200" ]; then
+          echo "OpenHIM admin password already matches OPENHIM_PASSWORD."
+          exit 0
+        fi
+        # Authenticate with the image's real hardcoded default and change it.
+        # firstname/surname/provider/groups are also hardcoded on this account by
+        # openhim-core itself -- passed through unchanged here since a PUT only
+        # updates the fields it's given.
+        curl -skf -u "$$email:$$default_password" -X PUT "$$base/users/$$email" \
+          -H 'Content-Type: application/json' \
+          -d "{\"firstname\":\"Super\",\"surname\":\"User\",\"email\":\"$$email\",\"provider\":\"local\",\"groups\":[\"admin\"],\"password\":\"$$OPENHIM_PASSWORD\"}"
+        echo "OpenHIM admin password set to OPENHIM_PASSWORD."
 
   openhim-console:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-console
