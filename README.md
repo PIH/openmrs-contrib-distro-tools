@@ -171,7 +171,9 @@ type of environment you are setting up:
 `OPENMRS_IMAGE_NAME` (eg. `partnersinhealth/lesotho-emr`)
 `OPENMRS_PIH_CONFIG` (eg. `lesotho,lesotho-kol-ci`)
 
-These are the bare minimum required to create an instance.  For additional configuration options, consult the 
+These are the bare minimum required to create an instance that includes the `openmrs` service, which is part of
+the default `SERVICES` value — so they're required unless you override `SERVICES=` to exclude it (see
+"Adding OpenHIM and mediators" below). For additional configuration options, consult the
 usage documentation by running `openmrs-docker` with no arguments.
 
 For example, you can specify a different port for the Tomcat HTTP server by setting the `OPENMRS_HTTP_PORT` environment variable:
