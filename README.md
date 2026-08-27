@@ -491,3 +491,34 @@ jobs:
 | `seed_image_name` | Optional | Full seed image name, no tag. Defaults to `<image_name>-seed-<site>` |
 
 Requires a `DOCKERHUB_PASSWORD` secret available to the caller (passed via `secrets: inherit`).
+
+## Smoke tests
+
+`.github/workflows/smoke-test.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it creates an `openmrs-docker` instance, initializes it from a site's seed image (for fast startup), attaches the `openmrs-smoke-tests` service, waits for OpenMRS to be ready, then runs the smoke-tests image against it over the instance's own Compose network before tearing everything down. It validates the built image/config in isolation, not any persistent deployed server — no external network access or secrets beyond Docker Hub credentials are required. A distro repo consumes it with a thin caller workflow, one job per site:
+
+```yaml
+name: Smoke tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  liberia:
+    if: github.repository_owner == 'PIH'
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/smoke-test.yml@main
+    with:
+      image_name: partnersinhealth/pihliberia-emr
+      pih_config: liberia
+      suite: liberia
+    secrets: inherit
+```
+
+| Input | Required? | Purpose |
+|---|---|---|
+| `image_name` | Required | OpenMRS image, no tag |
+| `pih_config` | Required | PIH config profile to test — also used (lowercased) as the `openmrs-docker` instance name |
+| `suite` | Required | Smoke-test suite passed to `execute-smoke-tests.sh`, independent of `pih_config` (e.g. `liberia`, `sierraleone`, `mexico`, `zlCentral`) |
+| `seed_image_name` | Optional | Full seed image name, no tag. Defaults to `<image_name>-seed-<pih_config, lowercased>` |
+| `admin_user_password` | Optional | Admin user password baked into this site's seed data. Defaults to the smoke-tests image's own default |
+
+Requires a `DOCKERHUB_PASSWORD` secret available to the caller (passed via `secrets: inherit`).
