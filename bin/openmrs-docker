@@ -22,6 +22,7 @@ usage() {
     echo "  sync                    Refresh this instance's copied service fragments from the tool's current templates"
     echo "  add-service <svc>       Attach a canonical service fragment (e.g. 'add-service reporting-db')"
     echo "  remove-service <svc>    Detach a service fragment and remove its now-orphaned container"
+    echo "  run-service <svc> [cmd...]  Run a one-off container for an attached service via 'docker compose run' (e.g. after add-service)"
     echo "  wait                    Block until OpenMRS finishes initializing (up to 60 minutes)"
     echo "  build                   Build the distribution and Docker image from source"
     echo "  pull                    Pull the images this instance would use, without starting anything"
@@ -134,7 +135,7 @@ set +a
 # flag-parsing loop below, which would otherwise reject it as an unknown option.
 SERVICE_ARG=""
 case "$COMMAND" in
-    add-service|remove-service)
+    add-service|remove-service|run-service)
         SERVICE_ARG="${1:-}"
         [ -z "$SERVICE_ARG" ] && { echo "$COMMAND requires a service name"; usage; }
         shift
@@ -150,14 +151,18 @@ esac
 BUILD=false
 DEV=false
 FORCE=false
-for arg in "$@"; do
-    case "$arg" in
-        --build) BUILD=true ;;
-        --dev) DEV=true ;;
-        --force) FORCE=true ;;
-        *) echo "Unknown option: '$arg'"; echo ""; usage ;;
-    esac
-done
+# run-service forwards its remaining args verbatim as the one-off container's command
+# (e.g. ./execute-smoke-tests.sh liberia) -- skip flag validation for it.
+if [ "$COMMAND" != "run-service" ]; then
+    for arg in "$@"; do
+        case "$arg" in
+            --build) BUILD=true ;;
+            --dev) DEV=true ;;
+            --force) FORCE=true ;;
+            *) echo "Unknown option: '$arg'"; echo ""; usage ;;
+        esac
+    done
+fi
 
 export SERVICE_NAME="${SERVICE_NAME:-$NAME}"
 
@@ -299,7 +304,11 @@ case "$COMMAND" in
         [ -e "$dest" ] && { echo "error: $SERVICE_ARG already present on $NAME" >&2; exit 1; }
         [ -e "$SERVICES_DIR/$SERVICE_ARG.yaml" ] || { echo "error: no such service '$SERVICE_ARG'" >&2; exit 1; }
         cp "$SERVICES_DIR/$SERVICE_ARG.yaml" "$dest"
-        echo "Added $SERVICE_ARG. Run '$0 $NAME start' to bring it up."
+        if grep -q '^\s*profiles:' "$dest"; then
+            echo "Added $SERVICE_ARG (profiled -- 'start' won't bring it up). Run '$0 $NAME run-service $SERVICE_ARG [cmd...]' to invoke it."
+        else
+            echo "Added $SERVICE_ARG. Run '$0 $NAME start' to bring it up."
+        fi
         ;;
     remove-service)
         target="$INSTANCE_DIR/$SERVICE_ARG.yaml"
@@ -308,6 +317,10 @@ case "$COMMAND" in
         compose_files
         docker compose "${COMPOSE_FILES[@]}" up -d --remove-orphans
         echo "Removed $SERVICE_ARG."
+        ;;
+    run-service)
+        [ -e "$INSTANCE_DIR/$SERVICE_ARG.yaml" ] || { echo "error: $SERVICE_ARG not present on $NAME (run 'add-service $SERVICE_ARG' first)" >&2; exit 1; }
+        docker compose "${COMPOSE_FILES[@]}" run --rm "$SERVICE_ARG" "$@"
         ;;
     wait)
         OPENMRS_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -q openmrs)
@@ -365,7 +378,15 @@ case "$COMMAND" in
         # directly rather than relying on -v to catch it, since this destroy invocation has no
         # way to tell whether the instance was ever initialized from a seed in the past.
         docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
-        rm -rf "$INSTANCE_DIR"
+        if ! rm -rf "$INSTANCE_DIR" 2>/dev/null; then
+            # A one-off service (e.g. openmrs-smoke-tests via run-service) may have written
+            # root-owned files into a bind-mounted host directory under the instance dir --
+            # reclaim ownership via a throwaway root container and retry, rather than
+            # requiring sudo or leaving the directory behind. Only attempted as a fallback,
+            # so the common case (nothing root-owned) never depends on pulling alpine.
+            docker run --rm -v "$INSTANCE_DIR:/target" alpine chown -R "$(id -u):$(id -g)" /target
+            rm -rf "$INSTANCE_DIR"
+        fi
         echo "Removed instance directory $INSTANCE_DIR"
         ;;
     *) echo "Unknown command: '$COMMAND'"; echo ""; usage ;;
