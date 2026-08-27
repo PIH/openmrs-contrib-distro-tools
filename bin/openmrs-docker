@@ -374,7 +374,15 @@ case "$COMMAND" in
         # directly rather than relying on -v to catch it, since this destroy invocation has no
         # way to tell whether the instance was ever initialized from a seed in the past.
         docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
-        rm -rf "$INSTANCE_DIR"
+        if ! rm -rf "$INSTANCE_DIR" 2>/dev/null; then
+            # A one-off service (e.g. openmrs-smoke-tests via run-service) may have written
+            # root-owned files into a bind-mounted host directory under the instance dir --
+            # reclaim ownership via a throwaway root container and retry, rather than
+            # requiring sudo or leaving the directory behind. Only attempted as a fallback,
+            # so the common case (nothing root-owned) never depends on pulling alpine.
+            docker run --rm -v "$INSTANCE_DIR:/target" alpine chown -R "$(id -u):$(id -g)" /target
+            rm -rf "$INSTANCE_DIR"
+        fi
         echo "Removed instance directory $INSTANCE_DIR"
         ;;
     *) echo "Unknown command: '$COMMAND'"; echo ""; usage ;;
