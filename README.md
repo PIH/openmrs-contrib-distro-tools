@@ -503,12 +503,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  liberia:
+  kouka:
     if: github.repository_owner == 'PIH'
     uses: PIH/openmrs-contrib-distro-tools/.github/workflows/execute-pihemr-smoke-tests.yml@main
     with:
       image_name: partnersinhealth/pihliberia-emr
-      pih_config: liberia
+      instance_name: kouka
+      pih_config: liberia,liberia-harper,liberia-harper-kouka
+      seed_image_name: partnersinhealth/pihliberia-emr-seed-liberia
       suite: liberia
     secrets: inherit
 ```
@@ -516,9 +518,10 @@ jobs:
 | Input | Required? | Purpose |
 |---|---|---|
 | `image_name` | Required | OpenMRS image, no tag |
-| `pih_config` | Required | PIH config profile to test — also used (lowercased) as the `openmrs-docker` instance name |
+| `instance_name` | Required | Clean identifier for the `openmrs-docker` instance and artifact naming (e.g. the real CI server's own name, like `kouka` or `kgh-test`) — independent of `pih_config`, which may be a comma-separated chain that isn't a valid instance/image-tag name on its own |
+| `pih_config` | Required | Full PIH config chain to test, matching what the site's real CI server actually runs (e.g. `liberia,liberia-harper,liberia-harper-kouka`) — check the site repo's own `<server>.env` file for the authoritative value, not just its `build-seeded-images.yml` base profile |
+| `seed_image_name` | Required | Full seed image name, no tag — pass the exact value the corresponding `build-seeded-images.yml` job produces (with `pih_config` now potentially multi-value, there's no reliable way to derive this automatically) |
 | `suite` | Required | Smoke-test suite passed to `execute-smoke-tests.sh`, independent of `pih_config` (e.g. `liberia`, `sierraleone`, `mexico`, `zlCentral`) |
-| `seed_image_name` | Optional | Full seed image name, no tag. Defaults to `<image_name>-seed-<pih_config, lowercased>` |
 | `admin_user_password` | Optional | Admin user password baked into this site's seed data. Defaults to the smoke-tests image's own default |
 | `tools_ref` | Optional | Ref of `openmrs-contrib-distro-tools` to check out. Defaults to its default branch — only needed to validate a change to this workflow, or to `bin/openmrs-docker`/`docker/services`, from a branch before merging |
 

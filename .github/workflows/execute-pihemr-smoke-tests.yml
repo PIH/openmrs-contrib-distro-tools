@@ -7,8 +7,12 @@ on:
         description: OpenMRS image name, without tag
         required: true
         type: string
+      instance_name:
+        description: Clean identifier for the openmrs-docker instance and artifact naming (e.g. the real CI server's own name, like "kouka" or "kgh-test"). Independent of pih_config, which may be a comma-separated chain that isn't a valid instance/image-tag name on its own.
+        required: true
+        type: string
       pih_config:
-        description: PIH config profile to test. Also used (lowercased) as the openmrs-docker instance name and, unless seed_image_name is set, the seed image tag suffix.
+        description: Full PIH config chain to test, matching what the site's real CI server actually runs (e.g. "liberia,liberia-harper,liberia-harper-kouka") -- not just the site's base seed-build profile.
         required: true
         type: string
       suite:
@@ -16,8 +20,8 @@ on:
         required: true
         type: string
       seed_image_name:
-        description: Full seed image name, without tag. Defaults to "<image_name>-seed-<pih_config, lowercased>".
-        required: false
+        description: Full seed image name, without tag. Required -- with pih_config now a potentially multi-value chain, there's no reliable way to derive this automatically; pass the exact value the corresponding build-seeded-images.yml job produces.
+        required: true
         type: string
       admin_user_password:
         description: Admin user password baked into this site's seed data. Defaults to the smoke-tests image's own default (Admin123).
@@ -45,15 +49,10 @@ jobs:
           ref: ${{ inputs.tools_ref }}
           path: .openmrs-contrib-distro-tools
 
-      - name: Resolve instance name and seed image name
+      - name: Resolve instance name
         run: |
-          INSTANCE_NAME=$(echo "${{ inputs.pih_config }}" | tr '[:upper:]' '[:lower:]')
+          INSTANCE_NAME=$(echo "${{ inputs.instance_name }}" | tr '[:upper:]' '[:lower:]')
           echo "INSTANCE_NAME=$INSTANCE_NAME" >> $GITHUB_ENV
-          SEED_IMAGE_NAME="${{ inputs.seed_image_name }}"
-          if [ -z "$SEED_IMAGE_NAME" ]; then
-            SEED_IMAGE_NAME="${{ inputs.image_name }}-seed-$INSTANCE_NAME"
-          fi
-          echo "SEED_IMAGE_NAME=$SEED_IMAGE_NAME" >> $GITHUB_ENV
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -65,7 +64,7 @@ jobs:
         env:
           OPENMRS_IMAGE_NAME: ${{ inputs.image_name }}
           OPENMRS_PIH_CONFIG: ${{ inputs.pih_config }}
-          SEED_IMAGE_NAME: ${{ env.SEED_IMAGE_NAME }}
+          SEED_IMAGE_NAME: ${{ inputs.seed_image_name }}
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker create ${{ env.INSTANCE_NAME }}
 
       - name: Add smoke-tests service
