@@ -494,7 +494,7 @@ Requires a `DOCKERHUB_PASSWORD` secret available to the caller (passed via `secr
 
 ## Smoke tests
 
-`.github/workflows/smoke-test.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it creates an `openmrs-docker` instance, attaches the `openmrs-smoke-tests` service, initializes it from a site's seed image (for fast startup), waits for OpenMRS to be ready, then runs the smoke-tests image against it over the instance's own Compose network, uploads the results as a `smoke-test-results-<instance>` artifact (Maven's build/report output plus Selenium screenshots), and tears everything down. It validates the built image/config in isolation, not any persistent deployed server — no external network access or secrets beyond Docker Hub credentials are required. A distro repo consumes it with a thin caller workflow, one job per site:
+`.github/workflows/execute-pihemr-smoke-tests.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it creates an `openmrs-docker` instance, attaches the `openmrs-smoke-tests` service, initializes it from a site's seed image (for fast startup), waits for OpenMRS to be ready, then runs the smoke-tests image against it over the instance's own Compose network, uploads the results as a `smoke-test-results-<instance>` artifact (Maven's build/report output plus Selenium screenshots), and tears everything down. It validates the built image/config in isolation, not any persistent deployed server — no external network access or secrets beyond Docker Hub credentials are required. A distro repo consumes it with a thin caller workflow, one job per site:
 
 ```yaml
 name: Smoke tests
@@ -505,7 +505,7 @@ on:
 jobs:
   liberia:
     if: github.repository_owner == 'PIH'
-    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/smoke-test.yml@main
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/execute-pihemr-smoke-tests.yml@main
     with:
       image_name: partnersinhealth/pihliberia-emr
       pih_config: liberia

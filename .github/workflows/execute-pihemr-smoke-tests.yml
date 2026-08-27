@@ -1,4 +1,4 @@
-name: Smoke test
+name: Execute pihemr smoke tests
 
 on:
   workflow_call:
