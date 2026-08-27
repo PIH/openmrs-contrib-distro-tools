@@ -304,7 +304,11 @@ case "$COMMAND" in
         [ -e "$dest" ] && { echo "error: $SERVICE_ARG already present on $NAME" >&2; exit 1; }
         [ -e "$SERVICES_DIR/$SERVICE_ARG.yaml" ] || { echo "error: no such service '$SERVICE_ARG'" >&2; exit 1; }
         cp "$SERVICES_DIR/$SERVICE_ARG.yaml" "$dest"
-        echo "Added $SERVICE_ARG. Run '$0 $NAME start' to bring it up."
+        if grep -q '^\s*profiles:' "$dest"; then
+            echo "Added $SERVICE_ARG (profiled -- 'start' won't bring it up). Run '$0 $NAME run-service $SERVICE_ARG [cmd...]' to invoke it."
+        else
+            echo "Added $SERVICE_ARG. Run '$0 $NAME start' to bring it up."
+        fi
         ;;
     remove-service)
         target="$INSTANCE_DIR/$SERVICE_ARG.yaml"

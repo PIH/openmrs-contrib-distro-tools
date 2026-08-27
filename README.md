@@ -494,7 +494,7 @@ Requires a `DOCKERHUB_PASSWORD` secret available to the caller (passed via `secr
 
 ## Smoke tests
 
-`.github/workflows/smoke-test.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it creates an `openmrs-docker` instance, initializes it from a site's seed image (for fast startup), attaches the `openmrs-smoke-tests` service, waits for OpenMRS to be ready, then runs the smoke-tests image against it over the instance's own Compose network before tearing everything down. It validates the built image/config in isolation, not any persistent deployed server — no external network access or secrets beyond Docker Hub credentials are required. A distro repo consumes it with a thin caller workflow, one job per site:
+`.github/workflows/smoke-test.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it creates an `openmrs-docker` instance, attaches the `openmrs-smoke-tests` service, initializes it from a site's seed image (for fast startup), waits for OpenMRS to be ready, then runs the smoke-tests image against it over the instance's own Compose network, uploads the results as a `smoke-test-results-<instance>` artifact (Maven's build/report output plus Selenium screenshots), and tears everything down. It validates the built image/config in isolation, not any persistent deployed server — no external network access or secrets beyond Docker Hub credentials are required. A distro repo consumes it with a thin caller workflow, one job per site:
 
 ```yaml
 name: Smoke tests
@@ -520,5 +520,34 @@ jobs:
 | `suite` | Required | Smoke-test suite passed to `execute-smoke-tests.sh`, independent of `pih_config` (e.g. `liberia`, `sierraleone`, `mexico`, `zlCentral`) |
 | `seed_image_name` | Optional | Full seed image name, no tag. Defaults to `<image_name>-seed-<pih_config, lowercased>` |
 | `admin_user_password` | Optional | Admin user password baked into this site's seed data. Defaults to the smoke-tests image's own default |
+| `tools_ref` | Optional | Ref of `openmrs-contrib-distro-tools` to check out. Defaults to its default branch — only needed to validate a change to this workflow, or to `bin/openmrs-docker`/`docker/services`, from a branch before merging |
 
 Requires a `DOCKERHUB_PASSWORD` secret available to the caller (passed via `secrets: inherit`).
+
+### Running smoke tests locally
+
+The `openmrs-smoke-tests` service is opt-in — it's not part of the default `openmrs-db,openmrs` set an instance creates with, so attach it explicitly:
+
+```bash
+OPENMRS_IMAGE_NAME=partnersinhealth/pihliberia-emr \
+OPENMRS_PIH_CONFIG=liberia \
+SEED_IMAGE_NAME=partnersinhealth/pihliberia-emr-seed-liberia \
+openmrs-docker create myinstance
+
+openmrs-docker myinstance add-service openmrs-smoke-tests
+openmrs-docker myinstance initialize
+openmrs-docker myinstance start
+openmrs-docker myinstance wait
+openmrs-docker myinstance run-service openmrs-smoke-tests ./execute-smoke-tests.sh liberia
+```
+
+Running `wait` before `run-service` matters: the `openmrs` container's own Docker healthcheck (which `depends_on: condition: service_healthy` in the smoke-tests fragment relies on) flips to "healthy" as soon as Tomcat responds — well before OpenMRS actually finishes starting up (see "Starting a server" above). `wait` polls the logs for the real completion signal instead, so running it first avoids the smoke tests hitting a half-started OpenMRS.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SMOKE_TESTS_OUTPUT_DIR` | `./smoke-test-output` | Host directory bind-mounted onto the container's Maven `target/` (build output, failsafe/surefire reports) |
+| `SMOKE_TESTS_SCREENSHOTS_DIR` | `./smoke-test-screenshots` | Host directory bind-mounted onto the container's Selenium screenshot directory |
+| `SMOKE_TESTS_ADMIN_PASSWORD` | image default (`Admin123`) | Admin password baked into this site's seed data |
+| `SMOKE_TESTS_IMAGE_NAME`, `SMOKE_TESTS_IMAGE_TAG` | `partnersinhealth/pihemr-smoke-tests`, `latest` | Smoke-tests image to run |
+
+Once done, tear the instance down with `openmrs-docker myinstance destroy --force`.
