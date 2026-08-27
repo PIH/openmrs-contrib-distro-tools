@@ -77,15 +77,18 @@ jobs:
       - name: Run smoke tests
         env:
           SMOKE_TESTS_ADMIN_PASSWORD: ${{ inputs.admin_user_password }}
+          SMOKE_TESTS_OUTPUT_DIR: ${{ github.workspace }}/smoke-test-output
           SMOKE_TESTS_SCREENSHOTS_DIR: ${{ github.workspace }}/smoke-test-screenshots
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} run-service openmrs-smoke-tests ./execute-smoke-tests.sh ${{ inputs.suite }}
 
-      - name: Upload smoke test screenshots
+      - name: Upload smoke test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-test-screenshots-${{ env.INSTANCE_NAME }}
-          path: ${{ github.workspace }}/smoke-test-screenshots
+          name: smoke-test-results-${{ env.INSTANCE_NAME }}
+          path: |
+            ${{ github.workspace }}/smoke-test-output
+            ${{ github.workspace }}/smoke-test-screenshots
           if-no-files-found: ignore
 
       - name: Destroy instance
