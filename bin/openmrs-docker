@@ -22,6 +22,7 @@ usage() {
     echo "  sync                    Refresh this instance's copied service fragments from the tool's current templates"
     echo "  add-service <svc>       Attach a canonical service fragment (e.g. 'add-service reporting-db')"
     echo "  remove-service <svc>    Detach a service fragment and remove its now-orphaned container"
+    echo "  run-service <svc> [cmd...]  Run a one-off container for an attached service via 'docker compose run' (e.g. after add-service)"
     echo "  wait                    Block until OpenMRS finishes initializing (up to 60 minutes)"
     echo "  build                   Build the distribution and Docker image from source"
     echo "  pull                    Pull the images this instance would use, without starting anything"
@@ -134,7 +135,7 @@ set +a
 # flag-parsing loop below, which would otherwise reject it as an unknown option.
 SERVICE_ARG=""
 case "$COMMAND" in
-    add-service|remove-service)
+    add-service|remove-service|run-service)
         SERVICE_ARG="${1:-}"
         [ -z "$SERVICE_ARG" ] && { echo "$COMMAND requires a service name"; usage; }
         shift
@@ -150,14 +151,18 @@ esac
 BUILD=false
 DEV=false
 FORCE=false
-for arg in "$@"; do
-    case "$arg" in
-        --build) BUILD=true ;;
-        --dev) DEV=true ;;
-        --force) FORCE=true ;;
-        *) echo "Unknown option: '$arg'"; echo ""; usage ;;
-    esac
-done
+# run-service forwards its remaining args verbatim as the one-off container's command
+# (e.g. ./execute-smoke-tests.sh liberia) -- skip flag validation for it.
+if [ "$COMMAND" != "run-service" ]; then
+    for arg in "$@"; do
+        case "$arg" in
+            --build) BUILD=true ;;
+            --dev) DEV=true ;;
+            --force) FORCE=true ;;
+            *) echo "Unknown option: '$arg'"; echo ""; usage ;;
+        esac
+    done
+fi
 
 export SERVICE_NAME="${SERVICE_NAME:-$NAME}"
 
@@ -308,6 +313,10 @@ case "$COMMAND" in
         compose_files
         docker compose "${COMPOSE_FILES[@]}" up -d --remove-orphans
         echo "Removed $SERVICE_ARG."
+        ;;
+    run-service)
+        [ -e "$INSTANCE_DIR/$SERVICE_ARG.yaml" ] || { echo "error: $SERVICE_ARG not present on $NAME (run 'add-service $SERVICE_ARG' first)" >&2; exit 1; }
+        docker compose "${COMPOSE_FILES[@]}" run --rm "$SERVICE_ARG" "$@"
         ;;
     wait)
         OPENMRS_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -q openmrs)
