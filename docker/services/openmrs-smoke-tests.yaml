@@ -14,11 +14,6 @@ services:
       DATABASE_USERNAME: ${OPENMRS_DB_USER:-openmrs}
       DATABASE_PASSWORD: ${OPENMRS_DB_PASSWORD:-openmrs}
       ADMIN_USER_PASSWORD: ${SMOKE_TESTS_ADMIN_PASSWORD:-Admin123}
-      # verify only, never clean: mvn clean rmdir()s target/, which is a bind mount below
-      # (see volumes:) -- rmdir on a bind mount's own mount point always fails with EBUSY
-      # on Linux. Requires mirebalais-smoke-tests' MAVEN_GOALS support (UHM-9497) to
-      # actually take effect; reverting this to "clean verify" without also removing the
-      # target mount below reintroduces that bug.
       MAVEN_GOALS: verify
       TZ: ${TZ:-UTC}
     shm_size: 512m
