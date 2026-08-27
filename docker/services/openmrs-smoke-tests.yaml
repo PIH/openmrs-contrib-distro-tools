@@ -16,5 +16,4 @@ services:
       ADMIN_USER_PASSWORD: ${SMOKE_TESTS_ADMIN_PASSWORD:-Admin123}
     shm_size: 512m
     volumes:
-      - ${SMOKE_TESTS_OUTPUT_DIR:-./smoke-test-output}:/smoketests/target
       - ${SMOKE_TESTS_SCREENSHOTS_DIR:-./smoke-test-screenshots}:/smoketests/screenshots
