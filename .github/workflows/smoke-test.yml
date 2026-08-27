@@ -1,0 +1,93 @@
+name: Smoke test
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: OpenMRS image name, without tag
+        required: true
+        type: string
+      pih_config:
+        description: PIH config profile to test. Also used (lowercased) as the openmrs-docker instance name and, unless seed_image_name is set, the seed image tag suffix.
+        required: true
+        type: string
+      suite:
+        description: Smoke-test suite passed to execute-smoke-tests.sh, independent of pih_config (e.g. liberia, sierraleone, mexico, zlCentral)
+        required: true
+        type: string
+      seed_image_name:
+        description: Full seed image name, without tag. Defaults to "<image_name>-seed-<pih_config, lowercased>".
+        required: false
+        type: string
+      admin_user_password:
+        description: Admin user password baked into this site's seed data. Defaults to the smoke-tests image's own default (Admin123).
+        required: false
+        type: string
+        default: ''
+    secrets:
+      DOCKERHUB_PASSWORD:
+        required: true
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out openmrs-contrib-distro-tools
+        uses: actions/checkout@v4
+        with:
+          repository: PIH/openmrs-contrib-distro-tools
+          path: .openmrs-contrib-distro-tools
+
+      - name: Resolve instance name and seed image name
+        run: |
+          INSTANCE_NAME=$(echo "${{ inputs.pih_config }}" | tr '[:upper:]' '[:lower:]')
+          echo "INSTANCE_NAME=$INSTANCE_NAME" >> $GITHUB_ENV
+          SEED_IMAGE_NAME="${{ inputs.seed_image_name }}"
+          if [ -z "$SEED_IMAGE_NAME" ]; then
+            SEED_IMAGE_NAME="${{ inputs.image_name }}-seed-$INSTANCE_NAME"
+          fi
+          echo "SEED_IMAGE_NAME=$SEED_IMAGE_NAME" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: pihci
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Create instance
+        env:
+          OPENMRS_IMAGE_NAME: ${{ inputs.image_name }}
+          OPENMRS_PIH_CONFIG: ${{ inputs.pih_config }}
+          SEED_IMAGE_NAME: ${{ env.SEED_IMAGE_NAME }}
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker create ${{ env.INSTANCE_NAME }}
+
+      - name: Add smoke-tests service
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} add-service openmrs-smoke-tests
+
+      - name: Initialize from seed
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} initialize
+
+      - name: Start stack
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} start
+
+      - name: Wait for OpenMRS to be fully initialized
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} wait
+
+      - name: Run smoke tests
+        env:
+          SMOKE_TESTS_ADMIN_PASSWORD: ${{ inputs.admin_user_password }}
+          SMOKE_TESTS_SCREENSHOTS_DIR: ${{ github.workspace }}/smoke-test-screenshots
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} run-service openmrs-smoke-tests ./execute-smoke-tests.sh ${{ inputs.suite }}
+
+      - name: Upload smoke test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-screenshots-${{ env.INSTANCE_NAME }}
+          path: ${{ github.workspace }}/smoke-test-screenshots
+          if-no-files-found: ignore
+
+      - name: Destroy instance
+        if: always()
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} destroy --force
