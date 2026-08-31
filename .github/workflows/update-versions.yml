@@ -4,9 +4,9 @@ on:
   workflow_call:
     secrets:
       OPENMRS_MAVEN_USERNAME:
-        required: true
+        required: false
       OPENMRS_MAVEN_PASSWORD:
-        required: true
+        required: false
       GHA_WRITE_TOKEN:
         required: true
 
