@@ -1,0 +1,32 @@
+name: Deploy via self-hosted runner
+
+on:
+  workflow_call:
+    inputs:
+      runner-label:
+        description: 'Label of the self-hosted runner on the target host'
+        required: true
+        type: string
+      puppet-manifest:
+        description: "Manifest to apply, passed to puppet-apply.sh (e.g. 'site' or 'petl')"
+        default: 'site'
+        type: string
+      run-etl:
+        description: 'Whether to run the full ETL job after the puppet apply'
+        default: false
+        type: boolean
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, "${{ inputs.runner-label }}"]
+    steps:
+      - name: Puppet apply
+        run: |
+          cd /etc/puppet
+          sudo git pull
+          sudo ./puppet-apply.sh ${{ inputs.puppet-manifest }}
+      - name: Run full ETL
+        if: ${{ inputs.run-etl }}
+        run: |
+          cd /opt/petl/bin
+          sudo ./execute-full.sh
