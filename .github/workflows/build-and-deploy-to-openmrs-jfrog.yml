@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: ''
+      notify_ci_dashboard:
+        description: Notify PIH/ci-dashboard via repository_dispatch when this build starts and finishes
+        required: false
+        type: boolean
+        default: false
     secrets:
       OPENMRS_MAVEN_USERNAME:
         required: true
@@ -26,6 +31,16 @@ jobs:
     name: Build and Publish
     runs-on: ubuntu-latest
     steps:
+      - name: Notify ci-dashboard (build started)
+        if: inputs.notify_ci_dashboard == true
+        continue-on-error: true
+        uses: peter-evans/repository-dispatch@v4
+        with:
+          token: ${{ secrets.GHA_WRITE_TOKEN }}
+          repository: PIH/ci-dashboard
+          event-type: build-status-changed
+          client-payload: '{"repo": "${{ github.event.repository.name }}"}'
+
       - uses: actions/checkout@v4
 
       - name: Set up JDK
@@ -54,3 +69,13 @@ jobs:
           context: distro/target/distro/web
           version: ${{ steps.maven-deploy.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Notify ci-dashboard (build finished)
+        if: always() && inputs.notify_ci_dashboard == true
+        continue-on-error: true
+        uses: peter-evans/repository-dispatch@v4
+        with:
+          token: ${{ secrets.GHA_WRITE_TOKEN }}
+          repository: PIH/ci-dashboard
+          event-type: build-status-changed
+          client-payload: '{"repo": "${{ github.event.repository.name }}"}'
