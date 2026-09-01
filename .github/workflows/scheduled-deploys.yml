@@ -1,0 +1,25 @@
+name: Scheduled deploys
+
+# Cron-triggered deploys that used to be their own Bamboo plans
+# (etl-deploy-apzu-etl-to-mw-dwh-ci, etl-deploy-to-petl-test), not tied to
+# any app repo's push. They don't have a natural app-repo home, so they live
+# here alongside the reusable deploy workflow they call.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily at 21:45 UTC, matching the old Bamboo cron triggers
+    - cron: '45 21 * * *'
+
+jobs:
+  deploy-to-mw-dwh-ci:
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/deploy-via-runner.yml@main
+    with:
+      runner-label: mw-his-dwh-ci
+    secrets: inherit
+
+  deploy-to-petl-test:
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/deploy-via-runner.yml@main
+    with:
+      runner-label: zt-cloud-dw-petl-test
+    secrets: inherit
