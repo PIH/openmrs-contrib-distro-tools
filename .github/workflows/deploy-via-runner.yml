@@ -30,21 +30,23 @@ jobs:
       # migration; check there for failure details.
       - name: Puppet apply
         run: |
+          MSG="puppet-apply.sh ${{ inputs.puppet-manifest }}: full log is at /var/log/mirebalais-puppet on the host (VPN access required); not shown here since it may contain secrets."
           cd /etc/puppet
           sudo git pull > /dev/null
           if sudo ./puppet-apply.sh ${{ inputs.puppet-manifest }} > /dev/null 2>&1; then
-            echo "puppet-apply.sh ${{ inputs.puppet-manifest }} succeeded."
+            echo "Succeeded. ${MSG}"
           else
-            echo "::error::puppet-apply.sh ${{ inputs.puppet-manifest }} failed. See /var/log/mirebalais-puppet on the host (VPN access required) for details -- not shown here since it may contain secrets."
+            echo "::error::Failed. ${MSG}"
             exit 1
           fi
       - name: Run full ETL
         if: ${{ inputs.run-etl }}
         run: |
+          MSG="execute-full.sh: full log is at /var/log/petl.log on the host (VPN access required); not shown here since it may contain secrets."
           cd /opt/petl/bin
           if sudo ./execute-full.sh > /dev/null 2>&1; then
-            echo "execute-full.sh succeeded."
+            echo "Succeeded. ${MSG}"
           else
-            echo "::error::execute-full.sh failed. Check the ETL logs on the host (VPN access required) for details -- not shown here since it may contain secrets."
+            echo "::error::Failed. ${MSG}"
             exit 1
           fi
