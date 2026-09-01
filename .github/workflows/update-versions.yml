@@ -2,18 +2,6 @@ name: Update Versions
 
 on:
   workflow_call:
-    inputs:
-      allow-snapshots:
-        description: >-
-          Whether versions:update-properties may bump a property onto a
-          SNAPSHOT version. When true (the default, for backwards
-          compatibility), this applies to *every* property, including ones
-          currently pinned to a stable release -- so a release-pinned
-          dependency can get bumped onto an unreleased dev snapshot the
-          moment one becomes available upstream. Set to false for repos
-          that pin some dependencies to stable releases on purpose.
-        default: true
-        type: boolean
     secrets:
       OPENMRS_MAVEN_USERNAME:
         required: false
@@ -38,8 +26,17 @@ jobs:
         run: |
           git config user.name "Github Action"
           git config user.email "github-action@users.noreply.github.com"
+      # No -DallowSnapshots flag: Maven's own default (false) applies, so this
+      # only ever bumps a property between stable releases, never onto an
+      # unreleased SNAPSHOT -- regardless of whether the property is
+      # currently pinned to a release or already tracking a snapshot. A repo
+      # that wants snapshot-tracking can opt in via its own pom.xml
+      # (versions-maven-plugin <configuration><allowSnapshots>true</...>),
+      # which -D would override anyway, so leaving it off here doesn't
+      # prevent that -- it just stops this workflow from silently deciding
+      # it for every repo.
       - name: Update versions
-        run: mvn clean versions:update-properties -DallowSnapshots=${{ inputs.allow-snapshots }} scm:checkin -Dmessage='automatic update of mvn version dependencies'
+        run: mvn clean versions:update-properties scm:checkin -Dmessage='automatic update of mvn version dependencies'
         env:
           OPENMRS_MAVEN_USERNAME: ${{ secrets.OPENMRS_MAVEN_USERNAME }}
           OPENMRS_MAVEN_PASSWORD: ${{ secrets.OPENMRS_MAVEN_PASSWORD }}
