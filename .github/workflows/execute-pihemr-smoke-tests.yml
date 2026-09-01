@@ -33,6 +33,11 @@ on:
         required: false
         type: string
         default: ''
+      notify_ci_dashboard:
+        description: Notify PIH/ci-dashboard via repository_dispatch when this job finishes
+        required: false
+        type: boolean
+        default: false
     secrets:
       DOCKERHUB_PASSWORD:
         required: true
@@ -99,3 +104,11 @@ jobs:
       - name: Destroy instance
         if: always()
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} destroy --force
+
+      - name: Notify ci-dashboard (smoke tests finished)
+        if: always() && inputs.notify_ci_dashboard == true
+        continue-on-error: true
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/notify-ci-dashboard@main
+        with:
+          token: ${{ secrets.GHA_WRITE_TOKEN }}
+          phase: finished
