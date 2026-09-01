@@ -1,5 +1,10 @@
 name: Deploy via self-hosted runner
 
+# No use of the GitHub API or GITHUB_TOKEN here (no checkout, nothing pushed
+# back) -- deny all default token permissions so a compromised job on this
+# self-hosted runner can't use it for anything.
+permissions: {}
+
 on:
   workflow_call:
     inputs:
