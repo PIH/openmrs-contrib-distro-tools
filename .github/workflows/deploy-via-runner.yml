@@ -20,13 +20,33 @@ jobs:
   deploy:
     runs-on: [self-hosted, "${{ inputs.runner-label }}"]
     steps:
+      # Output is deliberately not streamed to this step's log: puppet-apply.sh
+      # runs with Puppet's -v -d flags, which can echo decrypted secrets
+      # (resource parameters, exec commands, etc.) to console, and this job
+      # runs in the context of whichever repo called this workflow -- often a
+      # public one. puppet-apply.sh already writes its own log (console +
+      # syslog + a dated file under /var/log/mirebalais-puppet) on the host
+      # itself, which stays behind the same VPN-only access as before this
+      # migration; check there for failure details.
       - name: Puppet apply
         run: |
+          MSG="puppet-apply.sh ${{ inputs.puppet-manifest }}: full log is at /var/log/mirebalais-puppet on the host (VPN access required); not shown here since it may contain secrets."
           cd /etc/puppet
-          sudo git pull
-          sudo ./puppet-apply.sh ${{ inputs.puppet-manifest }}
+          sudo git pull > /dev/null
+          if sudo ./puppet-apply.sh ${{ inputs.puppet-manifest }} > /dev/null 2>&1; then
+            echo "Succeeded. ${MSG}"
+          else
+            echo "::error::Failed. ${MSG}"
+            exit 1
+          fi
       - name: Run full ETL
         if: ${{ inputs.run-etl }}
         run: |
+          MSG="execute-full.sh: full log is at /var/log/petl.log on the host (VPN access required); not shown here since it may contain secrets."
           cd /opt/petl/bin
-          sudo ./execute-full.sh
+          if sudo ./execute-full.sh > /dev/null 2>&1; then
+            echo "Succeeded. ${MSG}"
+          else
+            echo "::error::Failed. ${MSG}"
+            exit 1
+          fi
