@@ -20,6 +20,11 @@ on:
         description: 'Whether to run the full ETL job after the puppet apply'
         default: false
         type: boolean
+      notify_ci_dashboard:
+        description: Notify PIH/ci-dashboard via repository_dispatch when this job finishes
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   deploy:
@@ -56,3 +61,15 @@ jobs:
             echo "::error::Failed. ${MSG}"
             exit 1
           fi
+
+  notify-ci-dashboard:
+    needs: deploy
+    if: always() && inputs.notify_ci_dashboard == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify ci-dashboard (deploy finished)
+        continue-on-error: true
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/notify-ci-dashboard@main
+        with:
+          token: ${{ secrets.GHA_WRITE_TOKEN }}
+          phase: finished
