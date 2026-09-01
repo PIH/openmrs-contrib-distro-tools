@@ -46,6 +46,7 @@ jobs:
           fi
       - name: Run full ETL
         if: ${{ inputs.run-etl }}
+        timeout-minutes: 60
         run: |
           MSG="execute-full.sh: full log is at /var/log/petl.log on the host (VPN access required); not shown here since it may contain secrets."
           cd /opt/petl/bin
