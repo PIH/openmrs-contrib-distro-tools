@@ -68,8 +68,12 @@ jobs:
           version: ${{ steps.maven-deploy.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
+  notify-ci-dashboard:
+    needs: build-and-publish
+    if: always() && inputs.notify_ci_dashboard == true
+    runs-on: ubuntu-latest
+    steps:
       - name: Notify ci-dashboard (build finished)
-        if: always() && inputs.notify_ci_dashboard == true
         continue-on-error: true
         uses: PIH/openmrs-contrib-distro-tools/.github/actions/notify-ci-dashboard@main
         with:
