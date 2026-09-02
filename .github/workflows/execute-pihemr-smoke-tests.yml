@@ -105,8 +105,12 @@ jobs:
         if: always()
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} destroy --force
 
+  notify-ci-dashboard:
+    needs: smoke-test
+    if: always() && inputs.notify_ci_dashboard == true
+    runs-on: ubuntu-latest
+    steps:
       - name: Notify ci-dashboard (smoke tests finished)
-        if: always() && inputs.notify_ci_dashboard == true
         continue-on-error: true
         uses: PIH/openmrs-contrib-distro-tools/.github/actions/notify-ci-dashboard@main
         with:
