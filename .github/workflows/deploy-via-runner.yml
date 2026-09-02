@@ -21,13 +21,26 @@ on:
         default: false
         type: boolean
       notify_ci_dashboard:
-        description: Notify PIH/ci-dashboard via repository_dispatch when this job finishes
+        description: Notify PIH/ci-dashboard via repository_dispatch when this job starts and finishes
         required: false
         type: boolean
         default: false
 
 jobs:
+  notify-started:
+    if: inputs.notify_ci_dashboard == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify ci-dashboard (deploy started)
+        continue-on-error: true
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/notify-ci-dashboard@main
+        with:
+          token: ${{ secrets.GHA_WRITE_TOKEN }}
+          phase: started
+
   deploy:
+    needs: notify-started
+    if: always()
     runs-on: [self-hosted, "${{ inputs.runner-label }}"]
     steps:
       # Output is deliberately not streamed to this step's log: puppet-apply.sh
