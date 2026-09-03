@@ -554,3 +554,27 @@ Running `wait` before `run-service` matters: the `openmrs` container's own Docke
 | `SMOKE_TESTS_IMAGE_NAME`, `SMOKE_TESTS_IMAGE_TAG` | `partnersinhealth/pihemr-smoke-tests`, `latest` | Smoke-tests image to run |
 
 Once done, tear the instance down with `openmrs-docker myinstance destroy --force`.
+
+## Vulnerability scanning
+
+`.github/workflows/scan-docker-image.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs [Trivy](https://github.com/aquasecurity/trivy) against a published image and uploads the results as SARIF to the calling repo's own Security tab (Code scanning alerts). It's report-only — a scan that finds vulnerabilities never fails the caller's pipeline, only a scan-execution error (bad image ref, registry pull failure, etc.) does. A distro repo consumes it as a follow-up job after its build-and-push job:
+
+```yaml
+scan:
+  needs: build-and-publish
+  if: github.repository_owner == 'PIH'
+  uses: PIH/openmrs-contrib-distro-tools/.github/workflows/scan-docker-image.yml@main
+  with:
+    image_name: partnersinhealth/lesotho-emr
+  permissions:
+    security-events: write
+```
+
+| Input | Required? | Purpose |
+|---|---|---|
+| `image_name` | Required | Docker Hub image name, no tag |
+| `tag` | Optional | Tag to scan. Defaults to `latest` |
+
+No secrets required — the images scanned here are public, so Trivy pulls them anonymously. The calling job must grant `permissions: security-events: write` itself; a called reusable workflow's `permissions:` block can only narrow what the caller grants, never widen it.
+
+Findings only surface in the Security tab on **public** repos — that's a free GitHub feature there, but requires a GitHub Advanced Security license on a private repo.

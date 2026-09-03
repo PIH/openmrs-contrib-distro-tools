@@ -1,0 +1,39 @@
+name: Scan Docker image
+
+# Report-only: never fails the caller's pipeline on findings, only on a
+# scan-execution error (bad image ref, registry pull failure, etc). Findings
+# go to the calling repo's own Security tab, which only works for public
+# repos on the free tier used here -- see README for details.
+permissions:
+  security-events: write
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: Docker Hub image name, without tag (e.g. partnersinhealth/lesotho-emr)
+        required: true
+        type: string
+      tag:
+        description: Tag to scan
+        required: false
+        type: string
+        default: latest
+
+jobs:
+  scan:
+    name: Trivy scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ inputs.image_name }}:${{ inputs.tag }}
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: '0'
+
+      - name: Upload results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
