@@ -323,7 +323,7 @@ case "$COMMAND" in
         docker compose "${COMPOSE_FILES[@]}" run --rm "$SERVICE_ARG" "$@"
         ;;
     wait)
-        OPENMRS_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -q openmrs)
+        OPENMRS_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -a -q openmrs)
         echo "Waiting for OpenMRS to be ready (up to 60 minutes)..."
         docker logs -f "$OPENMRS_CONTAINER" 2>&1 &
         LOGS_PID=$!
