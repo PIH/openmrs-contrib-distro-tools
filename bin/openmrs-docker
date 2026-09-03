@@ -323,31 +323,34 @@ case "$COMMAND" in
         docker compose "${COMPOSE_FILES[@]}" run --rm "$SERVICE_ARG" "$@"
         ;;
     wait)
-        OPENMRS_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -q openmrs)
-        echo "Waiting for OpenMRS to initialize (up to 60 minutes)..."
+        OPENMRS_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -a -q openmrs)
+        echo "Waiting for OpenMRS to be ready (up to 60 minutes)..."
         docker logs -f "$OPENMRS_CONTAINER" 2>&1 &
         LOGS_PID=$!
-        for i in $(seq 1 120); do
-            if docker logs "$OPENMRS_CONTAINER" 2>&1 | grep -q "Distribution startup complete"; then
-                kill $LOGS_PID 2>/dev/null || true
-                break
-            fi
-            sleep 30
-            if [ "$i" -eq 120 ]; then
-                kill $LOGS_PID 2>/dev/null || true
-                echo "Timed out waiting for OpenMRS to initialize after 60 minutes"
-                exit 1
-            fi
+        for i in $(seq 1 360); do
+            case "$(docker inspect --format='{{.State.Status}}' "$OPENMRS_CONTAINER")" in
+                exited|dead)
+                    kill $LOGS_PID 2>/dev/null || true
+                    echo "OpenMRS container exited unexpectedly"
+                    exit 1
+                    ;;
+            esac
+            case "$(docker inspect --format='{{.State.Health.Status}}' "$OPENMRS_CONTAINER")" in
+                healthy)
+                    kill $LOGS_PID 2>/dev/null || true
+                    echo "OpenMRS is ready."
+                    exit 0
+                    ;;
+                unhealthy)
+                    kill $LOGS_PID 2>/dev/null || true
+                    echo "OpenMRS container reported unhealthy"
+                    exit 1
+                    ;;
+            esac
+            sleep 10
         done
-        echo "Waiting for OpenMRS to be accessible..."
-        for i in $(seq 1 20); do
-            if curl -sf "http://localhost:${OPENMRS_HTTP_PORT:-8080}/openmrs" > /dev/null 2>&1; then
-                echo "OpenMRS is ready."
-                exit 0
-            fi
-            sleep 15
-        done
-        echo "Timed out waiting for OpenMRS to become accessible"
+        kill $LOGS_PID 2>/dev/null || true
+        echo "Timed out waiting for OpenMRS to become ready after 60 minutes"
         exit 1
         ;;
     build)
