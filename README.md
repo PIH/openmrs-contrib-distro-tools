@@ -171,7 +171,9 @@ type of environment you are setting up:
 `OPENMRS_IMAGE_NAME` (eg. `partnersinhealth/lesotho-emr`)
 `OPENMRS_PIH_CONFIG` (eg. `lesotho,lesotho-kol-ci`)
 
-These are the bare minimum required to create an instance.  For additional configuration options, consult the 
+These are the bare minimum required to create an instance that includes the `openmrs` service, which is part of
+the default `SERVICES` value — so they're required unless you override `SERVICES=` to exclude it (see
+"Adding OpenHIM and mediators" below). For additional configuration options, consult the
 usage documentation by running `openmrs-docker` with no arguments.
 
 For example, you can specify a different port for the Tomcat HTTP server by setting the `OPENMRS_HTTP_PORT` environment variable:
@@ -232,6 +234,7 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | `OPENMRS_HTTP_PORT`, `OPENMRS_DB_PORT`, `OPENMRS_DEBUG_PORT` | Optional | Port overrides — set differently per instance to run more than one at once |
 | `TZ` | Optional (`UTC`) | Container timezone |
 | `OPENMRS_DB_IMAGE_NAME` (`mysql`), `OPENMRS_DB_IMAGE_TAG` (`5.6`), `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD`, `OPENMRS_ACTIVITYLOG_ENABLED`, `OPENMRS_DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS`, `OPENMRS_DB_MAX_ALLOWED_PACKET`, `OPENMRS_DB_INNODB_BUFFER_POOL_SIZE` | Optional | Tuning knobs |
+| `SERVICES` | Optional (`openmrs-db,openmrs`) | Comma-separated canonical fragments to copy into the instance at `create` time — see `docker/services/` |
 
 ### Initializing a server
 
@@ -578,3 +581,36 @@ scan:
 No secrets required — the images scanned here are public, so Trivy pulls them anonymously. The calling job must grant `permissions: security-events: write` itself; a called reusable workflow's `permissions:` block can only narrow what the caller grants, never widen it.
 
 Findings only surface in the Security tab on **public** repos — that's a free GitHub feature there, but requires a GitHub Advanced Security license on a private repo.
+
+## Adding OpenHIM and mediators
+
+`SERVICES=<comma-separated>` (default `openmrs-db,openmrs`) selects which canonical fragments
+under `docker/services/` get copied into a new instance — pass it to `create` to include the
+standard OpenHIM install (`openhim`, i.e. mongo + openhim-core + openhim-console) and one or more
+mediators alongside OpenMRS, or `add-service`/`remove-service` them onto an already-created
+instance without recreating it. Each mediator is its own fragment file; more than one can be
+attached to the same OpenHIM instance at once. A service's default env vars live in a sibling
+`<service>.env.defaults` file next to its `docker/services/<service>.yaml`; `create` and
+`add-service` both pick these up automatically for whichever services you select, so attaching a
+service via either command writes its required settings into the instance's `env` file for you.
+
+The following example will create an instance with OpenHIM and its mediators installed,
+configured for Lesotho:
+
+```bash
+export OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr
+export OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci
+export SEED_IMAGE_NAME="partnersinhealth/lesotho-emr-seed-lesotho"
+export OPENHIM_PASSWORD=<pick-a-password>
+export ADVAPACS_MEDIATOR_INBOUND_SECRET=<pick-a-secret>
+export ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD=<pick-a-password>
+export ADVAPACS_CLIENT_ID=<advapacs-client-id>
+export ADVAPACS_CLIENT_SECRET=<advapacs-client-secret>
+export OPENMRS_USERNAME=<username-for-mediator-access-to-openmrs>
+export OPENMRS_PASSWORD=<password-for-mediator-access-to-openmrs>
+export ADVAPACS_PATIENT_IDENTIFIER_SYSTEM="http://www.pih.org/identifiers/lesotho/emr-id"
+export SERVICES=openmrs-db,openmrs,openhim,openhim-advapacs-mediator
+openmrs-docker create <name>
+openmrs-docker <name> initialize
+openmrs-docker <name> start
+```

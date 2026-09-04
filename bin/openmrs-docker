@@ -39,14 +39,28 @@ usage() {
     echo "  OPENMRS_DOCKER_HOME   Where instance directories live (default: \$HOME/openmrs)"
     echo "  OPENMRS_HTTP_PORT     Port OpenMRS is exposed on (default: 8080)"
     echo ""
-    echo "create requires OPENMRS_IMAGE_NAME and OPENMRS_PIH_CONFIG (env vars). DISTRO_SOURCE_DIR is required"
-    echo "only for build/--dev/--build, and can be set later by editing the instance's env file."
+    echo "create requires OPENMRS_IMAGE_NAME and OPENMRS_PIH_CONFIG (env vars) when the 'openmrs' service is"
+    echo "included (the default). DISTRO_SOURCE_DIR is required only for build/--dev/--build, and can be set"
+    echo "later by editing the instance's env file."
     echo "Every other create-time setting (ports, memory limits, image tags, etc.) can be"
     echo "overridden the same way create's own defaults are: set it in your shell (or source a"
     echo "file that does) before running create, and that value is used instead of the built-in"
     echo "default. SERVICES=<comma-separated> (default: openmrs-db,openmrs) selects which"
     echo "canonical service fragments to copy into the new instance directory."
     exit 1
+}
+
+# Emits the resolved KEY="value" lines from a
+# service's docker/services/<svc>.env.defaults template, with each
+# ${VAR:-default} expanded against the calling shell's current environment --
+# so a value already exported by the caller (or by an instance's env file
+# already sourced into this shell, for add-service) wins
+render_service_env_defaults() {
+    local template="$SERVICES_DIR/$1.env.defaults"
+    [ -f "$template" ] || return 0
+    eval "cat <<RENDER_SERVICE_ENV_EOF
+$(cat "$template")
+RENDER_SERVICE_ENV_EOF"
 }
 
 [ $# -ge 1 ] || usage
@@ -59,49 +73,45 @@ if [ "$1" = "create" ]; then
         echo "Instance directory already exists: $INSTANCE_DIR"
         exit 1
     fi
-    if [ -z "${OPENMRS_IMAGE_NAME:-}" ] || [ -z "${OPENMRS_PIH_CONFIG:-}" ]; then
-        echo "OPENMRS_IMAGE_NAME and OPENMRS_PIH_CONFIG must be set to create an instance"
-        echo ""
-        usage
-    fi
     # Validate all requested service names have matching yaml files BEFORE creating anything.
     # This prevents a half-created directory if any service name is invalid.
     IFS=',' read -ra SERVICE_LIST <<< "${SERVICES:-openmrs-db,openmrs}"
     for svc in "${SERVICE_LIST[@]}"; do
         [ -f "$SERVICES_DIR/$svc.yaml" ] || { echo "No such service '$svc' (looked for $SERVICES_DIR/$svc.yaml)"; exit 1; }
     done
+    # OPENMRS_IMAGE_NAME/OPENMRS_PIH_CONFIG are only consumed by the openmrs service's own
+    # defaults (docker/services/openmrs.env.defaults), so only require them when that service
+    # is actually part of this instance.
+    NEEDS_OPENMRS=false
+    for svc in "${SERVICE_LIST[@]}"; do
+        [ "$svc" = "openmrs" ] && NEEDS_OPENMRS=true
+    done
+    if $NEEDS_OPENMRS && { [ -z "${OPENMRS_IMAGE_NAME:-}" ] || [ -z "${OPENMRS_PIH_CONFIG:-}" ]; }; then
+        echo "OPENMRS_IMAGE_NAME and OPENMRS_PIH_CONFIG must be set to create an instance that includes the 'openmrs' service"
+        echo ""
+        usage
+    fi
     mkdir -p "$INSTANCE_DIR"
     # Every setting below is taken from the calling shell's environment if already
     # set (e.g. `source myenv && openmrs-docker create ...`), falling back to these
     # defaults otherwise.
-    cat > "$INSTANCE_DIR/env" <<EOF
+    {
+        cat <<EOF
 # instance
 TZ="${TZ:-UTC}"
 SERVICE_NAME="$NAME"
 DISTRO_SOURCE_DIR="${DISTRO_SOURCE_DIR:-}"
-# openmrs-db
-OPENMRS_DB_IMAGE_NAME="${OPENMRS_DB_IMAGE_NAME:-mysql}"
-OPENMRS_DB_IMAGE_TAG="${OPENMRS_DB_IMAGE_TAG:-5.6}"
-OPENMRS_DB_USER="${OPENMRS_DB_USER:-openmrs}"
-OPENMRS_DB_PASSWORD="${OPENMRS_DB_PASSWORD:-openmrs}"
-OPENMRS_DB_ROOT_PASSWORD="${OPENMRS_DB_ROOT_PASSWORD:-openmrs}"
-OPENMRS_DB_PORT="${OPENMRS_DB_PORT:-3306}"
-OPENMRS_DB_MEMORY_LIMIT="${OPENMRS_DB_MEMORY_LIMIT:-2g}"
-OPENMRS_DB_MAX_ALLOWED_PACKET="${OPENMRS_DB_MAX_ALLOWED_PACKET:-1G}"
-OPENMRS_DB_INNODB_BUFFER_POOL_SIZE="${OPENMRS_DB_INNODB_BUFFER_POOL_SIZE:-2G}"
-# openmrs
-OPENMRS_IMAGE_NAME="$OPENMRS_IMAGE_NAME"
-OPENMRS_IMAGE_TAG="${OPENMRS_IMAGE_TAG:-latest}"
-OPENMRS_PIH_CONFIG="$OPENMRS_PIH_CONFIG"
-OPENMRS_HTTP_PORT="${OPENMRS_HTTP_PORT:-8080}"
-OPENMRS_DEBUG_PORT="${OPENMRS_DEBUG_PORT:-1044}"
-OPENMRS_MEMORY_LIMIT="${OPENMRS_MEMORY_LIMIT:-4g}"
-OPENMRS_JAVA_MEMORY_OPTS="${OPENMRS_JAVA_MEMORY_OPTS:--Xms512m -Xmx2g -XX:NewSize=128m}"
-OPENMRS_ACTIVITYLOG_ENABLED="${OPENMRS_ACTIVITYLOG_ENABLED:-false}"
 # seed
 SEED_IMAGE_NAME="${SEED_IMAGE_NAME:-}"
 SEED_IMAGE_TAG="${SEED_IMAGE_TAG:-latest}"
 EOF
+        # Per-service defaults, one block per SERVICES= entry -- see
+        # docker/services/<svc>.env.defaults, colocated with that service's
+        # compose fragment rather than enumerated here.
+        for svc in "${SERVICE_LIST[@]}"; do
+            render_service_env_defaults "$svc"
+        done
+    } > "$INSTANCE_DIR/env"
     # Copy validated service fragments
     for svc in "${SERVICE_LIST[@]}"; do
         cp "$SERVICES_DIR/$svc.yaml" "$INSTANCE_DIR/$svc.yaml"
@@ -309,6 +319,15 @@ case "$COMMAND" in
         else
             echo "Added $SERVICE_ARG. Run '$0 $NAME start' to bring it up."
         fi
+        # Append this service's default env vars too -- skipping any name already
+        # present in the env file (e.g. shared with a service added earlier, or a
+        # re-run of add-service) so this never produces a duplicate/conflicting line.
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^([A-Z_][A-Z0-9_]*)= ]]; then
+                grep -q "^${BASH_REMATCH[1]}=" "$ENV_FILE" && continue
+            fi
+            echo "$line" >> "$ENV_FILE"
+        done < <(render_service_env_defaults "$SERVICE_ARG")
         ;;
     remove-service)
         target="$INSTANCE_DIR/$SERVICE_ARG.yaml"
