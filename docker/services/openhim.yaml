@@ -19,7 +19,7 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 services:
   mongo-db:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-mongo-db
-    image: mongo:${MONGO_IMAGE_TAG:-4.0}
+    image: mongo:${OPENHIM_MONGO_IMAGE_TAG:-4.0}
     volumes:
       - mongo-data:/data/db
     restart: unless-stopped
