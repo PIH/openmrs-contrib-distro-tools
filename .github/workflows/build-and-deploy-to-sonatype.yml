@@ -4,27 +4,41 @@ on:
   workflow_call:
     inputs:
       image_name:
-        description: OpenMRS image name, without tag
-        required: true
+        description: OpenMRS image name, without tag. Omit to skip building/pushing a Docker image (eg. for module or package repos with no distro to build).
+        required: false
         type: string
+        default: ''
       maven_profiles:
         description: Comma-separated Maven profiles to activate during deploy (e.g. distro-zip)
         required: false
         type: string
         default: ''
+      notify_ci_dashboard:
+        description: Notify PIH/ci-dashboard via repository_dispatch when this build starts and finishes
+        required: false
+        type: boolean
+        default: false
     secrets:
       SONATYPE_USERNAME:
         required: true
       SONATYPE_PASSWORD:
         required: true
       DOCKERHUB_PASSWORD:
-        required: true
+        required: false
 
 jobs:
   build-and-publish:
     name: Build and Publish
     runs-on: ubuntu-latest
     steps:
+      - name: Notify ci-dashboard (build started)
+        if: inputs.notify_ci_dashboard == true
+        continue-on-error: true
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/notify-ci-dashboard@main
+        with:
+          token: ${{ secrets.GHA_WRITE_TOKEN }}
+          phase: started
+
       - uses: actions/checkout@v4
 
       - name: Set up JDK
@@ -46,9 +60,22 @@ jobs:
           password: ${{ secrets.SONATYPE_PASSWORD }}
 
       - name: Build and Push Docker Image
+        if: inputs.image_name != ''
         uses: PIH/openmrs-contrib-distro-tools/.github/actions/build-and-push-docker@main
         with:
           image_name: ${{ inputs.image_name }}
           context: distro/target/distro/web
           version: ${{ steps.maven-deploy.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+  notify-ci-dashboard:
+    needs: build-and-publish
+    if: always() && inputs.notify_ci_dashboard == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify ci-dashboard (build finished)
+        continue-on-error: true
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/notify-ci-dashboard@main
+        with:
+          token: ${{ secrets.GHA_WRITE_TOKEN }}
+          phase: finished

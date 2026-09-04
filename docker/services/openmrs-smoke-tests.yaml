@@ -1,0 +1,22 @@
+name: ${SERVICE_NAME:?SERVICE_NAME must be set}
+
+services:
+  openmrs-smoke-tests:
+    image: ${SMOKE_TESTS_IMAGE_NAME:-partnersinhealth/pihemr-smoke-tests}:${SMOKE_TESTS_IMAGE_TAG:-latest}
+    profiles: ["openmrs-smoke-tests"]
+    depends_on:
+      openmrs:
+        condition: service_healthy
+    environment:
+      WEBAPP_URL: http://openmrs:8080/openmrs
+      WEBAPP_NAME: openmrs
+      DATABASE_URL: jdbc:mysql://openmrs-db:3306/openmrs
+      DATABASE_USERNAME: ${OPENMRS_DB_USER:-openmrs}
+      DATABASE_PASSWORD: ${OPENMRS_DB_PASSWORD:-openmrs}
+      ADMIN_USER_PASSWORD: ${SMOKE_TESTS_ADMIN_PASSWORD:-Admin123}
+      MAVEN_GOALS: verify
+      TZ: ${TZ:-UTC}
+    shm_size: 512m
+    volumes:
+      - ${SMOKE_TESTS_OUTPUT_DIR:-./smoke-test-output}:/smoketests/target
+      - ${SMOKE_TESTS_SCREENSHOTS_DIR:-./smoke-test-screenshots}:/smoketests/screenshots

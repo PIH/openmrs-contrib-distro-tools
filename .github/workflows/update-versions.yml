@@ -4,9 +4,9 @@ on:
   workflow_call:
     secrets:
       OPENMRS_MAVEN_USERNAME:
-        required: true
+        required: false
       OPENMRS_MAVEN_PASSWORD:
-        required: true
+        required: false
       GHA_WRITE_TOKEN:
         required: true
 
@@ -27,7 +27,7 @@ jobs:
           git config user.name "Github Action"
           git config user.email "github-action@users.noreply.github.com"
       - name: Update versions
-        run: mvn clean versions:update-properties -DallowSnapshots=true scm:checkin -Dmessage='automatic update of mvn version dependencies'
+        run: mvn clean versions:update-properties scm:checkin -Dmessage='automatic update of mvn version dependencies'
         env:
           OPENMRS_MAVEN_USERNAME: ${{ secrets.OPENMRS_MAVEN_USERNAME }}
           OPENMRS_MAVEN_PASSWORD: ${{ secrets.OPENMRS_MAVEN_PASSWORD }}

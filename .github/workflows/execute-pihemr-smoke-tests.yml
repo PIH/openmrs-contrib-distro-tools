@@ -1,0 +1,118 @@
+name: Execute pihemr smoke tests
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: OpenMRS image name, without tag
+        required: true
+        type: string
+      instance_name:
+        description: Clean identifier for the openmrs-docker instance and artifact naming (e.g. the real CI server's own name, like "kouka" or "kgh-test"). Independent of pih_config, which may be a comma-separated chain that isn't a valid instance/image-tag name on its own.
+        required: true
+        type: string
+      pih_config:
+        description: Full PIH config chain to test, matching what the site's real CI server actually runs (e.g. "liberia,liberia-harper,liberia-harper-kouka") -- not just the site's base seed-build profile.
+        required: true
+        type: string
+      suite:
+        description: Smoke-test suite passed to execute-smoke-tests.sh, independent of pih_config (e.g. liberia, sierraleone, mexico, zlCentral)
+        required: true
+        type: string
+      seed_image_name:
+        description: Full seed image name, without tag. Required -- with pih_config now a potentially multi-value chain, there's no reliable way to derive this automatically; pass the exact value the corresponding build-seeded-images.yml job produces.
+        required: true
+        type: string
+      admin_user_password:
+        description: Admin user password baked into this site's seed data. Defaults to the smoke-tests image's own default (Admin123).
+        required: false
+        type: string
+        default: ''
+      tools_ref:
+        description: Ref of openmrs-contrib-distro-tools to check out (branch/tag/SHA). Defaults to its default branch. Set this to validate changes to this workflow itself, or to bin/openmrs-docker/docker/services, from a branch before merging.
+        required: false
+        type: string
+        default: ''
+      notify_ci_dashboard:
+        description: Notify PIH/ci-dashboard via repository_dispatch when this job finishes
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      DOCKERHUB_PASSWORD:
+        required: true
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - name: Check out openmrs-contrib-distro-tools
+        uses: actions/checkout@v4
+        with:
+          repository: PIH/openmrs-contrib-distro-tools
+          ref: ${{ inputs.tools_ref }}
+          path: .openmrs-contrib-distro-tools
+
+      - name: Resolve instance name
+        run: |
+          INSTANCE_NAME=$(echo "${{ inputs.instance_name }}" | tr '[:upper:]' '[:lower:]')
+          echo "INSTANCE_NAME=$INSTANCE_NAME" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: pihci
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Create instance
+        env:
+          OPENMRS_IMAGE_NAME: ${{ inputs.image_name }}
+          OPENMRS_PIH_CONFIG: ${{ inputs.pih_config }}
+          SEED_IMAGE_NAME: ${{ inputs.seed_image_name }}
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker create ${{ env.INSTANCE_NAME }}
+
+      - name: Add smoke-tests service
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} add-service openmrs-smoke-tests
+
+      - name: Initialize from seed
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} initialize
+
+      - name: Start stack
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} start
+
+      - name: Wait for OpenMRS to be fully initialized
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} wait
+
+      - name: Run smoke tests
+        env:
+          SMOKE_TESTS_ADMIN_PASSWORD: ${{ inputs.admin_user_password }}
+          SMOKE_TESTS_OUTPUT_DIR: ${{ github.workspace }}/smoke-test-output
+          SMOKE_TESTS_SCREENSHOTS_DIR: ${{ github.workspace }}/smoke-test-screenshots
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} run-service openmrs-smoke-tests ./execute-smoke-tests.sh ${{ inputs.suite }}
+
+      - name: Upload smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results-${{ env.INSTANCE_NAME }}
+          path: |
+            ${{ github.workspace }}/smoke-test-output
+            ${{ github.workspace }}/smoke-test-screenshots
+          if-no-files-found: ignore
+
+      - name: Destroy instance
+        if: always()
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} destroy --force
+
+  notify-ci-dashboard:
+    needs: smoke-test
+    if: always() && inputs.notify_ci_dashboard == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify ci-dashboard (smoke tests finished)
+        continue-on-error: true
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/notify-ci-dashboard@main
+        with:
+          token: ${{ secrets.GHA_WRITE_TOKEN }}
+          phase: finished

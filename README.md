@@ -495,6 +495,93 @@ jobs:
 
 Requires a `DOCKERHUB_PASSWORD` secret available to the caller (passed via `secrets: inherit`).
 
+## Smoke tests
+
+`.github/workflows/execute-pihemr-smoke-tests.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it creates an `openmrs-docker` instance, attaches the `openmrs-smoke-tests` service, initializes it from a site's seed image (for fast startup), waits for OpenMRS to be ready, then runs the smoke-tests image against it over the instance's own Compose network, uploads the results as a `smoke-test-results-<instance>` artifact (Maven's build/report output plus Selenium screenshots), and tears everything down. It validates the built image/config in isolation, not any persistent deployed server — no external network access or secrets beyond Docker Hub credentials are required. A distro repo consumes it with a thin caller workflow, one job per site:
+
+```yaml
+name: Smoke tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  kouka:
+    if: github.repository_owner == 'PIH'
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/execute-pihemr-smoke-tests.yml@main
+    with:
+      image_name: partnersinhealth/pihliberia-emr
+      instance_name: kouka
+      pih_config: liberia,liberia-harper,liberia-harper-kouka
+      seed_image_name: partnersinhealth/pihliberia-emr-seed-liberia
+      suite: liberia
+    secrets: inherit
+```
+
+| Input | Required? | Purpose |
+|---|---|---|
+| `image_name` | Required | OpenMRS image, no tag |
+| `instance_name` | Required | Clean identifier for the `openmrs-docker` instance and artifact naming (e.g. the real CI server's own name, like `kouka` or `kgh-test`) — independent of `pih_config`, which may be a comma-separated chain that isn't a valid instance/image-tag name on its own |
+| `pih_config` | Required | Full PIH config chain to test, matching what the site's real CI server actually runs (e.g. `liberia,liberia-harper,liberia-harper-kouka`) — check the site repo's own `<server>.env` file for the authoritative value, not just its `build-seeded-images.yml` base profile |
+| `seed_image_name` | Required | Full seed image name, no tag — pass the exact value the corresponding `build-seeded-images.yml` job produces (with `pih_config` now potentially multi-value, there's no reliable way to derive this automatically) |
+| `suite` | Required | Smoke-test suite passed to `execute-smoke-tests.sh`, independent of `pih_config` (e.g. `liberia`, `sierraleone`, `mexico`, `zlCentral`) |
+| `admin_user_password` | Optional | Admin user password baked into this site's seed data. Defaults to the smoke-tests image's own default |
+| `tools_ref` | Optional | Ref of `openmrs-contrib-distro-tools` to check out. Defaults to its default branch — only needed to validate a change to this workflow, or to `bin/openmrs-docker`/`docker/services`, from a branch before merging |
+
+Requires a `DOCKERHUB_PASSWORD` secret available to the caller (passed via `secrets: inherit`).
+
+### Running smoke tests locally
+
+The `openmrs-smoke-tests` service is opt-in — it's not part of the default `openmrs-db,openmrs` set an instance creates with, so attach it explicitly:
+
+```bash
+OPENMRS_IMAGE_NAME=partnersinhealth/pihliberia-emr \
+OPENMRS_PIH_CONFIG=liberia \
+SEED_IMAGE_NAME=partnersinhealth/pihliberia-emr-seed-liberia \
+openmrs-docker create myinstance
+
+openmrs-docker myinstance add-service openmrs-smoke-tests
+openmrs-docker myinstance initialize
+openmrs-docker myinstance start
+openmrs-docker myinstance wait
+openmrs-docker myinstance run-service openmrs-smoke-tests ./execute-smoke-tests.sh liberia
+```
+
+Running `wait` before `run-service` matters: the `openmrs` container's own Docker healthcheck (which `depends_on: condition: service_healthy` in the smoke-tests fragment relies on) flips to "healthy" as soon as Tomcat responds — well before OpenMRS actually finishes starting up (see "Starting a server" above). `wait` polls the logs for the real completion signal instead, so running it first avoids the smoke tests hitting a half-started OpenMRS.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SMOKE_TESTS_OUTPUT_DIR` | `./smoke-test-output` | Host directory bind-mounted onto the container's Maven `target/` (build output, failsafe/surefire reports) |
+| `SMOKE_TESTS_SCREENSHOTS_DIR` | `./smoke-test-screenshots` | Host directory bind-mounted onto the container's Selenium screenshot directory |
+| `SMOKE_TESTS_ADMIN_PASSWORD` | image default (`Admin123`) | Admin password baked into this site's seed data |
+| `SMOKE_TESTS_IMAGE_NAME`, `SMOKE_TESTS_IMAGE_TAG` | `partnersinhealth/pihemr-smoke-tests`, `latest` | Smoke-tests image to run |
+
+Once done, tear the instance down with `openmrs-docker myinstance destroy --force`.
+
+## Vulnerability scanning
+
+`.github/workflows/scan-docker-image.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs [Trivy](https://github.com/aquasecurity/trivy) against a published image and uploads the results as SARIF to the calling repo's own Security tab (Code scanning alerts). It's report-only — a scan that finds vulnerabilities never fails the caller's pipeline, only a scan-execution error (bad image ref, registry pull failure, etc.) does. A distro repo consumes it as a follow-up job after its build-and-push job:
+
+```yaml
+scan:
+  needs: build-and-publish
+  if: github.repository_owner == 'PIH'
+  uses: PIH/openmrs-contrib-distro-tools/.github/workflows/scan-docker-image.yml@main
+  with:
+    image_name: partnersinhealth/lesotho-emr
+  permissions:
+    security-events: write
+```
+
+| Input | Required? | Purpose |
+|---|---|---|
+| `image_name` | Required | Docker Hub image name, no tag |
+| `tag` | Optional | Tag to scan. Defaults to `latest` |
+
+No secrets required — the images scanned here are public, so Trivy pulls them anonymously. The calling job must grant `permissions: security-events: write` itself; a called reusable workflow's `permissions:` block can only narrow what the caller grants, never widen it.
+
+Findings only surface in the Security tab on **public** repos — that's a free GitHub feature there, but requires a GitHub Advanced Security license on a private repo.
+
 ## Adding OpenHIM and mediators
 
 `SERVICES=<comma-separated>` (default `openmrs-db,openmrs`) selects which canonical fragments
