@@ -8,11 +8,15 @@ on:
         required: true
         type: string
       pih_config:
-        description: PIH config profile to seed. Also used (lowercased) as the openmrs-docker instance name and, unless seed_image_name is set, the seed image tag suffix.
-        required: true
+        description: PIH config profile to seed, for a distro that uses one. Also used (lowercased) as the openmrs-docker instance name and, unless instance_name/seed_image_name is set, the seed image tag suffix.
+        required: false
+        type: string
+      instance_name:
+        description: openmrs-docker instance name and, unless seed_image_name is set, the seed image tag suffix. Defaults to pih_config, lowercased. Required if the distro has no pih_config to default from.
+        required: false
         type: string
       seed_image_name:
-        description: Full seed image name, without tag. Defaults to "<image_name>-seed-<pih_config, lowercased>".
+        description: Full seed image name, without tag. Defaults to "<image_name>-seed-<instance_name>".
         required: false
         type: string
     secrets:
@@ -35,7 +39,14 @@ jobs:
 
       - name: Resolve instance name and seed image name
         run: |
-          INSTANCE_NAME=$(echo "${{ inputs.pih_config }}" | tr '[:upper:]' '[:lower:]')
+          INSTANCE_NAME="${{ inputs.instance_name }}"
+          if [ -z "$INSTANCE_NAME" ]; then
+            INSTANCE_NAME=$(echo "${{ inputs.pih_config }}" | tr '[:upper:]' '[:lower:]')
+          fi
+          if [ -z "$INSTANCE_NAME" ]; then
+            echo "Either instance_name or pih_config must be set" >&2
+            exit 1
+          fi
           echo "INSTANCE_NAME=$INSTANCE_NAME" >> $GITHUB_ENV
           SEED_IMAGE_NAME="${{ inputs.seed_image_name }}"
           if [ -z "$SEED_IMAGE_NAME" ]; then
