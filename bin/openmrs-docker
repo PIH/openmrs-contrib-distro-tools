@@ -39,9 +39,11 @@ usage() {
     echo "  OPENMRS_DOCKER_HOME   Where instance directories live (default: \$HOME/openmrs)"
     echo "  OPENMRS_HTTP_PORT     Port OpenMRS is exposed on (default: 8080)"
     echo ""
-    echo "create requires OPENMRS_IMAGE_NAME and OPENMRS_PIH_CONFIG (env vars) when the 'openmrs' service is"
-    echo "included (the default). DISTRO_SOURCE_DIR is required only for build/--dev/--build, and can be set"
-    echo "later by editing the instance's env file."
+    echo "create requires OPENMRS_IMAGE_NAME (env var) when the 'openmrs' service is included (the"
+    echo "default). OPENMRS_PIH_CONFIG is optional -- leave it unset for a distro that doesn't use a"
+    echo "PIH config profile; a distro that does need one will fail at OpenMRS startup if it's missing,"
+    echo "not at instance-creation time. DISTRO_SOURCE_DIR is required only for build/--dev/--build,"
+    echo "and can be set later by editing the instance's env file."
     echo "Every other create-time setting (ports, memory limits, image tags, etc.) can be"
     echo "overridden the same way create's own defaults are: set it in your shell (or source a"
     echo "file that does) before running create, and that value is used instead of the built-in"
@@ -79,15 +81,18 @@ if [ "$1" = "create" ]; then
     for svc in "${SERVICE_LIST[@]}"; do
         [ -f "$SERVICES_DIR/$svc.yaml" ] || { echo "No such service '$svc' (looked for $SERVICES_DIR/$svc.yaml)"; exit 1; }
     done
-    # OPENMRS_IMAGE_NAME/OPENMRS_PIH_CONFIG are only consumed by the openmrs service's own
-    # defaults (docker/services/openmrs.env.defaults), so only require them when that service
-    # is actually part of this instance.
+    # OPENMRS_IMAGE_NAME is only consumed by the openmrs service's own defaults
+    # (docker/services/openmrs.env.defaults), so only require it when that service is
+    # actually part of this instance. OPENMRS_PIH_CONFIG is never required here -- not every
+    # distro uses a PIH config profile, and this tool has no way to know whether the one
+    # being created does. A distro that needs one and doesn't get it fails at OpenMRS
+    # startup instead, which is the caller's to fix at that point.
     NEEDS_OPENMRS=false
     for svc in "${SERVICE_LIST[@]}"; do
         [ "$svc" = "openmrs" ] && NEEDS_OPENMRS=true
     done
-    if $NEEDS_OPENMRS && { [ -z "${OPENMRS_IMAGE_NAME:-}" ] || [ -z "${OPENMRS_PIH_CONFIG:-}" ]; }; then
-        echo "OPENMRS_IMAGE_NAME and OPENMRS_PIH_CONFIG must be set to create an instance that includes the 'openmrs' service"
+    if $NEEDS_OPENMRS && [ -z "${OPENMRS_IMAGE_NAME:-}" ]; then
+        echo "OPENMRS_IMAGE_NAME must be set to create an instance that includes the 'openmrs' service"
         echo ""
         usage
     fi

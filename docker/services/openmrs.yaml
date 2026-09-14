@@ -24,7 +24,10 @@ services:
       OMRS_CONFIG_CONNECTION_DATABASE: openmrs
       OMRS_CONFIG_CONNECTION_USERNAME: ${OPENMRS_DB_USER:-openmrs}
       OMRS_CONFIG_CONNECTION_PASSWORD: ${OPENMRS_DB_PASSWORD:-openmrs}
-      OMRS_EXTRA_PIH_CONFIG: ${OPENMRS_PIH_CONFIG:?OPENMRS_PIH_CONFIG must be set}
+      # Soft default, like DISTRO_SOURCE_DIR above: not every distro uses a PIH config
+      # profile, and this file has no way to know whether the one being run does. A
+      # distro that needs one and doesn't get it fails its own startup instead.
+      OMRS_EXTRA_PIH_CONFIG: ${OPENMRS_PIH_CONFIG:-}
       OMRS_JAVA_MEMORY_OPTS: ${OPENMRS_JAVA_MEMORY_OPTS:--Xms512m -Xmx2g -XX:NewSize=128m}
       OMRS_EXTRA_ACTIVITYLOG__ENABLED: ${OPENMRS_ACTIVITYLOG_ENABLED:-true}
       TZ: ${TZ:-UTC}
