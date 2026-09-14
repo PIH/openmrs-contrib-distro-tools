@@ -102,9 +102,6 @@ cd "$DISTRO_SOURCE_DIR"
 
 case "$COMMAND" in
     create)
-        # PIH_CONFIG is optional -- not every distro uses a PIH config profile, and this
-        # script has no way to know whether the one being set up does. A distro that needs
-        # one and doesn't get it fails at OpenMRS startup instead, not here.
         mvn clean install -U
         # Check if the database already exists; if so, append the SDK's reset prompt answer to batchAnswers
         if [ -n "${MYSQL_CONTAINER:-}" ]; then
