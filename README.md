@@ -485,7 +485,6 @@ jobs:
     uses: PIH/openmrs-contrib-distro-tools/.github/workflows/build-seeded-image.yml@main
     with:
       image_name: partnersinhealth/lesotho-emr
-      site: kol-ci
       pih_config: lesotho,lesotho-kol-ci
     secrets: inherit
 ```
@@ -493,9 +492,9 @@ jobs:
 | Input | Required? | Purpose |
 |---|---|---|
 | `image_name` | Required | OpenMRS image, no tag |
-| `site` | Required | Site name — passed to `openmrs-docker create <site>` |
-| `pih_config` | Required | PIH config profile for this site |
-| `seed_image_name` | Optional | Full seed image name, no tag. Defaults to `<image_name>-seed-<site>` |
+| `pih_config` | Optional | PIH config profile to seed, for a distro that uses one. Also used (lowercased) as the instance name unless `instance_name` is set |
+| `instance_name` | Optional | Instance/seed-name identifier. Defaults to `pih_config`, lowercased — required if the distro has no `pih_config` to default from |
+| `seed_image_name` | Optional | Full seed image name, no tag. Defaults to `<image_name>-seed-<instance_name>` |
 
 Requires a `DOCKERHUB_PASSWORD` secret available to the caller (passed via `secrets: inherit`).
 
