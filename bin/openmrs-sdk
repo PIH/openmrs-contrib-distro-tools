@@ -35,7 +35,7 @@ usage() {
     echo ""
     echo "Environment variable overrides:"
     echo "  SERVER_ID       Server ID (overrides positional argument)"
-    echo "  PIH_CONFIG      PIH config profile (required for 'create')"
+    echo "  PIH_CONFIG      PIH config profile (optional -- leave unset if the distro doesn't use one)"
     echo "  SERVER_PORT     Tomcat port (default: 8080)"
     echo "  DEBUG_PORT      Remote debug port (default: 1044)"
     echo "  JMX_PORT        Enable JMX monitoring on this port (default: disabled)"
@@ -102,11 +102,6 @@ cd "$DISTRO_SOURCE_DIR"
 
 case "$COMMAND" in
     create)
-        if [ -z "$PIH_CONFIG" ]; then
-            echo "PIH_CONFIG must be set (e.g. PIH_CONFIG=lesotho,lesotho-kol-ci $0 create ${SERVER_ID})"
-            echo ""
-            usage
-        fi
         mvn clean install -U
         # Check if the database already exists; if so, append the SDK's reset prompt answer to batchAnswers
         if [ -n "${MYSQL_CONTAINER:-}" ]; then

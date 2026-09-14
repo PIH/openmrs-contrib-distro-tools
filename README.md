@@ -68,7 +68,7 @@ of the listed defaults are not suitable for one's setup.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PIH_CONFIG` | _(required)_ | PIH config profile passed to SDK setup, e.g. `<config>,<config>-<site>` |
+| `PIH_CONFIG` | _(optional)_ | PIH config profile passed to SDK setup, e.g. `<config>,<config>-<site>` — leave unset for a distro that doesn't use one; if it does and this is missing, OpenMRS setup fails, not this command |
 | `DISTRO_SOURCE_DIR` | current directory | Path to the distro repo checkout to build |
 | `SERVER_PORT` | `8080` | Tomcat HTTP port |
 | `DEBUG_PORT` | `1044` | Remote debug port |
@@ -164,17 +164,21 @@ For specific, ready-to-use examples of these commands, see the individual distri
 
 ### Creating a server instance
 
-Each distribution has its own published Docker image, and its own set of supported PIH config profiles.  Refer to the 
-distribution-specific README files for these specific options.  Choose the options that best meet your needs for the
-type of environment you are setting up:
+Each distribution has its own published Docker image, and (if it uses one) its own set of supported
+PIH config profiles. Refer to the distribution-specific README files for these specific options.
+Choose the options that best meet your needs for the type of environment you are setting up:
 
 `OPENMRS_IMAGE_NAME` (eg. `partnersinhealth/lesotho-emr`)
 `OPENMRS_PIH_CONFIG` (eg. `lesotho,lesotho-kol-ci`)
 
-These are the bare minimum required to create an instance that includes the `openmrs` service, which is part of
-the default `SERVICES` value — so they're required unless you override `SERVICES=` to exclude it (see
-"Adding OpenHIM and mediators" below). For additional configuration options, consult the
-usage documentation by running `openmrs-docker` with no arguments.
+`OPENMRS_IMAGE_NAME` is the bare minimum required to create an instance that includes the `openmrs`
+service, which is part of the default `SERVICES` value — so it's required unless you override
+`SERVICES=` to exclude it (see "Adding OpenHIM and mediators" below). `OPENMRS_PIH_CONFIG` is
+optional: not every distro uses a PIH config profile, and this tool has no way to know whether the
+one you're creating an instance for does. If it does and you leave this unset, OpenMRS itself will
+fail to start rather than `create` failing up front — set it when you know the distro needs it. For
+additional configuration options, consult the usage documentation by running `openmrs-docker` with
+no arguments.
 
 For example, you can specify a different port for the Tomcat HTTP server by setting the `OPENMRS_HTTP_PORT` environment variable:
 
@@ -226,7 +230,7 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | Variable | Required? | Purpose |
 |---|---|---|
 | `OPENMRS_IMAGE_NAME` | Required | OpenMRS image, no tag |
-| `OPENMRS_PIH_CONFIG` | Required | PIH config profile for this instance |
+| `OPENMRS_PIH_CONFIG` | Optional | PIH config profile for this instance — leave unset if the distro doesn't use one; OpenMRS fails at startup if it does and this is missing |
 | `DISTRO_SOURCE_DIR` | Required for `build`/`--dev`/`--build` only | Path to the distro repo checkout |
 | `SEED_IMAGE_NAME` | Required for `initialize` only | Full seed image name (no tag) |
 | `SERVICE_NAME` | Optional (defaults to the instance name) | Docker Compose project name |
