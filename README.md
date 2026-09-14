@@ -485,7 +485,7 @@ jobs:
     uses: PIH/openmrs-contrib-distro-tools/.github/workflows/build-seeded-image.yml@main
     with:
       image_name: partnersinhealth/lesotho-emr
-      pih_config: lesotho,lesotho-kol-ci
+      pih_config: lesotho
     secrets: inherit
 ```
 
