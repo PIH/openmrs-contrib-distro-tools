@@ -357,8 +357,9 @@ case "$COMMAND" in
                 docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db
                 ;;
             --from-percona)
-                echo "error: --from-percona is implemented in Task 8" >&2
-                exit 1
+                export RESTORE_PERCONA_PATH="$RESOLVED_PATH"
+                COMPOSE_FILES+=(-f "$MODES_DIR/restore-percona.yaml")
+                docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db
                 ;;
             *)
                 echo "usage: $0 $NAME restore --from-dump|--from-percona <path>" >&2
