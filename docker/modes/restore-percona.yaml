@@ -13,7 +13,10 @@ services:
     volumes:
       - ${RESTORE_PERCONA_PATH:?RESTORE_PERCONA_PATH must be set}:/opt/backup:ro
       - db-data:/var/lib/mysql
-    command: ["sh", "-c", "innobackupex --move-back --datadir=/var/lib/mysql /opt/backup && chown -R 999:999 /var/lib/mysql"]
+    # --copy-back, not --move-back: /opt/backup is deliberately mounted read-only, and
+    # --move-back's rename step can't unlink the source, so it falls back to copy + a failed
+    # delete -- succeeding overall but emitting an "Error: unlink ... failed" line per file.
+    command: ["sh", "-c", "innobackupex --copy-back --datadir=/var/lib/mysql /opt/backup && chown -R 999:999 /var/lib/mysql"]
 
   openmrs-db:
     depends_on:
