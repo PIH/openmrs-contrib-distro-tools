@@ -14,6 +14,7 @@ usage() {
     echo ""
     echo "Commands (for an existing instance):"
     echo "  initialize              Pre-load a brand-new instance's data volumes from SEED_IMAGE_NAME (refuses to run if any data volume already exists)"
+    echo "  restore --from-dump <path>|--from-percona <path>  Seed a brand-new instance's source mysql from a local dump or percona backup (refuses if data volumes already exist; accepts a password-protected .7z via PETL_BACKUP_PASSWORD)"
     echo "  start                   Start the stack"
     echo "  stop                    Stop the running stack"
     echo "  restart                 Restart the running containers in place (no rebuild, no recreate)"
@@ -162,7 +163,7 @@ DEV=false
 FORCE=false
 # run-service forwards its remaining args verbatim as the one-off container's command
 # (e.g. ./execute-smoke-tests.sh liberia) -- skip flag validation for it.
-if [ "$COMMAND" != "run-service" ]; then
+if [ "$COMMAND" != "run-service" ] && [ "$COMMAND" != "restore" ]; then
     for arg in "$@"; do
         case "$arg" in
             --build) BUILD=true ;;
@@ -248,6 +249,35 @@ sync_services() {
     done
 }
 
+# Extracts a password-protected .7z archive (via PETL_BACKUP_PASSWORD) into a scratch directory
+# under the instance dir, and echoes the path to the extracted content. If SRC doesn't end in
+# .7z, echoes SRC unchanged -- callers always route their input path through this function.
+extract_if_7z() {
+    local src="$1"
+    case "$src" in
+        *.7z)
+            [ -z "${PETL_BACKUP_PASSWORD:-}" ] && { echo "error: PETL_BACKUP_PASSWORD must be set to extract $src" >&2; exit 1; }
+            local scratch="$INSTANCE_DIR/restore-scratch"
+            rm -rf "$scratch"
+            mkdir -p "$scratch"
+            # Extraction output is redirected to stderr -- this function's stdout is captured by
+            # callers via $(extract_if_7z ...) and must contain only the extracted path.
+            docker run --rm \
+                -v "$(dirname "$(realpath "$src")"):/backup:ro" \
+                -v "$scratch:/out" \
+                alpine:3.21 \
+                sh -c "apk add --no-cache p7zip >/dev/null && 7z x -p'${PETL_BACKUP_PASSWORD}' -o/out -y '/backup/$(basename "$src")'" >&2
+            local extracted
+            extracted=$(find "$scratch" -mindepth 1 -maxdepth 1)
+            [ -z "$extracted" ] && { echo "error: extraction of $src produced no files" >&2; exit 1; }
+            echo "$extracted"
+            ;;
+        *)
+            echo "$src"
+            ;;
+    esac
+}
+
 case "$COMMAND" in
     start)
         if $DEV || $BUILD; then require_distro_source; fi
@@ -304,6 +334,49 @@ case "$COMMAND" in
         # since a plain `down` (no -v, to keep openmrs-data/db-data intact) won't catch it.
         docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
         echo "Initialized $NAME from seed image ${SEED_IMAGE_NAME}:${SEED_IMAGE_TAG:-latest}."
+        ;;
+    restore)
+        MODE="${1:-}"
+        RESTORE_PATH="${2:-}"
+        [ -z "$MODE" ] || [ -z "$RESTORE_PATH" ] && { echo "usage: $0 $NAME restore --from-dump|--from-percona <path>" >&2; exit 1; }
+        for vol in openmrs-data db-data; do
+            if docker volume inspect "${SERVICE_NAME}_${vol}" >/dev/null 2>&1; then
+                echo "error: ${SERVICE_NAME}_${vol} already exists -- restore only runs against a brand-new instance with no existing data. Run '$0 $NAME destroy' first." >&2
+                exit 1
+            fi
+        done
+        RESOLVED_PATH=$(extract_if_7z "$RESTORE_PATH")
+        case "$MODE" in
+            --from-dump)
+                export RESTORE_DUMP_PATH="$RESOLVED_PATH"
+                case "$RESOLVED_PATH" in
+                    *.gz) export RESTORE_DUMP_FILENAME="dump.sql.gz" ;;
+                    *)    export RESTORE_DUMP_FILENAME="dump.sql" ;;
+                esac
+                COMPOSE_FILES+=(-f "$MODES_DIR/restore-dump.yaml")
+                docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db
+                ;;
+            --from-percona)
+                echo "error: --from-percona is implemented in Task 8" >&2
+                exit 1
+                ;;
+            *)
+                echo "usage: $0 $NAME restore --from-dump|--from-percona <path>" >&2
+                exit 1
+                ;;
+        esac
+        DB_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -q openmrs-db)
+        echo "Waiting for the restored database to finish importing..."
+        for i in $(seq 1 40); do
+            STATUS=$(docker inspect --format '{{.State.Health.Status}}' "$DB_CONTAINER" 2>/dev/null || true)
+            [ "$STATUS" = "healthy" ] && break
+            if [ "$i" -eq 40 ]; then
+                echo "Timed out waiting for openmrs-db to become healthy after restore" >&2
+                exit 1
+            fi
+            sleep 15
+        done
+        echo "Restored $NAME from $RESTORE_PATH."
         ;;
     sync)
         sync_services
