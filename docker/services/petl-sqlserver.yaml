@@ -12,6 +12,15 @@ services:
       - ${PETL_SQLSERVER_PORT:-1433}:1433
     volumes:
       - petl-sqlserver-data:/var/opt/mssql
+    healthcheck:
+      # Queries the target database itself, not just the port: the database is created
+      # asynchronously by the image's entrypoint after SQL Server starts accepting
+      # connections, so "listening" and "ready to use" are not the same moment here.
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "${PETL_SQLSERVER_PASSWORD:-9%4qP7b2H!%J}", "-d", "${PETL_SQLSERVER_DATABASE:-openmrs_reporting}", "-Q", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
     restart: unless-stopped
 
 volumes:
