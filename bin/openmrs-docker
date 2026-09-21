@@ -467,7 +467,21 @@ case "$COMMAND" in
             read -r -p "Are you sure? [y/N] " confirm
             [[ "$confirm" =~ ^[Yy]$ ]] || exit 0
         fi
-        docker compose "${COMPOSE_FILES[@]}" down -v --remove-orphans
+        # Tolerate failure: an instance whose fragments can't be interpolated (e.g. a required
+        # variable left unset in the env file) must still be destroyable -- otherwise a bad
+        # fragment permanently traps the instance directory, since destroy aborts before ever
+        # reaching the volume and directory cleanup below.
+        if ! docker compose "${COMPOSE_FILES[@]}" down -v --remove-orphans; then
+            echo "warning: 'docker compose down' failed -- falling back to removing this" >&2
+            echo "instance's containers and volumes by compose project label instead." >&2
+            # Compose labels everything it creates with the project name, so this reaches
+            # the same containers/volumes `down -v` would have, without needing any of the
+            # fragments to interpolate successfully.
+            docker ps -aq --filter "label=com.docker.compose.project=$SERVICE_NAME" \
+                | xargs -r docker rm -f >/dev/null 2>&1 || true
+            docker volume ls -q --filter "label=com.docker.compose.project=$SERVICE_NAME" \
+                | xargs -r docker volume rm >/dev/null 2>&1 || true
+        fi
         # modes/seeded.yaml's db-init volume isn't declared in services/openmrs-db.yaml, so an
         # instance that ever ran `initialize` would leave it behind here. Removed by name
         # directly rather than relying on -v to catch it, since this destroy invocation has no
