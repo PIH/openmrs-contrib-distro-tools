@@ -1,0 +1,23 @@
+name: ${SERVICE_NAME:?SERVICE_NAME must be set}
+
+services:
+  petl:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-petl
+    image: ${PETL_IMAGE_NAME:?PETL_IMAGE_NAME must be set}:${PETL_IMAGE_TAG:-latest}
+    profiles: ["petl"]
+    depends_on:
+      openmrs-db:
+        condition: service_healthy
+    environment:
+      PETL_FULL_REFRESH_JOBS: ${PETL_FULL_REFRESH_JOBS:-}
+      PETL_MAX_RETRIES: ${PETL_MAX_RETRIES:-0}
+      PETL_MYSQL_HOST: openmrs-db
+      PETL_MYSQL_PORT: 3306
+      PETL_MYSQL_USER: ${PETL_MYSQL_USER:-${OPENMRS_DB_USER:-openmrs}}
+      PETL_MYSQL_PASSWORD: ${PETL_MYSQL_PASSWORD:-${OPENMRS_DB_PASSWORD:-openmrs}}
+      PETL_MYSQL_ROOT_PASSWORD: ${PETL_MYSQL_ROOT_PASSWORD:-}
+      PETL_SQLSERVER_HOST: ${PETL_SQLSERVER_HOST:-petl-sqlserver}
+      PETL_SQLSERVER_PORT: ${PETL_SQLSERVER_PORT:-1433}
+      PETL_SQLSERVER_USER: ${PETL_SQLSERVER_USER:-sa}
+      PETL_SQLSERVER_PASSWORD: ${PETL_SQLSERVER_PASSWORD:-9%4qP7b2H!%J}
+      TZ: ${TZ:-UTC}
