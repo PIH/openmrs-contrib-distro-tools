@@ -14,7 +14,7 @@ usage() {
     echo ""
     echo "Commands (for an existing instance):"
     echo "  initialize              Pre-load a brand-new instance's data volumes from SEED_IMAGE_NAME (refuses to run if any data volume already exists)"
-    echo "  restore --from-dump <path>|--from-percona <path>  Seed a brand-new instance's source mysql from a local dump or percona backup (refuses if data volumes already exist; accepts a password-protected .7z via PETL_BACKUP_PASSWORD)"
+    echo "  restore --from-dump <path>|--from-percona <path>  Seed a brand-new instance's source mysql from a local dump or percona backup (refuses if data volumes already exist; accepts a password-protected .7z via PETL_BACKUP_PASSWORD; leaves the stack stopped, like initialize)"
     echo "  start                   Start the stack"
     echo "  stop                    Stop the running stack"
     echo "  restart                 Restart the running containers in place (no rebuild, no recreate)"
@@ -260,16 +260,27 @@ extract_if_7z() {
             local scratch="$INSTANCE_DIR/restore-scratch"
             rm -rf "$scratch"
             mkdir -p "$scratch"
+            # `cd ... && pwd` rather than realpath: nothing beyond Docker itself is assumed
+            # to be present on the host, and realpath is absent on macOS before 12.3.
+            local dir
+            dir=$(cd "$(dirname "$src")" && pwd)
+            # Password and filename are passed as container environment variables rather than
+            # interpolated into the `sh -c` string, so neither can be re-parsed as shell syntax.
             # Extraction output is redirected to stderr -- this function's stdout is captured by
             # callers via $(extract_if_7z ...) and must contain only the extracted path.
             docker run --rm \
-                -v "$(dirname "$(realpath "$src")"):/backup:ro" \
+                -e SEVENZ_PW="$PETL_BACKUP_PASSWORD" -e SEVENZ_SRC="$(basename "$src")" \
+                -v "$dir:/backup:ro" \
                 -v "$scratch:/out" \
                 alpine:3.21 \
-                sh -c "apk add --no-cache p7zip >/dev/null && 7z x -p'${PETL_BACKUP_PASSWORD}' -o/out -y '/backup/$(basename "$src")'" >&2
-            local extracted
+                sh -c 'apk add --no-cache p7zip >/dev/null && 7z x -p"$SEVENZ_PW" -o/out -y "/backup/$SEVENZ_SRC"' >&2
+            local extracted count
             extracted=$(find "$scratch" -mindepth 1 -maxdepth 1)
             [ -z "$extracted" ] && { echo "error: extraction of $src produced no files" >&2; exit 1; }
+            # Exactly one entry: more than one would make the echoed path multi-line and corrupt
+            # every downstream use of it (volume specs, path tests).
+            count=$(echo "$extracted" | wc -l)
+            [ "$count" -eq 1 ] || { echo "error: extraction of $src produced $count top-level entries, expected exactly 1" >&2; exit 1; }
             echo "$extracted"
             ;;
         *)
@@ -339,6 +350,23 @@ case "$COMMAND" in
         MODE="${1:-}"
         RESTORE_PATH="${2:-}"
         [ -z "$MODE" ] || [ -z "$RESTORE_PATH" ] && { echo "usage: $0 $NAME restore --from-dump|--from-percona <path>" >&2; exit 1; }
+        # Validated up front: an absent path is silently auto-created as an empty *directory*
+        # by Docker's bind mount, which MySQL's entrypoint then fails to read as a dump file --
+        # burning the full health-poll timeout before producing an unhelpful error.
+        [ -e "$RESTORE_PATH" ] || { echo "error: no such file or directory: $RESTORE_PATH" >&2; exit 1; }
+        # Compose's short volume syntax reads a source that doesn't start with . / or ~ as a
+        # *named volume*, so a relative path fails with a confusing "refers to undefined volume"
+        # error. Normalize to absolute here (portably -- no realpath, see extract_if_7z).
+        case "$RESTORE_PATH" in
+            /*) ;;
+            *) RESTORE_PATH="$(cd "$(dirname "$RESTORE_PATH")" && pwd)/$(basename "$RESTORE_PATH")" ;;
+        esac
+        # Validated before extraction: otherwise `restore --bogus-flag backup.7z` decrypts and
+        # unpacks a potentially multi-GB archive before ever noticing the mode flag is invalid.
+        case "$MODE" in
+            --from-dump|--from-percona) ;;
+            *) echo "usage: $0 $NAME restore --from-dump|--from-percona <path>" >&2; exit 1 ;;
+        esac
         for vol in openmrs-data db-data; do
             if docker volume inspect "${SERVICE_NAME}_${vol}" >/dev/null 2>&1; then
                 echo "error: ${SERVICE_NAME}_${vol} already exists -- restore only runs against a brand-new instance with no existing data. Run '$0 $NAME destroy' first." >&2
@@ -357,18 +385,33 @@ case "$COMMAND" in
                 docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db
                 ;;
             --from-percona)
+                echo "warning: a percona/xtrabackup restore replaces the entire MySQL datadir, including its user credentials -- the instance's OPENMRS_DB_USER/PASSWORD/ROOT_PASSWORD must match the source server's actual credentials, or the post-restore healthcheck will fail even though the restore itself succeeded. The backup's MySQL server version should also match OPENMRS_DB_IMAGE_TAG." >&2
                 export RESTORE_PERCONA_PATH="$RESOLVED_PATH"
                 COMPOSE_FILES+=(-f "$MODES_DIR/restore-percona.yaml")
                 docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db
-                ;;
-            *)
-                echo "usage: $0 $NAME restore --from-dump|--from-percona <path>" >&2
-                exit 1
                 ;;
         esac
         DB_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -q openmrs-db)
         echo "Waiting for the restored database to finish importing..."
         for i in $(seq 1 40); do
+            # Same early-exit the `wait` command uses, plus `restarting`: a backup MySQL rejects
+            # kills the container, and since openmrs-db is declared `restart: unless-stopped` it
+            # then crash-loops, reporting "restarting" rather than ever settling on "exited" --
+            # so exited|dead alone would never fire here (verified: a container failing to start
+            # reports State.Status=restarting indefinitely). Without this the loop would spend
+            # the full ~10 minutes polling a container that is never coming back.
+            #
+            # Deliberately NOT treated as fatal: a health status of "unhealthy" (which `wait`
+            # does bail on). openmrs-db's healthcheck gives up after ~130s, but MySQL doesn't
+            # accept TCP connections until its dump import finishes -- so any import longer than
+            # that legitimately reports unhealthy while still succeeding.
+            case "$(docker inspect --format '{{.State.Status}}' "$DB_CONTAINER" 2>/dev/null || true)" in
+                exited|dead|restarting)
+                    echo "error: openmrs-db exited unexpectedly during restore -- the backup was likely rejected." >&2
+                    echo "Check the container logs with '$0 $NAME logs openmrs-db'." >&2
+                    exit 1
+                    ;;
+            esac
             STATUS=$(docker inspect --format '{{.State.Health.Status}}' "$DB_CONTAINER" 2>/dev/null || true)
             [ "$STATUS" = "healthy" ] && break
             if [ "$i" -eq 40 ]; then
@@ -377,7 +420,24 @@ case "$COMMAND" in
             fi
             sleep 15
         done
-        echo "Restored $NAME from $RESTORE_PATH."
+        # Restore leaves the stack down, the same way `initialize` does -- both are one-shot
+        # data-loading commands, and the containers they used are running against a throwaway
+        # overlay (a bind-mounted dump, or a completed percona-restore init container) that
+        # shouldn't outlive the restore. This `down` (no -v, so the restored db-data volume
+        # survives) also removes the exited <name>-percona-restore container, rather than
+        # leaving it to be swept up later by some other command's --remove-orphans, and it
+        # makes removing the extraction scratch dir below safe: for a .7z dump restore that
+        # directory is the bind-mount source openmrs-db is still holding open.
+        docker compose "${COMPOSE_FILES[@]}" down
+        if [ -d "$INSTANCE_DIR/restore-scratch" ]; then
+            # Extracted content is written by a container running as root, so the host-side
+            # rm can fail -- same reclaim-ownership fallback destroy uses.
+            if ! rm -rf "$INSTANCE_DIR/restore-scratch" 2>/dev/null; then
+                docker run --rm -v "$INSTANCE_DIR:/target" alpine chown -R "$(id -u):$(id -g)" /target
+                rm -rf "$INSTANCE_DIR/restore-scratch"
+            fi
+        fi
+        echo "Restored $NAME from $RESTORE_PATH. Run '$0 $NAME start' to bring the instance up."
         ;;
     sync)
         sync_services
