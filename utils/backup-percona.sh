@@ -2,7 +2,17 @@
 # General-purpose: takes a physical (xtrabackup) backup of a running MySQL container's data
 # volume into a local directory, already prepared (--apply-log) so it's directly usable as input
 # to utils/convert-percona-backup.sh. Usage:
-#   utils/backup-percona.sh --container=<name> --volume=<db data volume name> --output=<dir>
+#   utils/backup-percona.sh --container=<name> --volume=<db data volume or host dir> --output=<dir> [--databases=<list>]
+#
+# --volume is passed straight through as `docker run -v`'s source, so it works equally as a named
+# Docker volume or as an absolute host directory path bind-mounted into the container's
+# /var/lib/mysql -- unlike clear-configuration-checksums.sh, this script never validates it via
+# `docker volume inspect`, so nothing here requires it to be a real named volume.
+#
+# --databases (optional) limits the backup to a space-separated list of database names (e.g.
+# "malawi sys"), passed straight through to innobackupex's own --databases option -- the required
+# system databases (mysql, performance_schema, etc.) are always included regardless. Omit it to
+# back up every database, same as before.
 #
 # MYSQL_ROOT_PASSWORD (env var, not a named argument -- a secret) authenticates as root; defaults
 # to "openmrs" if unset. Passed to the container as a bare `-e MYSQL_ROOT_PASSWORD` (inheriting
@@ -14,15 +24,17 @@ set -euo pipefail
 CONTAINER=
 VOLUME=
 OUTPUT_DIR=
+DATABASES=
 for arg in "$@"; do
     case "$arg" in
         --container=*) CONTAINER="${arg#*=}" ;;
         --volume=*) VOLUME="${arg#*=}" ;;
         --output=*) OUTPUT_DIR="${arg#*=}" ;;
+        --databases=*) DATABASES="${arg#*=}" ;;
         *) echo "unknown argument: $arg" >&2; exit 1 ;;
     esac
 done
-usage() { echo "usage: $0 --container=<name> --volume=<db data volume name> --output=<dir>" >&2; exit 1; }
+usage() { echo "usage: $0 --container=<name> --volume=<db data volume or host dir> --output=<dir> [--databases=<list>]" >&2; exit 1; }
 [ -z "$CONTAINER" ] && usage
 [ -z "$VOLUME" ] && usage
 [ -z "$OUTPUT_DIR" ] && usage
@@ -38,12 +50,20 @@ echo "Backing up $CONTAINER (physical/xtrabackup) to $OUTPUT_DIR..." >&2
 # Shares the container's network namespace so it can reach it at 127.0.0.1, and mounts its
 # actual data directory read-only -- innobackupex needs real filesystem access to the datadir
 # it's backing up, not just a network connection to the running mysqld.
-MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-openmrs}" docker run --rm --network "container:$CONTAINER" \
-    -e MYSQL_ROOT_PASSWORD \
+#
+# BACKUP_DATABASES is built into the argument list with `set --` (rather than interpolating it
+# into a conditional flag string) so a multi-database value with spaces stays one argument to
+# --databases -- embedding it inside a quoted expansion instead would have the shell re-split it
+# on those same spaces.
+MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-openmrs}" BACKUP_DATABASES="$DATABASES" docker run --rm \
+    --network "container:$CONTAINER" \
+    -e MYSQL_ROOT_PASSWORD -e BACKUP_DATABASES \
     -v "$VOLUME:/var/lib/mysql:ro" \
     -v "$OUTPUT_DIR:/backup" \
     partnersinhealth/percona-0.1-4 \
-    sh -c 'innobackupex --user=root --password="$MYSQL_ROOT_PASSWORD" --host=127.0.0.1 /backup' >&2
+    sh -c 'set -- --user=root --password="$MYSQL_ROOT_PASSWORD" --host=127.0.0.1
+           [ -n "$BACKUP_DATABASES" ] && set -- "$@" --databases="$BACKUP_DATABASES"
+           innobackupex "$@" /backup' >&2
 
 # innobackupex writes into a timestamped subdirectory of the given target, owned by the
 # container's root -- move its contents up one level (in a container, so this works regardless

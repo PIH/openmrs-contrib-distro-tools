@@ -341,9 +341,12 @@ with no arguments for its exact usage; run `openmrs-utils` with no arguments to 
   views into a new copy (the original is untouched), so a definer account that doesn't exist on
   the restore target doesn't cause a restored routine/trigger to fail at execution time. Only
   needed if/when you actually hit that problem.
-- **`backup-percona --container=<name> --volume=<db data volume> --output=<dir>`** -- takes a
-  prepared physical backup of a running MySQL container's data volume (`MYSQL_ROOT_PASSWORD` env
-  var), ready for `convert-percona-backup`.
+- **`backup-percona --container=<name> --volume=<db data volume or host dir> --output=<dir>
+  [--databases=<list>]`** -- takes a prepared physical backup of a running MySQL container's data
+  volume (`MYSQL_ROOT_PASSWORD` env var; a bind-mounted host directory works too, not just a named
+  volume), ready for `convert-percona-backup`. `--databases` (optional, space-separated) limits the
+  backup to specific databases, passed straight through to innobackupex's own `--databases` option
+  -- required system databases are always included regardless; omit it to back up everything.
 - **`clear-configuration-checksums --volume=<openmrs-data volume>`** -- removes
   openmrs-module-initializer's cached `configuration_checksums` from a volume (refuses if a running
   container currently has it mounted), so the next start reprocesses all configuration from
