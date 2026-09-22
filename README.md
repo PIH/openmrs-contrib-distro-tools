@@ -233,6 +233,7 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | `OPENMRS_PIH_CONFIG` | Optional | PIH config profile for this instance — leave unset if the distro doesn't use one; OpenMRS fails at startup if it does and this is missing |
 | `DISTRO_SOURCE_DIR` | Required for `build`/`--dev`/`--build` only | Path to the distro repo checkout |
 | `SEED_IMAGE_NAME` | Required for `initialize` unless a `RESTORE_MYSQL_*`/`RESTORE_OPENMRS_DATA_PATH` source is given for every volume (see "Initializing a server" below) | Full seed image name (no tag) |
+| `OPENMRS_CREATE_TABLES` | Optional (`true`; `initialize` sets it to `false` automatically when relevant, see below) | Whether OpenMRS builds its schema from scratch on first boot |
 | `SERVICE_NAME` | Optional (defaults to the instance name) | Docker Compose project name |
 | `OPENMRS_IMAGE_TAG`, `SEED_IMAGE_TAG` | Optional (`latest`) | Image tags |
 | `OPENMRS_HTTP_PORT`, `OPENMRS_DB_PORT`, `OPENMRS_DEBUG_PORT` | Optional | Port overrides — set differently per instance to run more than one at once |
@@ -272,6 +273,12 @@ or `SEED_IMAGE_NAME`. `openmrs-data` is optional -- if neither `RESTORE_OPENMRS_
 `SEED_IMAGE_NAME` is set, that volume is simply left for OpenMRS's own first-boot
 module-initializer run to build up from scratch, same as a totally fresh install (e.g. when
 restoring a real database backup with no matching `openmrs-data` backup to go with it).
+
+When db-data is restored from a real backup (`RESTORE_MYSQL_DUMP_PATH`/`RESTORE_MYSQL_DATA_PATH`)
+with no matching `openmrs-data`, `initialize` automatically adds `OPENMRS_CREATE_TABLES=false` to
+the instance's `env` file (unless already set) -- otherwise OpenMRS finds no `runtime.properties`
+in the empty `openmrs-data`, assumes a fresh install, and tries to `CREATE TABLE` everything from
+scratch against a database that already has that schema.
 
 ```bash
 # restore the database from a logical dump, but still seed openmrs-data from the nightly image

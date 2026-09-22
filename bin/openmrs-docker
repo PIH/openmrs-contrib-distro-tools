@@ -288,6 +288,7 @@ case "$COMMAND" in
         # extraction and percona/xtrabackup handling happen upstream of this command entirely
         # (see utils/) -- these env vars are always plain, ready-to-use paths.
         DB_SOURCES=0
+        DB_RESTORED_FROM_BACKUP=
         if [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ]; then
             [ -f "$RESTORE_MYSQL_DUMP_PATH" ] || { echo "error: no such file: $RESTORE_MYSQL_DUMP_PATH" >&2; exit 1; }
             # Convert relative to absolute path if needed
@@ -302,6 +303,7 @@ case "$COMMAND" in
             export RESTORE_MYSQL_DUMP_PATH
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-dump.yaml")
             DB_SOURCES=$((DB_SOURCES + 1))
+            DB_RESTORED_FROM_BACKUP=1
         fi
         if [ -n "${RESTORE_MYSQL_DATA_PATH:-}" ]; then
             [ -d "$RESTORE_MYSQL_DATA_PATH" ] || { echo "error: no such directory: $RESTORE_MYSQL_DATA_PATH" >&2; exit 1; }
@@ -310,6 +312,7 @@ case "$COMMAND" in
             export RESTORE_MYSQL_DATA_PATH
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-data-dir.yaml")
             DB_SOURCES=$((DB_SOURCES + 1))
+            DB_RESTORED_FROM_BACKUP=1
         fi
         if [ "$DB_SOURCES" -eq 0 ] && [ -n "${SEED_IMAGE_NAME:-}" ]; then
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-seed.yaml")
@@ -335,6 +338,14 @@ case "$COMMAND" in
         # a real db-data backup with no matching openmrs-data backup -- and just leaves that
         # volume for OpenMRS's own first-boot module-initializer run to build up from scratch,
         # same as a totally fresh install.
+
+        # db-data already has a real schema but openmrs-data doesn't -- without this, OpenMRS
+        # finds no runtime.properties, assumes a fresh install, and tries to CREATE TABLE
+        # everything from scratch against a database that already has it (see openmrs.yaml).
+        # Respects an explicit OPENMRS_CREATE_TABLES already in the env file.
+        if [ -n "$DB_RESTORED_FROM_BACKUP" ] && [ "$DATA_SOURCES" -eq 0 ] && ! grep -q '^OPENMRS_CREATE_TABLES=' "$ENV_FILE"; then
+            echo "OPENMRS_CREATE_TABLES=false" >> "$ENV_FILE"
+        fi
 
         # Only openmrs-db (pulling in whichever restore/seed containers the above selected via
         # depends_on) — openmrs itself never needs to run here. openmrs-db's own healthcheck is

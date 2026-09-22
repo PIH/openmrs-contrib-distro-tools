@@ -19,7 +19,8 @@ services:
     environment:
       OMRS_CONFIG_MODULE_WEB_ADMIN: "true"
       OMRS_CONFIG_AUTO_UPDATE_DATABASE: "true"
-      OMRS_CONFIG_CREATE_TABLES: "true"
+      # false when initialize restored db-data from a backup with no matching openmrs-data
+      OMRS_CONFIG_CREATE_TABLES: "${OPENMRS_CREATE_TABLES:-true}"
       OMRS_CONFIG_CONNECTION_SERVER: openmrs-db
       OMRS_CONFIG_CONNECTION_DATABASE: openmrs
       OMRS_CONFIG_CONNECTION_USERNAME: ${OPENMRS_DB_USER:-openmrs}
