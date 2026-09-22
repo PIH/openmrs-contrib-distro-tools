@@ -1,0 +1,27 @@
+# Overlay used by `openmrs-docker <name> initialize` when the mysql/db-data volume is being
+# populated from SEED_IMAGE_NAME (the default) rather than a RESTORE_* path. Brings up a
+# transient `seed` service that extracts the seed image's dump into the db-init volume, then
+# exits, plus the extra openmrs-db volume mount that lets MySQL's own first-boot import pick it
+# up. Combine with restore-openmrs-data-volume-from-seed.yaml for the historical "seed both
+# volumes from one image" behavior -- included independently so each volume's source (seed, or a
+# local restore path) can be chosen separately.
+#
+# Required env vars: SEED_IMAGE_NAME (no site suffix appended here)
+# Optional: SEED_IMAGE_TAG (default: latest)
+
+services:
+  seed:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-seed
+    image: ${SEED_IMAGE_NAME:?SEED_IMAGE_NAME must be set}:${SEED_IMAGE_TAG:-latest}
+    volumes:
+      - db-init:/target/db-init
+
+  openmrs-db:
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    volumes:
+      - db-init:/docker-entrypoint-initdb.d
+
+volumes:
+  db-init:

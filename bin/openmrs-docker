@@ -11,10 +11,9 @@ usage() {
     echo "  $0 create <name>          Create a new instance"
     echo "  $0 list                   List existing instances"
     echo "  $0 <name> <command> [options]"
-    echo "  $0 <name> <service> <operation> [args...]"
     echo ""
     echo "Commands (for an existing instance):"
-    echo "  initialize              Pre-load a brand-new instance's data volumes from SEED_IMAGE_NAME (refuses to run if any data volume already exists)"
+    echo "  initialize              Pre-load a brand-new instance's data volumes (refuses to run if any data volume already exists) -- see 'initialize' below"
     echo "  start                   Start the stack"
     echo "  stop                    Stop the running stack"
     echo "  restart                 Restart the running containers in place (no rebuild, no recreate)"
@@ -30,10 +29,20 @@ usage() {
     echo "  logs [service]          Tail the container logs; defaults to every service"
     echo "  destroy                 Stop the stack, delete all volumes, and remove the instance directory"
     echo ""
-    echo "Operations (for an attached service, e.g. '$0 <name> openmrs-db restore-dump <path>'):"
-    echo "  Looked up as docker/operations/<service>/<operation>.sh -- see that directory for what's"
-    echo "  available. Includes, for the openmrs-db service: restore-dump, restore-percona,"
-    echo "  backup-mysqldump, backup-percona; for the openmrs service: clear-configuration-checksums."
+    echo "initialize: by default, loads both data volumes from SEED_IMAGE_NAME. Each volume's"
+    echo "source can instead be set independently via env vars (set on the initialize invocation"
+    echo "itself, not persisted to the instance's env file), so a dump/backup can replace the seed"
+    echo "image for one or both volumes -- see utils/ (below) for scripts to prepare these paths"
+    echo "from an archive or a percona/xtrabackup backup:"
+    echo "  RESTORE_DUMP_PATH          mysql/db-data from a plain .sql/.sql.gz dump"
+    echo "  RESTORE_MYSQL_DATA_PATH    mysql/db-data from a ready MySQL data directory (physical restore)"
+    echo "  RESTORE_OPENMRS_DATA_PATH  openmrs-data from a ready, already-extracted directory"
+    echo ""
+    echo "utils/ (in this tool's own directory, not part of this CLI) holds standalone,"
+    echo "general-purpose scripts for preparing restore/backup inputs and other maintenance tasks"
+    echo "-- e.g. extract-archive.sh, convert-percona-backup.sh, backup-mysqldump.sh,"
+    echo "backup-percona.sh, clear-configuration-checksums.sh. Run any of them with no arguments"
+    echo "for usage."
     echo ""
     echo "Options:"
     echo "  --build        Build the distribution from source before start/update"
@@ -145,52 +154,10 @@ set +a
 
 [ -z "$COMMAND" ] && usage
 
-# A word that isn't one of the fixed commands below but names an attached service is a request
-# to run one of that service's operations (docker/operations/<service>/<operation>.sh) instead,
-# e.g. `<name> openmrs-db restore-dump <path>`. Checked -- and dispatched, exiting before any of
-# it runs -- ahead of the add-service/run-service arg-consumption and flag-validation logic
-# below, neither of which applies to this path. Operation scripts are `source`d rather than run
-# as subprocesses, so they inherit COMPOSE_FILES and the other context set up below (NAME,
-# INSTANCE_DIR, MODES_DIR, SERVICE_NAME, ENV_FILE) for free. Each operation script is otherwise
-# self-contained -- no shared helper functions to go find in another file -- calling out to
-# bin/openmrs-utils for the couple of things (waiting for a container to become healthy,
-# extracting a password-protected archive) that are genuinely generic rather than specific to
-# any one operation.
-is_known_command() {
-    case "$1" in
-        initialize|start|stop|restart|status|update|sync|wait|build|pull|logs|destroy|add-service|remove-service|run-service)
-            return 0 ;;
-        *)
-            return 1 ;;
-    esac
-}
-
-if ! is_known_command "$COMMAND" && [ -e "$INSTANCE_DIR/$COMMAND.yaml" ]; then
-    SERVICE_ARG="$COMMAND"
-    OPERATION="${1:-}"
-    [ -z "$OPERATION" ] && { echo "usage: $0 $NAME $SERVICE_ARG <operation> [args...]" >&2; exit 1; }
-    shift
-    OPERATION_SCRIPT="$TOOL_DIR/docker/operations/$SERVICE_ARG/$OPERATION.sh"
-    [ -f "$OPERATION_SCRIPT" ] || { echo "error: no such operation '$OPERATION' for service '$SERVICE_ARG' (looked for $OPERATION_SCRIPT)" >&2; exit 1; }
-    export SERVICE_NAME="${SERVICE_NAME:-$NAME}"
-    # Minimal, self-contained construction (mirrors compose_files() below, not called directly
-    # since it isn't defined until after this point, and operation scripts never need --dev's
-    # distro-source overlay).
-    COMPOSE_FILES=(--env-file "$ENV_FILE")
-    for f in "$INSTANCE_DIR"/*.yaml; do
-        [ -e "$f" ] || continue
-        COMPOSE_FILES+=(-f "$f")
-    done
-    # shellcheck disable=SC1090
-    . "$OPERATION_SCRIPT" "$@"
-    exit $?
-fi
-
-if ! is_known_command "$COMMAND"; then
-    echo "error: '$COMMAND' is not a known command, and no such service is attached to '$NAME' (looked for $INSTANCE_DIR/$COMMAND.yaml)" >&2
-    echo "" >&2
-    usage
-fi
+case "$COMMAND" in
+    initialize|start|stop|restart|status|update|sync|wait|build|pull|logs|destroy|add-service|remove-service|run-service) ;;
+    *) echo "Unknown command: '$COMMAND'"; echo ""; usage ;;
+esac
 
 # add-service/remove-service take a required service name as their one positional argument;
 # logs takes the same positional argument, but optionally. Consumed here before the generic
@@ -229,11 +196,10 @@ fi
 export SERVICE_NAME="${SERVICE_NAME:-$NAME}"
 
 # Rebuilds COMPOSE_FILES from the instance directory's *current* set of copied
-# service fragments plus the dev mode overlay this invocation's flags select. Never
-# includes modes/seeded.yaml — that overlay is only ever used directly by `initialize`,
-# which needs SEED_IMAGE_NAME set; every other command must keep working without it.
-# Called again after remove-service deletes a fragment, so the removal is reflected
-# immediately.
+# service fragments plus the dev mode overlay this invocation's flags select. Never includes any
+# of the restore-*-volume-from-*.yaml overlays — those are only ever used directly by
+# `initialize`; every other command must keep working without them. Called again after
+# remove-service deletes a fragment, so the removal is reflected immediately.
 compose_files() {
     COMPOSE_FILES=(--env-file "$ENV_FILE")
     for f in "$INSTANCE_DIR"/*.yaml; do
@@ -316,7 +282,6 @@ case "$COMMAND" in
         start_stack
         ;;
     initialize)
-        [ -z "${SEED_IMAGE_NAME:-}" ] && { echo "SEED_IMAGE_NAME must be set in $ENV_FILE to initialize from a seed" >&2; exit 1; }
         # initialize only runs against a brand-new instance with no existing data.
         for vol in openmrs-data db-data; do
             if docker volume inspect "${SERVICE_NAME}_${vol}" >/dev/null 2>&1; then
@@ -324,31 +289,77 @@ case "$COMMAND" in
                 exit 1
             fi
         done
-        # Only openmrs-db (which pulls in seed via depends_on) — openmrs itself never needs to
-        # run here. seed's tar extraction directly into openmrs-data (mounted at /target/data)
-        # is already that volume's complete final state, and openmrs-db's own healthcheck is a
-        # genuine completion signal for the DB import: MySQL's entrypoint runs
+
+        # Each volume's source is chosen independently, so e.g. db-data can come from a
+        # RESTORE_DUMP_PATH dump while openmrs-data still comes from SEED_IMAGE_NAME. Archive
+        # extraction and percona/xtrabackup handling happen upstream of this command entirely
+        # (see utils/) -- these env vars are always plain, ready-to-use paths.
+        DB_SOURCES=0
+        if [ -n "${RESTORE_DUMP_PATH:-}" ]; then
+            [ -e "$RESTORE_DUMP_PATH" ] || { echo "error: no such file or directory: $RESTORE_DUMP_PATH" >&2; exit 1; }
+            case "$RESTORE_DUMP_PATH" in
+                /*) ;;
+                *) RESTORE_DUMP_PATH="$(cd "$(dirname "$RESTORE_DUMP_PATH")" && pwd)/$(basename "$RESTORE_DUMP_PATH")" ;;
+            esac
+            case "$RESTORE_DUMP_PATH" in
+                *.gz) export RESTORE_DUMP_FILENAME="dump.sql.gz" ;;
+                *)    export RESTORE_DUMP_FILENAME="dump.sql" ;;
+            esac
+            export RESTORE_DUMP_PATH
+            COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-dump.yaml")
+            DB_SOURCES=$((DB_SOURCES + 1))
+        fi
+        if [ -n "${RESTORE_MYSQL_DATA_PATH:-}" ]; then
+            [ -d "$RESTORE_MYSQL_DATA_PATH" ] || { echo "error: no such directory: $RESTORE_MYSQL_DATA_PATH" >&2; exit 1; }
+            RESTORE_MYSQL_DATA_PATH="$(cd "$RESTORE_MYSQL_DATA_PATH" && pwd)"
+            export RESTORE_MYSQL_DATA_PATH
+            COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-percona.yaml")
+            DB_SOURCES=$((DB_SOURCES + 1))
+        fi
+        if [ "$DB_SOURCES" -eq 0 ] && [ -n "${SEED_IMAGE_NAME:-}" ]; then
+            COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-seed.yaml")
+            DB_SOURCES=$((DB_SOURCES + 1))
+        fi
+        [ "$DB_SOURCES" -eq 1 ] || { echo "error: set exactly one of RESTORE_DUMP_PATH, RESTORE_MYSQL_DATA_PATH, or SEED_IMAGE_NAME to initialize the mysql/db-data volume" >&2; exit 1; }
+
+        DATA_SOURCES=0
+        if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; then
+            [ -d "$RESTORE_OPENMRS_DATA_PATH" ] || { echo "error: no such directory: $RESTORE_OPENMRS_DATA_PATH" >&2; exit 1; }
+            RESTORE_OPENMRS_DATA_PATH="$(cd "$RESTORE_OPENMRS_DATA_PATH" && pwd)"
+            export RESTORE_OPENMRS_DATA_PATH
+            COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-backup.yaml")
+            DATA_SOURCES=$((DATA_SOURCES + 1))
+        fi
+        if [ "$DATA_SOURCES" -eq 0 ] && [ -n "${SEED_IMAGE_NAME:-}" ]; then
+            COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-seed.yaml")
+            DATA_SOURCES=$((DATA_SOURCES + 1))
+        fi
+        [ "$DATA_SOURCES" -eq 1 ] || { echo "error: set exactly one of RESTORE_OPENMRS_DATA_PATH or SEED_IMAGE_NAME to initialize the openmrs-data volume" >&2; exit 1; }
+
+        # Only openmrs-db (pulling in whichever restore/seed containers the above selected via
+        # depends_on) — openmrs itself never needs to run here. openmrs-db's own healthcheck is
+        # a genuine completion signal for the DB import: MySQL's entrypoint runs
         # /docker-entrypoint-initdb.d/ against an internal socket-only instance and only starts
         # accepting the TCP connections this healthcheck makes once that finishes — unlike
         # OpenMRS's own curl healthcheck (see the `wait` command below), which flips to
         # "healthy" as soon as Tomcat responds, long before OpenMRS actually finishes starting.
-        COMPOSE_FILES+=(-f "$MODES_DIR/seeded.yaml")
         docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db
         # fail-on-unhealthy left at its default (false): MySQL doesn't accept TCP connections
         # until its dump import finishes, so a long import legitimately reports unhealthy for a
         # while before succeeding.
-        if ! "$TOOL_DIR/bin/openmrs-utils" wait-for-healthy "${SERVICE_NAME}-openmrs-db" 600; then
+        if ! "$TOOL_DIR/utils/wait-for-healthy.sh" --container="${SERVICE_NAME}-openmrs-db" --timeout=600; then
             docker compose "${COMPOSE_FILES[@]}" down
-            # db-init isn't declared in services/openmrs-db.yaml, only in modes/seeded.yaml, and
-            # nothing ever reads it again after this one-time import — removed by name directly
-            # since a plain `down` (no -v, to keep openmrs-data/db-data intact) won't catch it.
-            # Removed on failure too, so a retry doesn't trip over a leftover volume.
+            # db-init isn't declared in services/openmrs-db.yaml, only in
+            # restore-mysql-volume-from-seed.yaml, and nothing ever reads it again after this
+            # one-time import — removed by name directly since a plain `down` (no -v, to keep
+            # openmrs-data/db-data intact) won't catch it. Removed on failure too, so a retry
+            # doesn't trip over a leftover volume. Harmless no-op when this run didn't use it.
             docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
             exit 1
         fi
         docker compose "${COMPOSE_FILES[@]}" down
         docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
-        echo "Initialized $NAME from seed image ${SEED_IMAGE_NAME}:${SEED_IMAGE_TAG:-latest}."
+        echo "Initialized $NAME."
         ;;
     sync)
         sync_services
@@ -389,10 +400,10 @@ case "$COMMAND" in
         OPENMRS_CONTAINER="${SERVICE_NAME}-openmrs"
         docker logs -f "$OPENMRS_CONTAINER" 2>&1 &
         LOGS_PID=$!
-        # fail-on-unhealthy=true here (unlike initialize/restore's openmrs-db wait): OpenMRS's
-        # own curl healthcheck flips to unhealthy only after genuinely failing to come up, not
-        # as a normal side effect of a still-in-progress import the way MySQL's does.
-        if "$TOOL_DIR/bin/openmrs-utils" wait-for-healthy "$OPENMRS_CONTAINER" 3600 true; then
+        # fail-on-unhealthy=true here (unlike initialize's openmrs-db wait): OpenMRS's own curl
+        # healthcheck flips to unhealthy only after genuinely failing to come up, not as a
+        # normal side effect of a still-in-progress import the way MySQL's does.
+        if "$TOOL_DIR/utils/wait-for-healthy.sh" --container="$OPENMRS_CONTAINER" --timeout=3600 --fail-on-unhealthy=true; then
             kill $LOGS_PID 2>/dev/null || true
             echo "OpenMRS is ready."
             exit 0
@@ -439,10 +450,11 @@ case "$COMMAND" in
             docker volume ls -q --filter "label=com.docker.compose.project=$SERVICE_NAME" \
                 | xargs -r docker volume rm >/dev/null 2>&1 || true
         fi
-        # modes/seeded.yaml's db-init volume isn't declared in services/openmrs-db.yaml, so an
-        # instance that ever ran `initialize` would leave it behind here. Removed by name
-        # directly rather than relying on -v to catch it, since this destroy invocation has no
-        # way to tell whether the instance was ever initialized from a seed in the past.
+        # restore-mysql-volume-from-seed.yaml's db-init volume isn't declared in
+        # services/openmrs-db.yaml, so an instance that ever ran `initialize` from a seed image
+        # would leave it behind here. Removed by name directly rather than relying on -v to
+        # catch it, since this destroy invocation has no way to tell whether the instance was
+        # ever initialized from a seed in the past.
         docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
         if ! rm -rf "$INSTANCE_DIR" 2>/dev/null; then
             # A one-off service (e.g. openmrs-smoke-tests via run-service) may have written
