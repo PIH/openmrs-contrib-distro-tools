@@ -38,12 +38,6 @@ usage() {
     echo "  RESTORE_MYSQL_DATA_PATH    mysql/db-data from a ready MySQL data directory (physical restore)"
     echo "  RESTORE_OPENMRS_DATA_PATH  openmrs-data from a ready, already-extracted directory"
     echo ""
-    echo "utils/ (in this tool's own directory, not part of this CLI) holds standalone,"
-    echo "general-purpose scripts for preparing restore/backup inputs and other maintenance tasks"
-    echo "-- e.g. extract-archive.sh, convert-percona-backup.sh, backup-mysqldump.sh,"
-    echo "backup-percona.sh, clear-configuration-checksums.sh. Run any of them with no arguments"
-    echo "for usage."
-    echo ""
     echo "Options:"
     echo "  --build        Build the distribution from source before start/update"
     echo "  --dev          Expose debug ports and mount the locally-built distro over"
@@ -277,8 +271,11 @@ case "$COMMAND" in
         start_stack
         ;;
     initialize)
-        # initialize only runs against a brand-new instance with no existing data.
-        for vol in openmrs-data db-data; do
+        # initialize only runs against a brand-new instance with no existing data -- ask Compose
+        # which named volumes this instance's currently-attached services actually declare,
+        # rather than hard-coding openmrs-data/db-data, so a volume from a service added later
+        # is covered too.
+        for vol in $(docker compose "${COMPOSE_FILES[@]}" config --volumes); do
             if docker volume inspect "${SERVICE_NAME}_${vol}" >/dev/null 2>&1; then
                 echo "error: ${SERVICE_NAME}_${vol} already exists -- initialize only runs against a brand-new instance with no existing data. Run '$0 $NAME destroy' first if you really want to start over." >&2
                 exit 1
@@ -292,6 +289,7 @@ case "$COMMAND" in
         DB_SOURCES=0
         if [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ]; then
             [ -f "$RESTORE_MYSQL_DUMP_PATH" ] || { echo "error: no such file: $RESTORE_MYSQL_DUMP_PATH" >&2; exit 1; }
+            # Convert relative to absolute path if needed
             case "$RESTORE_MYSQL_DUMP_PATH" in
                 /*) ;;
                 *) RESTORE_MYSQL_DUMP_PATH="$(cd "$(dirname "$RESTORE_MYSQL_DUMP_PATH")" && pwd)/$(basename "$RESTORE_MYSQL_DUMP_PATH")" ;;
@@ -306,9 +304,10 @@ case "$COMMAND" in
         fi
         if [ -n "${RESTORE_MYSQL_DATA_PATH:-}" ]; then
             [ -d "$RESTORE_MYSQL_DATA_PATH" ] || { echo "error: no such directory: $RESTORE_MYSQL_DATA_PATH" >&2; exit 1; }
+            # Convert relative to absolute path if needed
             RESTORE_MYSQL_DATA_PATH="$(cd "$RESTORE_MYSQL_DATA_PATH" && pwd)"
             export RESTORE_MYSQL_DATA_PATH
-            COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-percona.yaml")
+            COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-data-dir.yaml")
             DB_SOURCES=$((DB_SOURCES + 1))
         fi
         if [ "$DB_SOURCES" -eq 0 ] && [ -n "${SEED_IMAGE_NAME:-}" ]; then
@@ -320,6 +319,7 @@ case "$COMMAND" in
         DATA_SOURCES=0
         if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; then
             [ -d "$RESTORE_OPENMRS_DATA_PATH" ] || { echo "error: no such directory: $RESTORE_OPENMRS_DATA_PATH" >&2; exit 1; }
+            # Convert relative to absolute path if needed
             RESTORE_OPENMRS_DATA_PATH="$(cd "$RESTORE_OPENMRS_DATA_PATH" && pwd)"
             export RESTORE_OPENMRS_DATA_PATH
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-backup.yaml")
@@ -329,7 +329,11 @@ case "$COMMAND" in
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-seed.yaml")
             DATA_SOURCES=$((DATA_SOURCES + 1))
         fi
-        [ "$DATA_SOURCES" -eq 1 ] || { echo "error: set exactly one of RESTORE_OPENMRS_DATA_PATH or SEED_IMAGE_NAME to initialize the openmrs-data volume" >&2; exit 1; }
+        # Unlike db-data, openmrs-data is optional to restore/seed here: leaving both
+        # RESTORE_OPENMRS_DATA_PATH and SEED_IMAGE_NAME unset is a valid choice -- e.g. restoring
+        # a real db-data backup with no matching openmrs-data backup -- and just leaves that
+        # volume for OpenMRS's own first-boot module-initializer run to build up from scratch,
+        # same as a totally fresh install.
 
         # Only openmrs-db (pulling in whichever restore/seed containers the above selected via
         # depends_on) — openmrs itself never needs to run here. openmrs-db's own healthcheck is

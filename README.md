@@ -267,8 +267,11 @@ invocation only (these aren't persisted to the instance's env file the way `SEED
 | `RESTORE_MYSQL_DATA_PATH` | `mysql/db-data` | a ready MySQL data directory, copied straight into the volume before MySQL ever starts (far faster for a large database) |
 | `RESTORE_OPENMRS_DATA_PATH` | `openmrs-data` | an already-extracted directory, copied straight into the volume |
 
-At most one of `RESTORE_MYSQL_DUMP_PATH`/`RESTORE_MYSQL_DATA_PATH` may be set (they're two different ways
-to populate the same volume); same for `RESTORE_OPENMRS_DATA_PATH` and the seed image's data half.
+`mysql/db-data` requires exactly one source: `RESTORE_MYSQL_DUMP_PATH`, `RESTORE_MYSQL_DATA_PATH`,
+or `SEED_IMAGE_NAME`. `openmrs-data` is optional -- if neither `RESTORE_OPENMRS_DATA_PATH` nor
+`SEED_IMAGE_NAME` is set, that volume is simply left for OpenMRS's own first-boot
+module-initializer run to build up from scratch, same as a totally fresh install (e.g. when
+restoring a real database backup with no matching `openmrs-data` backup to go with it).
 
 ```bash
 # restore the database from a logical dump, but still seed openmrs-data from the nightly image
@@ -276,6 +279,9 @@ RESTORE_MYSQL_DUMP_PATH=/path/to/backup.sql.gz SEED_IMAGE_NAME=... openmrs-docke
 
 # restore both volumes from real backups, no seed image involved at all
 RESTORE_MYSQL_DATA_PATH=/path/to/datadir RESTORE_OPENMRS_DATA_PATH=/path/to/data-dir openmrs-docker <name> initialize
+
+# restore only the database from a backup; let openmrs-data build up fresh
+RESTORE_MYSQL_DATA_PATH=/path/to/datadir openmrs-docker <name> initialize
 ```
 
 None of the above handle an archive or a raw (not yet copied-back) percona/xtrabackup backup --

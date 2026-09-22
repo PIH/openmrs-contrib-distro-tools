@@ -1,11 +1,12 @@
 # Overlay used by `openmrs-docker <name> initialize` when the mysql/db-data volume is being
-# populated from a local, ready-to-use MySQL data directory (RESTORE_MYSQL_DATA_PATH -- e.g.
-# produced by utils/convert-percona-backup.sh) rather than SEED_IMAGE_NAME or RESTORE_MYSQL_DUMP_PATH.
-# Runs a one-shot init container that copies the directory straight into db-data before
-# openmrs-db ever starts -- unlike restore-mysql-volume-from-dump.yaml, this writes the datadir
-# directly rather than going through MySQL's own SQL-import entrypoint. All percona/xtrabackup
-# handling already happened upstream (utils/backup-percona.sh, utils/convert-percona-backup.sh);
-# by this point RESTORE_MYSQL_DATA_PATH is just a plain directory of MySQL data files to copy in.
+# populated from a local, ready-to-use MySQL data directory (RESTORE_MYSQL_DATA_PATH) rather than
+# SEED_IMAGE_NAME or RESTORE_MYSQL_DUMP_PATH. Runs a one-shot init container that copies the
+# directory straight into db-data before openmrs-db ever starts -- unlike
+# restore-mysql-volume-from-dump.yaml, this writes the datadir directly rather than going through
+# MySQL's own SQL-import entrypoint. Any percona/xtrabackup handling (if that's how the directory
+# was produced -- see utils/backup-percona.sh, utils/convert-percona-backup.sh) already happened
+# upstream of this; by this point RESTORE_MYSQL_DATA_PATH is just a plain directory of MySQL data
+# files to copy in, however it was produced.
 #
 # Set by initialize itself, not persisted to the instance's env file:
 #   RESTORE_MYSQL_DATA_PATH -- absolute path to a ready MySQL data directory on the host
