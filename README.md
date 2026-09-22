@@ -232,7 +232,7 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | `OPENMRS_IMAGE_NAME` | Required | OpenMRS image, no tag |
 | `OPENMRS_PIH_CONFIG` | Optional | PIH config profile for this instance — leave unset if the distro doesn't use one; OpenMRS fails at startup if it does and this is missing |
 | `DISTRO_SOURCE_DIR` | Required for `build`/`--dev`/`--build` only | Path to the distro repo checkout |
-| `SEED_IMAGE_NAME` | Required for `initialize` only | Full seed image name (no tag) |
+| `SEED_IMAGE_NAME` | Required for `initialize` unless a `RESTORE_MYSQL_*`/`RESTORE_OPENMRS_DATA_PATH` source is given for every volume (see "Initializing a server" below) | Full seed image name (no tag) |
 | `SERVICE_NAME` | Optional (defaults to the instance name) | Docker Compose project name |
 | `OPENMRS_IMAGE_TAG`, `SEED_IMAGE_TAG` | Optional (`latest`) | Image tags |
 | `OPENMRS_HTTP_PORT`, `OPENMRS_DB_PORT`, `OPENMRS_DEBUG_PORT` | Optional | Port overrides — set differently per instance to run more than one at once |
@@ -289,14 +289,17 @@ None of the above handle an archive or a raw (not yet copied-back) percona/xtrab
 ready-to-use paths. Preparing one from an archive or a physical backup is a separate step, using
 the standalone scripts in `utils/` (see below):
 
+Only `bin/` is on `PATH` (see "Install" above) -- run these from `$DISTRO_TOOLS_HOME/utils/...`,
+or `cd` there first:
+
 ```bash
 # an archive (optionally password-protected) wrapping a plain dump
-DUMP=$(ARCHIVE_PASSWORD=<password> utils/extract-archive.sh --path=/path/to/backup.sql.gz.7z)
+DUMP=$(ARCHIVE_PASSWORD=<password> $DISTRO_TOOLS_HOME/utils/extract-archive.sh --path=/path/to/backup.sql.gz.7z)
 RESTORE_MYSQL_DUMP_PATH="$DUMP" openmrs-docker <name> initialize
 
 # a percona/xtrabackup backup: extract the archive, then convert it into a ready datadir
-BACKUP_DIR=$(utils/extract-archive.sh --path=/path/to/backup.7z --output-dir=./backup)
-DATADIR=$(utils/convert-percona-backup.sh --backup-dir="$BACKUP_DIR" --output-dir=./datadir)
+BACKUP_DIR=$($DISTRO_TOOLS_HOME/utils/extract-archive.sh --path=/path/to/backup.7z --output-dir=./backup)
+DATADIR=$($DISTRO_TOOLS_HOME/utils/convert-percona-backup.sh --backup-dir="$BACKUP_DIR" --output-dir=./datadir)
 RESTORE_MYSQL_DATA_PATH="$DATADIR" openmrs-docker <name> initialize
 ```
 

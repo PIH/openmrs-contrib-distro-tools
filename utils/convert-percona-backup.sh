@@ -8,7 +8,7 @@
 # --output-dir must not already exist. The result is directly usable as
 # `openmrs-docker <name> initialize`'s RESTORE_MYSQL_DATA_PATH, or as the datadir for any other
 # MySQL container. The output is written by a container running as root -- reclaim ownership
-# (e.g. `docker run --rm -v <output-dir>:/target alpine chown -R $(id -u):$(id -g) /target`)
+# (e.g. `docker run --rm -v <output-dir>:/target alpine:3.21 chown -R $(id -u):$(id -g) /target`)
 # before trying to remove it as a normal user.
 set -euo pipefail
 
@@ -30,14 +30,16 @@ mkdir -p "$OUTPUT_DIR"
 BACKUP_DIR_ABS=$(cd "$BACKUP_DIR" && pwd)
 OUTPUT_DIR_ABS=$(cd "$OUTPUT_DIR" && pwd)
 
-echo "Converting $BACKUP_DIR_ABS into a MySQL data directory at $OUTPUT_DIR_ABS..."
+echo "Converting $BACKUP_DIR_ABS into a MySQL data directory at $OUTPUT_DIR_ABS..." >&2
 # --copy-back, not --move-back: /opt/backup is deliberately mounted read-only, and --move-back's
 # rename step can't unlink the source, so it falls back to copy + a failed delete -- succeeding
 # overall but emitting a spurious "Error: unlink ... failed" line per file.
+# Redirected to stderr like every other utils/ script's own output: this script's stdout is the
+# result path, captured via $(...) by callers (see the usage note above).
 docker run --rm \
     -v "$BACKUP_DIR_ABS:/opt/backup:ro" \
     -v "$OUTPUT_DIR_ABS:/var/lib/mysql" \
     partnersinhealth/percona-0.1-4 \
-    innobackupex --copy-back --datadir=/var/lib/mysql /opt/backup
+    innobackupex --copy-back --datadir=/var/lib/mysql /opt/backup >&2
 
 echo "$OUTPUT_DIR_ABS"

@@ -40,9 +40,9 @@ case "$SRC" in
     *)    READ_CMD=(cat "$SRC") ;;
 esac
 
-echo "Stripping DEFINER clauses from $SRC into $OUTPUT_PATH..."
+echo "Stripping DEFINER clauses from $SRC into $OUTPUT_PATH..." >&2
 case "$OUTPUT_PATH" in
     *.gz) "${READ_CMD[@]}" | sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g' | gzip > "$OUTPUT_PATH" ;;
     *)    "${READ_CMD[@]}" | sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g' > "$OUTPUT_PATH" ;;
 esac
-echo "Wrote $OUTPUT_PATH."
+echo "Wrote $OUTPUT_PATH." >&2

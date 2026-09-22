@@ -23,6 +23,10 @@ for arg in "$@"; do
     esac
 done
 [ -z "$CONTAINER" ] && { echo "usage: $0 --container=<name> [--timeout=<seconds>] [--fail-on-unhealthy=true|false]" >&2; exit 1; }
+case "$TIMEOUT" in
+    ''|*[!0-9]*|0) echo "error: --timeout must be a positive integer, got '$TIMEOUT'" >&2; exit 1 ;;
+esac
+docker inspect "$CONTAINER" >/dev/null 2>&1 || { echo "error: no such container: $CONTAINER" >&2; exit 1; }
 
 INTERVAL=5
 ATTEMPTS=$(( (TIMEOUT + INTERVAL - 1) / INTERVAL ))

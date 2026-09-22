@@ -7,6 +7,10 @@ services:
     environment:
       ACCEPT_EULA: "Y"
       SA_PASSWORD: ${PETL_SQLSERVER_PASSWORD:-9%4qP7b2H!%J}
+      # Read by the healthcheck's sqlcmd below (via -U with no -P, sqlcmd falls back to this env
+      # var) rather than passing the password as a -P argument, which would show up in this
+      # container's own process list/`docker inspect`'s healthcheck config.
+      SQLCMDPASSWORD: ${PETL_SQLSERVER_PASSWORD:-9%4qP7b2H!%J}
       TZ: ${TZ:-UTC}
     ports:
       - ${PETL_SQLSERVER_PORT:-1433}:1433
@@ -16,7 +20,7 @@ services:
       # Checks SQL Server itself is accepting connections, not the target database -- that
       # database doesn't exist yet at this point, it's created afterward by petl-sqlserver-init,
       # which is gated on this healthcheck passing.
-      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "${PETL_SQLSERVER_PASSWORD:-9%4qP7b2H!%J}", "-Q", "SELECT 1"]
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-Q", "SELECT 1"]
       interval: 5s
       timeout: 5s
       retries: 40

@@ -19,6 +19,6 @@ docker volume inspect "$VOLUME" >/dev/null 2>&1 || { echo "error: no such volume
 RUNNING=$(docker ps --filter "volume=$VOLUME" -q)
 [ -n "$RUNNING" ] && { echo "error: $VOLUME is in use by a running container -- stop it first." >&2; exit 1; }
 
-echo "Clearing configuration_checksums from $VOLUME..."
-docker run --rm -v "$VOLUME:/data" alpine rm -rf /data/configuration_checksums
-echo "Cleared configuration_checksums from $VOLUME. The next start will reprocess all configuration."
+echo "Clearing configuration_checksums from $VOLUME..." >&2
+docker run --rm -v "$VOLUME:/data" alpine:3.21 rm -rf /data/configuration_checksums
+echo "Cleared configuration_checksums from $VOLUME. The next start will reprocess all configuration." >&2

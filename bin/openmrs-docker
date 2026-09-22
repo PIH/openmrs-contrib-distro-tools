@@ -272,7 +272,11 @@ case "$COMMAND" in
         ;;
     initialize)
         # initialize only runs against a brand-new instance -- check every volume Compose declares.
-        for vol in $(docker compose "${COMPOSE_FILES[@]}" config --volumes); do
+        # Assigned first (not `for vol in $(...)` directly): set -e does not fire on a failed
+        # command substitution inside a for loop's word list, so a failure there would otherwise
+        # silently skip this, this command's only protection against clobbering existing data.
+        INIT_VOLUMES=$(docker compose "${COMPOSE_FILES[@]}" config --volumes)
+        for vol in $INIT_VOLUMES; do
             if docker volume inspect "${SERVICE_NAME}_${vol}" >/dev/null 2>&1; then
                 echo "error: ${SERVICE_NAME}_${vol} already exists -- initialize only runs against a brand-new instance with no existing data. Run '$0 $NAME destroy' first if you really want to start over." >&2
                 exit 1
@@ -339,22 +343,31 @@ case "$COMMAND" in
         # accepting the TCP connections this healthcheck makes once that finishes — unlike
         # OpenMRS's own curl healthcheck (see the `wait` command below), which flips to
         # "healthy" as soon as Tomcat responds, long before OpenMRS actually finishes starting.
-        docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db
+        # db-init isn't declared in services/openmrs-db.yaml, only in
+        # restore-mysql-volume-from-seed.yaml, and nothing ever reads it again after this
+        # one-time import — removed by name directly since a plain `down` (no -v, to keep
+        # openmrs-data/db-data intact) won't catch it. Harmless no-op when this run didn't use it.
+        initialize_cleanup() {
+            docker compose "${COMPOSE_FILES[@]}" down
+            docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
+        }
+        # `|| { ...; }` (not letting these fail bare) so set -e doesn't abort mid-failure and skip
+        # the cleanup below -- a failed `up -d` (bad restore input, port conflict, pull failure)
+        # would otherwise leave the compose network, containers, and volumes behind.
+        if ! docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db; then
+            initialize_cleanup
+            echo "error: initialize failed -- run '$0 $NAME destroy' before retrying." >&2
+            exit 1
+        fi
         # fail-on-unhealthy left at its default (false): MySQL doesn't accept TCP connections
         # until its dump import finishes, so a long import legitimately reports unhealthy for a
         # while before succeeding.
         if ! "$TOOL_DIR/utils/wait-for-healthy.sh" --container="${SERVICE_NAME}-openmrs-db" --timeout=600; then
-            docker compose "${COMPOSE_FILES[@]}" down
-            # db-init isn't declared in services/openmrs-db.yaml, only in
-            # restore-mysql-volume-from-seed.yaml, and nothing ever reads it again after this
-            # one-time import — removed by name directly since a plain `down` (no -v, to keep
-            # openmrs-data/db-data intact) won't catch it. Removed on failure too, so a retry
-            # doesn't trip over a leftover volume. Harmless no-op when this run didn't use it.
-            docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
+            initialize_cleanup
+            echo "error: initialize failed -- run '$0 $NAME destroy' before retrying." >&2
             exit 1
         fi
-        docker compose "${COMPOSE_FILES[@]}" down
-        docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
+        initialize_cleanup
         echo "Initialized $NAME."
         ;;
     sync)
@@ -458,7 +471,7 @@ case "$COMMAND" in
             # reclaim ownership via a throwaway root container and retry, rather than
             # requiring sudo or leaving the directory behind. Only attempted as a fallback,
             # so the common case (nothing root-owned) never depends on pulling alpine.
-            docker run --rm -v "$INSTANCE_DIR:/target" alpine chown -R "$(id -u):$(id -g)" /target
+            docker run --rm -v "$INSTANCE_DIR:/target" alpine:3.21 chown -R "$(id -u):$(id -g)" /target
             rm -rf "$INSTANCE_DIR"
         fi
         echo "Removed instance directory $INSTANCE_DIR"

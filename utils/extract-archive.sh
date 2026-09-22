@@ -5,10 +5,12 @@
 # If <path> is a recognized archive (.7z, .zip, .tar.gz, .tgz, .tar), extracts it into
 # --output-dir (default: a fresh directory from mktemp -d) and prints the path to its single
 # top-level entry. Otherwise prints <path> unchanged. ARCHIVE_PASSWORD (env var, optional,
-# .7z/.zip only -- a secret, so it's an env var rather than a named argument, which would show
-# up in `ps` output) is used if set; extraction is attempted with an empty password if it's
-# unset, which succeeds for an unprotected archive and fails cleanly (not hangs) if the archive
-# actually needed one.
+# .7z/.zip only -- a secret) is used if set; extraction is attempted with an empty password if
+# it's unset, which succeeds for an unprotected archive and fails cleanly (not hangs) if the
+# archive actually needed one. Passed to the container as a bare `-e ARCHIVE_PW` (inheriting the
+# already-set value from this script's own environment) rather than `-e ARCHIVE_PW=value`, so the
+# value itself never appears in `docker`'s argv -- and so never shows up in `ps` output, which
+# shows argv but not environment.
 set -euo pipefail
 
 SRC=
@@ -34,8 +36,8 @@ case "$SRC" in
         # interactive password prompt, which would hang a non-interactive script -- an empty
         # password succeeds against an unprotected archive and fails cleanly (not hangs)
         # against a genuinely protected one with none given.
-        docker run --rm \
-            -e ARCHIVE_PW="${ARCHIVE_PASSWORD:-}" -e ARCHIVE_SRC="$(basename "$SRC")" \
+        ARCHIVE_PW="${ARCHIVE_PASSWORD:-}" docker run --rm \
+            -e ARCHIVE_PW -e ARCHIVE_SRC="$(basename "$SRC")" \
             -v "$DIR:/archive:ro" \
             -v "$OUTPUT_DIR:/out" \
             alpine:3.21 \
