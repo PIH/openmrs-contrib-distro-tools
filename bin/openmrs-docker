@@ -71,117 +71,6 @@ $(cat "$template")
 RENDER_SERVICE_ENV_EOF"
 }
 
-# Extracts a password-protected .7z archive (via PETL_BACKUP_PASSWORD) into a scratch directory
-# under the instance dir, and echoes the path to the extracted content. If SRC doesn't end in
-# .7z, echoes SRC unchanged -- callers always route their input path through this function.
-# Defined early (before COMMAND dispatch) so operation scripts sourced from the service+operation
-# dispatch path below can use it too.
-extract_if_7z() {
-    local src="$1"
-    case "$src" in
-        *.7z)
-            [ -z "${PETL_BACKUP_PASSWORD:-}" ] && { echo "error: PETL_BACKUP_PASSWORD must be set to extract $src" >&2; exit 1; }
-            local scratch="$INSTANCE_DIR/restore-scratch"
-            rm -rf "$scratch"
-            mkdir -p "$scratch"
-            # `cd ... && pwd` rather than realpath: nothing beyond Docker itself is assumed
-            # to be present on the host, and realpath is absent on macOS before 12.3.
-            local dir
-            dir=$(cd "$(dirname "$src")" && pwd)
-            # Password and filename are passed as container environment variables rather than
-            # interpolated into the `sh -c` string, so neither can be re-parsed as shell syntax.
-            # Extraction output is redirected to stderr -- this function's stdout is captured by
-            # callers via $(extract_if_7z ...) and must contain only the extracted path.
-            docker run --rm \
-                -e SEVENZ_PW="$PETL_BACKUP_PASSWORD" -e SEVENZ_SRC="$(basename "$src")" \
-                -v "$dir:/backup:ro" \
-                -v "$scratch:/out" \
-                alpine:3.21 \
-                sh -c 'apk add --no-cache p7zip >/dev/null && 7z x -p"$SEVENZ_PW" -o/out -y "/backup/$SEVENZ_SRC"' >&2
-            local extracted count
-            extracted=$(find "$scratch" -mindepth 1 -maxdepth 1)
-            [ -z "$extracted" ] && { echo "error: extraction of $src produced no files" >&2; exit 1; }
-            # Exactly one entry: more than one would make the echoed path multi-line and corrupt
-            # every downstream use of it (volume specs, path tests).
-            count=$(echo "$extracted" | wc -l)
-            [ "$count" -eq 1 ] || { echo "error: extraction of $src produced $count top-level entries, expected exactly 1" >&2; exit 1; }
-            echo "$extracted"
-            ;;
-        *)
-            echo "$src"
-            ;;
-    esac
-}
-
-# Shared by initialize and the openmrs-db restore-dump/restore-percona operations: all three
-# refuse to run against an instance that already has data, and all three bring up openmrs-db
-# under some mode overlay and wait for it to finish importing before tearing back down. $1 is
-# the calling command's/operation's name, used in messages.
-refuse_if_data_volumes_exist() {
-    local vol
-    for vol in openmrs-data db-data; do
-        if docker volume inspect "${SERVICE_NAME}_${vol}" >/dev/null 2>&1; then
-            echo "error: ${SERVICE_NAME}_${vol} already exists -- $1 only runs against a brand-new instance with no existing data. Run '$0 $NAME destroy' first if you really want to start over." >&2
-            exit 1
-        fi
-    done
-}
-
-# db-init isn't declared in services/openmrs-db.yaml, only in modes/seeded.yaml, and nothing
-# ever reads it again after initialize's one-time import — removed by name directly since a
-# plain `down` (no -v, to keep openmrs-data/db-data intact) won't catch it.
-remove_db_init_volume() {
-    docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
-}
-
-# Extracted content is written by a container running as root, so the host-side rm can fail
-# -- same reclaim-ownership fallback destroy uses.
-remove_restore_scratch() {
-    if [ -d "$INSTANCE_DIR/restore-scratch" ]; then
-        if ! rm -rf "$INSTANCE_DIR/restore-scratch" 2>/dev/null; then
-            docker run --rm -v "$INSTANCE_DIR:/target" alpine chown -R "$(id -u):$(id -g)" /target
-            rm -rf "$INSTANCE_DIR/restore-scratch"
-        fi
-    fi
-}
-
-# The caller has already appended whatever mode overlay it needs to COMPOSE_FILES and brought
-# openmrs-db up; this waits for it to report healthy, exiting non-zero (after tearing the
-# stack down and running $2, if given, for command-specific cleanup) if it dies instead. $1
-# is the calling command's/operation's name, used in messages.
-wait_for_openmrs_db_healthy() {
-    local action="$1"
-    local cleanup="${2:-}"
-    fail() {
-        docker compose "${COMPOSE_FILES[@]}" down
-        [ -n "$cleanup" ] && "$cleanup"
-        exit 1
-    }
-    DB_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -q openmrs-db)
-    echo "Waiting for the ${action} database to finish importing..."
-    for i in $(seq 1 40); do
-        # A container that fails to start is declared `restart: unless-stopped`, so it
-        # crash-loops rather than settling on exited/dead -- `restarting` has to be checked
-        # too, or this would poll the full ~10 minutes against a container that's never
-        # coming back. Deliberately NOT bailing on "unhealthy": the healthcheck gives up
-        # after ~130s, but MySQL doesn't accept TCP connections until its import finishes, so
-        # any import longer than that legitimately reports unhealthy while still succeeding.
-        case "$(docker inspect --format '{{.State.Status}}' "$DB_CONTAINER" 2>/dev/null || true)" in
-            exited|dead|restarting)
-                echo "error: openmrs-db exited unexpectedly during ${action} -- check '$0 $NAME logs openmrs-db'." >&2
-                fail
-                ;;
-        esac
-        STATUS=$(docker inspect --format '{{.State.Health.Status}}' "$DB_CONTAINER" 2>/dev/null || true)
-        [ "$STATUS" = "healthy" ] && return 0
-        if [ "$i" -eq 40 ]; then
-            echo "Timed out waiting for openmrs-db to become healthy after ${action}" >&2
-            fail
-        fi
-        sleep 15
-    done
-}
-
 [ $# -ge 1 ] || usage
 
 if [ "$1" = "create" ]; then
@@ -261,8 +150,12 @@ set +a
 # e.g. `<name> openmrs-db restore-dump <path>`. Checked -- and dispatched, exiting before any of
 # it runs -- ahead of the add-service/run-service arg-consumption and flag-validation logic
 # below, neither of which applies to this path. Operation scripts are `source`d rather than run
-# as subprocesses, so they inherit COMPOSE_FILES and the helpers above (extract_if_7z,
-# refuse_if_data_volumes_exist, wait_for_openmrs_db_healthy, etc.) for free.
+# as subprocesses, so they inherit COMPOSE_FILES and the other context set up below (NAME,
+# INSTANCE_DIR, MODES_DIR, SERVICE_NAME, ENV_FILE) for free. Each operation script is otherwise
+# self-contained -- no shared helper functions to go find in another file -- calling out to
+# bin/openmrs-utils for the couple of things (waiting for a container to become healthy,
+# extracting a password-protected archive) that are genuinely generic rather than specific to
+# any one operation.
 is_known_command() {
     case "$1" in
         initialize|start|stop|restart|status|update|sync|wait|build|pull|logs|destroy|add-service|remove-service|run-service)
@@ -424,7 +317,13 @@ case "$COMMAND" in
         ;;
     initialize)
         [ -z "${SEED_IMAGE_NAME:-}" ] && { echo "SEED_IMAGE_NAME must be set in $ENV_FILE to initialize from a seed" >&2; exit 1; }
-        refuse_if_data_volumes_exist initialize
+        # initialize only runs against a brand-new instance with no existing data.
+        for vol in openmrs-data db-data; do
+            if docker volume inspect "${SERVICE_NAME}_${vol}" >/dev/null 2>&1; then
+                echo "error: ${SERVICE_NAME}_${vol} already exists -- initialize only runs against a brand-new instance with no existing data. Run '$0 $NAME destroy' first if you really want to start over." >&2
+                exit 1
+            fi
+        done
         # Only openmrs-db (which pulls in seed via depends_on) — openmrs itself never needs to
         # run here. seed's tar extraction directly into openmrs-data (mounted at /target/data)
         # is already that volume's complete final state, and openmrs-db's own healthcheck is a
@@ -435,9 +334,20 @@ case "$COMMAND" in
         # "healthy" as soon as Tomcat responds, long before OpenMRS actually finishes starting.
         COMPOSE_FILES+=(-f "$MODES_DIR/seeded.yaml")
         docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db
-        wait_for_openmrs_db_healthy seeded remove_db_init_volume
+        # fail-on-unhealthy left at its default (false): MySQL doesn't accept TCP connections
+        # until its dump import finishes, so a long import legitimately reports unhealthy for a
+        # while before succeeding.
+        if ! "$TOOL_DIR/bin/openmrs-utils" wait-for-healthy "${SERVICE_NAME}-openmrs-db" 600; then
+            docker compose "${COMPOSE_FILES[@]}" down
+            # db-init isn't declared in services/openmrs-db.yaml, only in modes/seeded.yaml, and
+            # nothing ever reads it again after this one-time import — removed by name directly
+            # since a plain `down` (no -v, to keep openmrs-data/db-data intact) won't catch it.
+            # Removed on failure too, so a retry doesn't trip over a leftover volume.
+            docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
+            exit 1
+        fi
         docker compose "${COMPOSE_FILES[@]}" down
-        remove_db_init_volume
+        docker volume rm "${SERVICE_NAME}_db-init" >/dev/null 2>&1 || true
         echo "Initialized $NAME from seed image ${SEED_IMAGE_NAME}:${SEED_IMAGE_TAG:-latest}."
         ;;
     sync)
@@ -476,35 +386,21 @@ case "$COMMAND" in
         docker compose "${COMPOSE_FILES[@]}" run --rm "$SERVICE_ARG" "$@"
         ;;
     wait)
-        OPENMRS_CONTAINER=$(docker compose "${COMPOSE_FILES[@]}" ps -a -q openmrs)
-        echo "Waiting for OpenMRS to be ready (up to 60 minutes)..."
+        OPENMRS_CONTAINER="${SERVICE_NAME}-openmrs"
         docker logs -f "$OPENMRS_CONTAINER" 2>&1 &
         LOGS_PID=$!
-        for i in $(seq 1 360); do
-            case "$(docker inspect --format='{{.State.Status}}' "$OPENMRS_CONTAINER")" in
-                exited|dead)
-                    kill $LOGS_PID 2>/dev/null || true
-                    echo "OpenMRS container exited unexpectedly"
-                    exit 1
-                    ;;
-            esac
-            case "$(docker inspect --format='{{.State.Health.Status}}' "$OPENMRS_CONTAINER")" in
-                healthy)
-                    kill $LOGS_PID 2>/dev/null || true
-                    echo "OpenMRS is ready."
-                    exit 0
-                    ;;
-                unhealthy)
-                    kill $LOGS_PID 2>/dev/null || true
-                    echo "OpenMRS container reported unhealthy"
-                    exit 1
-                    ;;
-            esac
-            sleep 10
-        done
-        kill $LOGS_PID 2>/dev/null || true
-        echo "Timed out waiting for OpenMRS to become ready after 60 minutes"
-        exit 1
+        # fail-on-unhealthy=true here (unlike initialize/restore's openmrs-db wait): OpenMRS's
+        # own curl healthcheck flips to unhealthy only after genuinely failing to come up, not
+        # as a normal side effect of a still-in-progress import the way MySQL's does.
+        if "$TOOL_DIR/bin/openmrs-utils" wait-for-healthy "$OPENMRS_CONTAINER" 3600 true; then
+            kill $LOGS_PID 2>/dev/null || true
+            echo "OpenMRS is ready."
+            exit 0
+        else
+            kill $LOGS_PID 2>/dev/null || true
+            echo "OpenMRS did not become ready -- see log output above, or '$0 $NAME logs openmrs'."
+            exit 1
+        fi
         ;;
     build)
         build_image

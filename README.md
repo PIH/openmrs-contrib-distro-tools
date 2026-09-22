@@ -288,9 +288,10 @@ openmrs-docker <name> openmrs-db restore-percona /path/to/backup-dir
 `restore-dump` hands the file to MySQL's own first-boot import. `restore-percona` copies the backup
 straight into the data directory before MySQL ever starts, which is far faster for a large database.
 
-Either path may instead be a password-protected `.7z` archive, which is unpacked for you before the
-restore runs — set `PETL_BACKUP_PASSWORD` to its password. The archive must contain exactly one
-top-level file or directory (the dump, or the backup directory).
+Either path may instead be an archive (`.7z`, `.zip`, `.tar.gz`/`.tgz`, `.tar`) wrapping the dump or
+backup directory, optionally password-protected (`.7z`/`.zip` only) — set `PETL_BACKUP_PASSWORD` to
+its password. The archive must contain exactly one top-level file or directory. Extraction is
+handled by `openmrs-utils extract-archive` (see below).
 
 ```bash
 PETL_BACKUP_PASSWORD=<password> openmrs-docker <name> openmrs-db restore-dump /path/to/backup.sql.gz.7z
@@ -434,6 +435,34 @@ with the following content, then restart WSL (`wsl --shutdown` in PowerShell):
 [wsl2]
 memory=8GB
 ```
+
+## Utilities (`openmrs-utils`)
+
+A standalone CLI, alongside `openmrs-docker` and `openmrs-sdk` in `bin/`, for general-purpose
+Docker/shell utilities that aren't specific to this tool's own conventions — usable on their own, or
+called from `openmrs-docker`'s service operations (e.g. `restore-dump`/`restore-percona` use
+`extract-archive`; `initialize`/`wait` use `wait-for-healthy`).
+
+```bash
+openmrs-utils wait-for-healthy <container> [timeout-seconds] [fail-on-unhealthy]
+```
+
+Polls until `<container>` reports healthy. Fails fast if the container is exited, dead, or
+restarting (a container declared `restart: unless-stopped` crash-loops rather than settling, so this
+is checked in addition to exited/dead), or times out after `timeout-seconds` (default 600). If
+`fail-on-unhealthy` is `true` (default `false`), a `Health.Status` of `unhealthy` is also treated as
+an immediate failure rather than kept polling through — useful for a container whose healthcheck can
+legitimately report unhealthy while a long-running first-boot operation is still in progress.
+
+```bash
+openmrs-utils extract-archive <path> [output-dir]
+```
+
+If `<path>` is a recognized archive (`.7z`, `.zip`, `.tar.gz`, `.tgz`, `.tar`), extracts it into
+`output-dir` (default: a fresh directory from `mktemp -d`) and prints the path to its single
+top-level entry. Otherwise prints `<path>` unchanged. `ARCHIVE_PASSWORD` (env var, optional, `.7z`/
+`.zip` only) is used if set; extraction is attempted with an empty password if it's unset, which
+succeeds for an unprotected archive and fails cleanly (not hangs) if the archive actually needed one.
 
 ## CI: reusable workflows
 
