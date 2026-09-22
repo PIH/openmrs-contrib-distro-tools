@@ -40,8 +40,8 @@ case "$SRC" in
             -e ARCHIVE_PW -e ARCHIVE_SRC="$(basename "$SRC")" \
             -v "$DIR:/archive:ro" \
             -v "$OUTPUT_DIR:/out" \
-            alpine:3.21 \
-            sh -c 'apk add --no-cache p7zip >/dev/null && 7z x -p"$ARCHIVE_PW" -o/out -y "/archive/$ARCHIVE_SRC"' >&2
+            partnersinhealth/p7zip \
+            sh -c '7z x -p"$ARCHIVE_PW" -o/out -y "/archive/$ARCHIVE_SRC"' >&2
         ;;
     *.tar.gz|*.tgz|*.tar)
         [ -z "$OUTPUT_DIR" ] && OUTPUT_DIR=$(mktemp -d)

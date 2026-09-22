@@ -1,12 +1,12 @@
 name: Build and Push Docker Image
-description: Builds a multi-arch OpenMRS distro Docker image from a built distro/web directory and pushes it to Docker Hub, tagged 'latest' and with the given version.
+description: Builds a (by default multi-arch) Docker image from the given build context and pushes it to Docker Hub, tagged 'latest' and with the given version.
 
 inputs:
   image_name:
     description: Docker Hub image name, without tag
     required: true
   context:
-    description: Docker build context directory (a built distro/web directory)
+    description: Docker build context directory (e.g. a built distro/web directory)
     required: true
   version:
     description: Version to tag the image with, in addition to 'latest'
@@ -14,6 +14,10 @@ inputs:
   dockerhub_password:
     description: Docker Hub password for the pihci account
     required: true
+  platforms:
+    description: Comma-separated platforms to build for
+    required: false
+    default: linux/amd64,linux/arm64
 
 runs:
   using: composite
@@ -35,7 +39,7 @@ runs:
       with:
         context: ${{ inputs.context }}
         push: true
-        platforms: linux/amd64,linux/arm64
+        platforms: ${{ inputs.platforms }}
         tags: |
           ${{ inputs.image_name }}:latest
           ${{ inputs.image_name }}:${{ inputs.version }}

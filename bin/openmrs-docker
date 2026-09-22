@@ -36,7 +36,8 @@ usage() {
     echo "from an archive or a percona/xtrabackup backup:"
     echo "  RESTORE_MYSQL_DUMP_PATH    mysql/db-data from a plain .sql/.sql.gz dump"
     echo "  RESTORE_MYSQL_DATA_PATH    mysql/db-data from a ready MySQL data directory (physical restore)"
-    echo "  RESTORE_OPENMRS_DATA_PATH  openmrs-data from a ready, already-extracted directory"
+    echo "  RESTORE_OPENMRS_DATA_PATH  openmrs-data from a directory, or a .tar.gz/.tgz/.tar/.7z/.zip archive"
+    echo "                             of one (ARCHIVE_PASSWORD for a protected .7z/.zip)"
     echo ""
     echo "Options:"
     echo "  --build        Build the distribution from source before start/update"
@@ -284,9 +285,11 @@ case "$COMMAND" in
         done
 
         # Each volume's source is chosen independently, so e.g. db-data can come from a
-        # RESTORE_MYSQL_DUMP_PATH dump while openmrs-data still comes from SEED_IMAGE_NAME. Archive
-        # extraction and percona/xtrabackup handling happen upstream of this command entirely
-        # (see utils/) -- these env vars are always plain, ready-to-use paths.
+        # RESTORE_MYSQL_DUMP_PATH dump while openmrs-data still comes from SEED_IMAGE_NAME.
+        # Percona/xtrabackup handling and extracting a db archive happen upstream of this command
+        # entirely (see utils/). The one exception is RESTORE_OPENMRS_DATA_PATH, which also takes
+        # an archive directly, extracted straight into the volume (never onto the host) by
+        # restore-openmrs-data-volume-from-archive.yaml.
         DB_SOURCES=0
         DB_RESTORED_FROM_BACKUP=
         if [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ]; then
@@ -322,11 +325,25 @@ case "$COMMAND" in
 
         DATA_SOURCES=0
         if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; then
-            [ -d "$RESTORE_OPENMRS_DATA_PATH" ] || { echo "error: no such directory: $RESTORE_OPENMRS_DATA_PATH" >&2; exit 1; }
-            # Convert relative to absolute path if needed
-            RESTORE_OPENMRS_DATA_PATH="$(cd "$RESTORE_OPENMRS_DATA_PATH" && pwd)"
+            if [ -d "$RESTORE_OPENMRS_DATA_PATH" ]; then
+                # Convert relative to absolute path if needed
+                RESTORE_OPENMRS_DATA_PATH="$(cd "$RESTORE_OPENMRS_DATA_PATH" && pwd)"
+                COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-backup.yaml")
+            elif [ -f "$RESTORE_OPENMRS_DATA_PATH" ]; then
+                case "$RESTORE_OPENMRS_DATA_PATH" in
+                    *.tar.gz|*.tgz) export RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME="archive.tar.gz" ;;
+                    *.tar) export RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME="archive.tar" ;;
+                    *.7z)  export RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME="archive.7z" ;;
+                    *.zip) export RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME="archive.zip" ;;
+                    *) echo "error: RESTORE_OPENMRS_DATA_PATH must be a directory or a .tar.gz/.tgz/.tar/.7z/.zip archive: $RESTORE_OPENMRS_DATA_PATH" >&2; exit 1 ;;
+                esac
+                RESTORE_OPENMRS_DATA_PATH="$(cd "$(dirname "$RESTORE_OPENMRS_DATA_PATH")" && pwd)/$(basename "$RESTORE_OPENMRS_DATA_PATH")"
+                COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-archive.yaml")
+            else
+                echo "error: no such file or directory: $RESTORE_OPENMRS_DATA_PATH" >&2
+                exit 1
+            fi
             export RESTORE_OPENMRS_DATA_PATH
-            COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-backup.yaml")
             DATA_SOURCES=$((DATA_SOURCES + 1))
         fi
         if [ "$DATA_SOURCES" -eq 0 ] && [ -n "${SEED_IMAGE_NAME:-}" ]; then
@@ -366,6 +383,9 @@ case "$COMMAND" in
         # the cleanup below -- a failed `up -d` (bad restore input, port conflict, pull failure)
         # would otherwise leave the compose network, containers, and volumes behind.
         if ! docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db; then
+            # A failed restore/seed container's own output (e.g. 7z's "Wrong password") is the only
+            # clue to why, and `down` below deletes it along with the container.
+            docker compose "${COMPOSE_FILES[@]}" logs --tail=20 >&2 || true
             initialize_cleanup
             echo "error: initialize failed -- run '$0 $NAME destroy' before retrying." >&2
             exit 1

@@ -266,7 +266,7 @@ invocation only (these aren't persisted to the instance's env file the way `SEED
 | `SEED_IMAGE_NAME` / `SEED_IMAGE_TAG` | either, if not overridden | the nightly seed image (documented per-distro) |
 | `RESTORE_MYSQL_DUMP_PATH` | `mysql/db-data` | a plain `.sql`/`.sql.gz` dump, handed to MySQL's own first-boot import |
 | `RESTORE_MYSQL_DATA_PATH` | `mysql/db-data` | a ready MySQL data directory, copied straight into the volume before MySQL ever starts (far faster for a large database) |
-| `RESTORE_OPENMRS_DATA_PATH` | `openmrs-data` | an already-extracted directory, copied straight into the volume |
+| `RESTORE_OPENMRS_DATA_PATH` | `openmrs-data` | a directory, copied straight into the volume -- or a `.tar.gz`/`.tgz`/`.tar`/`.7z`/`.zip` archive of one (e.g. from `backup-openmrs-data-directory`), extracted straight into the volume without touching the host's disk (`ARCHIVE_PASSWORD` for a protected `.7z`/`.zip`) |
 
 `mysql/db-data` requires exactly one source: `RESTORE_MYSQL_DUMP_PATH`, `RESTORE_MYSQL_DATA_PATH`,
 or `SEED_IMAGE_NAME`. `openmrs-data` is optional -- if neither `RESTORE_OPENMRS_DATA_PATH` nor
@@ -289,10 +289,16 @@ RESTORE_MYSQL_DATA_PATH=/path/to/datadir RESTORE_OPENMRS_DATA_PATH=/path/to/data
 
 # restore only the database from a backup; let openmrs-data build up fresh
 RESTORE_MYSQL_DATA_PATH=/path/to/datadir openmrs-docker <name> initialize
+
+# restore openmrs-data straight from a backup-openmrs-data-directory archive
+ARCHIVE_PASSWORD=<password> RESTORE_OPENMRS_DATA_PATH=/path/to/openmrs-data.7z RESTORE_MYSQL_DUMP_PATH=/path/to/backup.sql.gz openmrs-docker <name> initialize
 ```
 
-None of the above handle an archive or a raw (not yet copied-back) percona/xtrabackup backup --
-`RESTORE_MYSQL_DUMP_PATH`/`RESTORE_MYSQL_DATA_PATH`/`RESTORE_OPENMRS_DATA_PATH` are always plain,
+If an archive has exactly one top-level directory (as `backup-openmrs-data-directory` produces),
+that directory's contents become `openmrs-data`; otherwise the archive's top level is used as is.
+
+Apart from that, none of the above handle an archive or a raw (not yet copied-back)
+percona/xtrabackup backup -- `RESTORE_MYSQL_DUMP_PATH`/`RESTORE_MYSQL_DATA_PATH` are always plain,
 ready-to-use paths. Preparing one from an archive or a physical backup is a separate step, using
 the standalone scripts in `utils/` (see below):
 
@@ -354,6 +360,19 @@ with no arguments for its exact usage; run `openmrs-utils` with no arguments to 
   volume), ready for `convert-percona-backup`. `--databases` (optional, space-separated) limits the
   backup to specific databases, passed straight through to innobackupex's own `--databases` option
   -- required system databases are always included regardless; omit it to back up everything.
+- **`backup-openmrs-data-directory --volume=<openmrs-data volume or host dir> --output=<path>
+  [--exclude-distribution-artifacts] [--allow-running]`** -- archives an OpenMRS application data
+  directory (a named volume or an absolute host directory path). `--output` ending in
+  `.tar.gz`/`.tgz` produces a plain gzip-compressed tar; ending in `.7z` produces a
+  password-protected archive instead (`ARCHIVE_PASSWORD` env var, required). The archive holds a
+  single top-level `openmrs-data/` directory. Pass the archive itself as `initialize`'s
+  `RESTORE_OPENMRS_DATA_PATH`, or extract it first with `extract-archive` for a plain directory. Backs up the whole directory by default, same as the seed
+  image build; `--exclude-distribution-artifacts` skips the contents of `modules/`, `owa/`,
+  `configuration/` and `frontend/`, which OpenMRS re-copies from its image on every start --
+  smaller, and avoids restoring stale `.omod`s alongside a newer distro's. Refuses to run while a
+  running container has the volume mounted (stop OpenMRS first for a consistent copy);
+  `--allow-running` overrides that. `.7z` doesn't record file ownership; use `.tar.gz` if that
+  matters.
 - **`clear-configuration-checksums --volume=<openmrs-data volume>`** -- removes
   openmrs-module-initializer's cached `configuration_checksums` from a volume (refuses if a running
   container currently has it mounted), so the next start reprocesses all configuration from

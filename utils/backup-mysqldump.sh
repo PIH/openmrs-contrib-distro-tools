@@ -71,8 +71,8 @@ case "$OUTPUT_PATH" in
         MYSQL_PWD="${MYSQL_PASSWORD:-openmrs}" "${DUMP_CMD[@]}" | ARCHIVE_PW="$ARCHIVE_PASSWORD" docker run -i --rm \
             -e ARCHIVE_PW -e OUT_NAME="$(basename "$OUTPUT_PATH")" \
             -v "$DIR:/out" \
-            alpine:3.21 \
-            sh -c 'apk add --no-cache p7zip >/dev/null && 7z a -si"dump.sql" -p"$ARCHIVE_PW" -mx5 -t7z "/out/$OUT_NAME"' >&2
+            partnersinhealth/p7zip \
+            sh -c '7z a -si"dump.sql" -p"$ARCHIVE_PW" -mx5 -t7z "/out/$OUT_NAME"' >&2
         ;;
     *)
         MYSQL_PWD="${MYSQL_PASSWORD:-openmrs}" "${DUMP_CMD[@]}" | gzip > "$OUTPUT_PATH"
