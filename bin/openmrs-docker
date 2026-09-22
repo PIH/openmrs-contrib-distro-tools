@@ -291,7 +291,7 @@ case "$COMMAND" in
         # (see utils/) -- these env vars are always plain, ready-to-use paths.
         DB_SOURCES=0
         if [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ]; then
-            [ -e "$RESTORE_MYSQL_DUMP_PATH" ] || { echo "error: no such file or directory: $RESTORE_MYSQL_DUMP_PATH" >&2; exit 1; }
+            [ -f "$RESTORE_MYSQL_DUMP_PATH" ] || { echo "error: no such file: $RESTORE_MYSQL_DUMP_PATH" >&2; exit 1; }
             case "$RESTORE_MYSQL_DUMP_PATH" in
                 /*) ;;
                 *) RESTORE_MYSQL_DUMP_PATH="$(cd "$(dirname "$RESTORE_MYSQL_DUMP_PATH")" && pwd)/$(basename "$RESTORE_MYSQL_DUMP_PATH")" ;;
