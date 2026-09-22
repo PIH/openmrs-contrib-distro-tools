@@ -1,0 +1,27 @@
+# Overlay used by `openmrs-docker <name> initialize` when the openmrs-data volume is being
+# populated from a local, already-extracted directory (RESTORE_OPENMRS_DATA_PATH) rather than
+# SEED_IMAGE_NAME. Runs a one-shot init container that copies the directory straight into
+# openmrs-data before openmrs-db/openmrs ever start. Also declared as an openmrs-db dependency
+# (not because openmrs-db needs openmrs-data, but because `initialize` only ever targets
+# `up -d openmrs-db`, and Compose only starts a service that's targeted directly or pulled in as
+# a dependency).
+#
+# Set by initialize itself, not persisted to the instance's env file:
+#   RESTORE_OPENMRS_DATA_PATH -- absolute path to a ready openmrs-data directory on the host
+
+services:
+  restore-openmrs-data-volume:
+    image: alpine:3.21
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-restore-openmrs-data-volume
+    volumes:
+      - ${RESTORE_OPENMRS_DATA_PATH:?RESTORE_OPENMRS_DATA_PATH must be set}:/source:ro
+      - openmrs-data:/target
+    # No chown after copying, unlike the mysql overlay's chown to MySQL's well-known uid 999 --
+    # openmrs-data has no single well-known owning uid across distros, and the seed-image path
+    # (seed-entrypoint.sh) has never chowned it either, so this preserves that same behavior.
+    command: ["sh", "-c", "cp -a /source/. /target/"]
+
+  openmrs-db:
+    depends_on:
+      restore-openmrs-data-volume:
+        condition: service_completed_successfully

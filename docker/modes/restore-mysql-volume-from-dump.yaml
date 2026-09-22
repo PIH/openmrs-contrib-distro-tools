@@ -1,0 +1,14 @@
+# Overlay used by `openmrs-docker <name> initialize` when the mysql/db-data volume is being
+# populated from a local SQL dump (RESTORE_MYSQL_DUMP_PATH) rather than SEED_IMAGE_NAME or
+# RESTORE_MYSQL_DATA_PATH. Bind-mounts the dump into MySQL's own first-boot import mechanism.
+#
+# Set by initialize itself, not persisted to the instance's env file:
+#   RESTORE_MYSQL_DUMP_PATH     -- absolute path to a .sql or .sql.gz file on the host
+#   RESTORE_MYSQL_DUMP_FILENAME -- "dump.sql" or "dump.sql.gz", matching RESTORE_MYSQL_DUMP_PATH's
+#                                  actual compression so MySQL's entrypoint decompresses (or
+#                                  doesn't) correctly
+
+services:
+  openmrs-db:
+    volumes:
+      - ${RESTORE_MYSQL_DUMP_PATH:?RESTORE_MYSQL_DUMP_PATH must be set}:/docker-entrypoint-initdb.d/${RESTORE_MYSQL_DUMP_FILENAME:?RESTORE_MYSQL_DUMP_FILENAME must be set}:ro
