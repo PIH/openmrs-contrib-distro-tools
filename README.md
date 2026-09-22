@@ -254,23 +254,38 @@ openmrs-docker <name> initialize
 NOTE: This command is only supported immediately after the instance is created.  If it has previously been started, this
 command will fail so as not to overwrite any existing data.
 
-### Restoring from an existing backup
+### Service operations
 
-Where `initialize` loads a nightly seed image, `restore` loads a backup you already have on disk —
-typically a copy of a real server's data. Like `initialize`, it is only supported immediately after
-the instance is created, and refuses to run if the instance's data volumes already exist.
+Beyond the fixed commands above, `openmrs-docker` also supports per-service *operations* — one-off
+maintenance scripts that only make sense for a particular attached service, rather than the whole
+instance:
 
-There are two modes, matching the two kinds of backup:
+```bash
+openmrs-docker <name> <service> <operation> [args...]
+```
+
+An operation is looked up as `docker/operations/<service>/<operation>.sh` in this repo — if that
+service isn't attached to the instance, or that operation doesn't exist for it, you get a clear
+error rather than it being silently misinterpreted as an unknown top-level command.
+
+#### `openmrs-db`: restoring from an existing backup
+
+Where `initialize` loads a nightly seed image, `restore-dump`/`restore-percona` load a backup you
+already have on disk — typically a copy of a real server's data. Like `initialize`, either is only
+supported immediately after the instance is created, and refuses to run if the instance's data
+volumes already exist.
+
+There are two operations, matching the two kinds of backup:
 
 ```bash
 # a logical backup: a mysqldump .sql or .sql.gz file
-openmrs-docker <name> restore --from-dump /path/to/backup.sql.gz
+openmrs-docker <name> openmrs-db restore-dump /path/to/backup.sql.gz
 
 # a physical backup: a prepared (--apply-log'd) percona xtrabackup directory
-openmrs-docker <name> restore --from-percona /path/to/backup-dir
+openmrs-docker <name> openmrs-db restore-percona /path/to/backup-dir
 ```
 
-`--from-dump` hands the file to MySQL's own first-boot import. `--from-percona` copies the backup
+`restore-dump` hands the file to MySQL's own first-boot import. `restore-percona` copies the backup
 straight into the data directory before MySQL ever starts, which is far faster for a large database.
 
 Either path may instead be a password-protected `.7z` archive, which is unpacked for you before the
@@ -278,21 +293,48 @@ restore runs — set `PETL_BACKUP_PASSWORD` to its password. The archive must co
 top-level file or directory (the dump, or the backup directory).
 
 ```bash
-PETL_BACKUP_PASSWORD=<password> openmrs-docker <name> restore --from-dump /path/to/backup.sql.gz.7z
+PETL_BACKUP_PASSWORD=<password> openmrs-docker <name> openmrs-db restore-dump /path/to/backup.sql.gz.7z
 ```
 
-Restore leaves the stack stopped once the data is loaded, the same way `initialize` does — run
+Both leave the stack stopped once the data is loaded, the same way `initialize` does — run
 `openmrs-docker <name> start` afterwards.
 
-**A caveat specific to `--from-percona`:** a physical backup is a copy of the source server's entire
-data directory, *including its `mysql` system tables* — so the restored database's real credentials
-are the source server's, not the ones this instance was created with. If `OPENMRS_DB_USER`,
-`OPENMRS_DB_PASSWORD` and `OPENMRS_DB_ROOT_PASSWORD` don't match what the source server actually
-used, the database will come up fine but the post-restore health check can never authenticate, and
-the restore reports a timeout even though it succeeded. Set those variables to the source server's
-credentials before running `create`. For the same reason, `OPENMRS_DB_IMAGE_TAG` should match the
-MySQL version the backup was taken from. `--from-dump` is unaffected — a logical dump doesn't carry
-the source's user accounts.
+**A caveat specific to `restore-percona`:** a physical backup is a copy of the source server's
+entire data directory, *including its `mysql` system tables* — so the restored database's real
+credentials are the source server's, not the ones this instance was created with. If
+`OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD` and `OPENMRS_DB_ROOT_PASSWORD` don't match what the source
+server actually used, the database will come up fine but the post-restore health check can never
+authenticate, and the restore reports a timeout even though it succeeded. Set those variables to
+the source server's credentials before running `create`. For the same reason, `OPENMRS_DB_IMAGE_TAG`
+should match the MySQL version the backup was taken from. `restore-dump` is unaffected — a logical
+dump doesn't carry the source's user accounts.
+
+#### `openmrs-db`: backing up the running database
+
+The reverse of the above — `backup-mysqldump`/`backup-percona` capture the running instance's
+`openmrs-db` into a local file/directory directly usable as a later `restore-dump`/`restore-percona`
+input (on this instance or another):
+
+```bash
+openmrs-docker <name> openmrs-db backup-mysqldump /path/to/backup.sql.gz
+openmrs-docker <name> openmrs-db backup-percona /path/to/backup-dir
+```
+
+Both require the instance to already be started.
+
+#### `openmrs`: clearing cached configuration checksums
+
+openmrs-module-initializer caches which configuration it's already applied in
+`configuration_checksums`, inside the `openmrs-data` volume. If a different database ever ends up
+loaded into `openmrs-db` while that volume's existing checksums are kept, those cached checksums no
+longer reflect what the (new) database actually has applied — clearing them forces the next start to
+reprocess all configuration from scratch instead of trusting stale state:
+
+```bash
+openmrs-docker <name> openmrs clear-configuration-checksums
+```
+
+Requires the instance to be stopped first.
 
 ### Starting a server
 
