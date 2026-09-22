@@ -1,6 +1,6 @@
 #!/bin/bash
 # General-purpose: dumps a running MySQL container's database to a local, gzip-compressed SQL
-# file, directly usable as `openmrs-docker <name> initialize`'s RESTORE_DUMP_PATH. Usage:
+# file, directly usable as `openmrs-docker <name> initialize`'s RESTORE_MYSQL_DUMP_PATH. Usage:
 #   utils/backup-mysqldump.sh --container=<name> --output=<path> [--database=openmrs]
 #
 # MYSQL_ROOT_PASSWORD (env var, not a named argument -- a secret, so it never shows up in `ps`

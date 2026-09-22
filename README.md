@@ -263,30 +263,30 @@ invocation only (these aren't persisted to the instance's env file the way `SEED
 | Env var | Populates | Source |
 |---|---|---|
 | `SEED_IMAGE_NAME` / `SEED_IMAGE_TAG` | either, if not overridden | the nightly seed image (documented per-distro) |
-| `RESTORE_DUMP_PATH` | `mysql/db-data` | a plain `.sql`/`.sql.gz` dump, handed to MySQL's own first-boot import |
+| `RESTORE_MYSQL_DUMP_PATH` | `mysql/db-data` | a plain `.sql`/`.sql.gz` dump, handed to MySQL's own first-boot import |
 | `RESTORE_MYSQL_DATA_PATH` | `mysql/db-data` | a ready MySQL data directory, copied straight into the volume before MySQL ever starts (far faster for a large database) |
 | `RESTORE_OPENMRS_DATA_PATH` | `openmrs-data` | an already-extracted directory, copied straight into the volume |
 
-At most one of `RESTORE_DUMP_PATH`/`RESTORE_MYSQL_DATA_PATH` may be set (they're two different ways
+At most one of `RESTORE_MYSQL_DUMP_PATH`/`RESTORE_MYSQL_DATA_PATH` may be set (they're two different ways
 to populate the same volume); same for `RESTORE_OPENMRS_DATA_PATH` and the seed image's data half.
 
 ```bash
 # restore the database from a logical dump, but still seed openmrs-data from the nightly image
-RESTORE_DUMP_PATH=/path/to/backup.sql.gz SEED_IMAGE_NAME=... openmrs-docker <name> initialize
+RESTORE_MYSQL_DUMP_PATH=/path/to/backup.sql.gz SEED_IMAGE_NAME=... openmrs-docker <name> initialize
 
 # restore both volumes from real backups, no seed image involved at all
 RESTORE_MYSQL_DATA_PATH=/path/to/datadir RESTORE_OPENMRS_DATA_PATH=/path/to/data-dir openmrs-docker <name> initialize
 ```
 
 None of the above handle an archive or a raw (not yet copied-back) percona/xtrabackup backup --
-`RESTORE_DUMP_PATH`/`RESTORE_MYSQL_DATA_PATH`/`RESTORE_OPENMRS_DATA_PATH` are always plain,
+`RESTORE_MYSQL_DUMP_PATH`/`RESTORE_MYSQL_DATA_PATH`/`RESTORE_OPENMRS_DATA_PATH` are always plain,
 ready-to-use paths. Preparing one from an archive or a physical backup is a separate step, using
 the standalone scripts in `utils/` (see below):
 
 ```bash
 # an archive (optionally password-protected) wrapping a plain dump
 DUMP=$(ARCHIVE_PASSWORD=<password> utils/extract-archive.sh --path=/path/to/backup.sql.gz.7z)
-RESTORE_DUMP_PATH="$DUMP" openmrs-docker <name> initialize
+RESTORE_MYSQL_DUMP_PATH="$DUMP" openmrs-docker <name> initialize
 
 # a percona/xtrabackup backup: extract the archive, then convert it into a ready datadir
 BACKUP_DIR=$(utils/extract-archive.sh --path=/path/to/backup.7z --output-dir=./backup)
@@ -301,7 +301,7 @@ real credentials are the source server's, not the ones this instance was created
 server actually used, the database will come up fine but the post-restore health check can never
 authenticate, and `initialize` reports a timeout even though the restore itself succeeded. Set those
 variables to the source server's credentials before running `create`. For the same reason,
-`OPENMRS_DB_IMAGE_TAG` should match the MySQL version the backup was taken from. `RESTORE_DUMP_PATH`
+`OPENMRS_DB_IMAGE_TAG` should match the MySQL version the backup was taken from. `RESTORE_MYSQL_DUMP_PATH`
 is unaffected -- a logical dump doesn't carry the source's user accounts.
 
 ### Utilities (`utils/`)

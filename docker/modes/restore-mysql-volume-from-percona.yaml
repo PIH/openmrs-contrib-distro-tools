@@ -1,6 +1,6 @@
 # Overlay used by `openmrs-docker <name> initialize` when the mysql/db-data volume is being
 # populated from a local, ready-to-use MySQL data directory (RESTORE_MYSQL_DATA_PATH -- e.g.
-# produced by utils/convert-percona-backup.sh) rather than SEED_IMAGE_NAME or RESTORE_DUMP_PATH.
+# produced by utils/convert-percona-backup.sh) rather than SEED_IMAGE_NAME or RESTORE_MYSQL_DUMP_PATH.
 # Runs a one-shot init container that copies the directory straight into db-data before
 # openmrs-db ever starts -- unlike restore-mysql-volume-from-dump.yaml, this writes the datadir
 # directly rather than going through MySQL's own SQL-import entrypoint. All percona/xtrabackup

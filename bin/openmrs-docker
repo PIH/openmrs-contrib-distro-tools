@@ -34,7 +34,7 @@ usage() {
     echo "itself, not persisted to the instance's env file), so a dump/backup can replace the seed"
     echo "image for one or both volumes -- see utils/ (below) for scripts to prepare these paths"
     echo "from an archive or a percona/xtrabackup backup:"
-    echo "  RESTORE_DUMP_PATH          mysql/db-data from a plain .sql/.sql.gz dump"
+    echo "  RESTORE_MYSQL_DUMP_PATH    mysql/db-data from a plain .sql/.sql.gz dump"
     echo "  RESTORE_MYSQL_DATA_PATH    mysql/db-data from a ready MySQL data directory (physical restore)"
     echo "  RESTORE_OPENMRS_DATA_PATH  openmrs-data from a ready, already-extracted directory"
     echo ""
@@ -286,21 +286,21 @@ case "$COMMAND" in
         done
 
         # Each volume's source is chosen independently, so e.g. db-data can come from a
-        # RESTORE_DUMP_PATH dump while openmrs-data still comes from SEED_IMAGE_NAME. Archive
+        # RESTORE_MYSQL_DUMP_PATH dump while openmrs-data still comes from SEED_IMAGE_NAME. Archive
         # extraction and percona/xtrabackup handling happen upstream of this command entirely
         # (see utils/) -- these env vars are always plain, ready-to-use paths.
         DB_SOURCES=0
-        if [ -n "${RESTORE_DUMP_PATH:-}" ]; then
-            [ -e "$RESTORE_DUMP_PATH" ] || { echo "error: no such file or directory: $RESTORE_DUMP_PATH" >&2; exit 1; }
-            case "$RESTORE_DUMP_PATH" in
+        if [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ]; then
+            [ -e "$RESTORE_MYSQL_DUMP_PATH" ] || { echo "error: no such file or directory: $RESTORE_MYSQL_DUMP_PATH" >&2; exit 1; }
+            case "$RESTORE_MYSQL_DUMP_PATH" in
                 /*) ;;
-                *) RESTORE_DUMP_PATH="$(cd "$(dirname "$RESTORE_DUMP_PATH")" && pwd)/$(basename "$RESTORE_DUMP_PATH")" ;;
+                *) RESTORE_MYSQL_DUMP_PATH="$(cd "$(dirname "$RESTORE_MYSQL_DUMP_PATH")" && pwd)/$(basename "$RESTORE_MYSQL_DUMP_PATH")" ;;
             esac
-            case "$RESTORE_DUMP_PATH" in
-                *.gz) export RESTORE_DUMP_FILENAME="dump.sql.gz" ;;
-                *)    export RESTORE_DUMP_FILENAME="dump.sql" ;;
+            case "$RESTORE_MYSQL_DUMP_PATH" in
+                *.gz) export RESTORE_MYSQL_DUMP_FILENAME="dump.sql.gz" ;;
+                *)    export RESTORE_MYSQL_DUMP_FILENAME="dump.sql" ;;
             esac
-            export RESTORE_DUMP_PATH
+            export RESTORE_MYSQL_DUMP_PATH
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-dump.yaml")
             DB_SOURCES=$((DB_SOURCES + 1))
         fi
@@ -315,7 +315,7 @@ case "$COMMAND" in
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-seed.yaml")
             DB_SOURCES=$((DB_SOURCES + 1))
         fi
-        [ "$DB_SOURCES" -eq 1 ] || { echo "error: set exactly one of RESTORE_DUMP_PATH, RESTORE_MYSQL_DATA_PATH, or SEED_IMAGE_NAME to initialize the mysql/db-data volume" >&2; exit 1; }
+        [ "$DB_SOURCES" -eq 1 ] || { echo "error: set exactly one of RESTORE_MYSQL_DUMP_PATH, RESTORE_MYSQL_DATA_PATH, or SEED_IMAGE_NAME to initialize the mysql/db-data volume" >&2; exit 1; }
 
         DATA_SOURCES=0
         if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; then
