@@ -373,7 +373,7 @@ case "$COMMAND" in
         # fail-on-unhealthy left at its default (false): MySQL doesn't accept TCP connections
         # until its dump import finishes, so a long import legitimately reports unhealthy for a
         # while before succeeding.
-        if ! "$TOOL_DIR/utils/wait-for-healthy.sh" --container="${SERVICE_NAME}-openmrs-db" --timeout=600; then
+        if ! "$TOOL_DIR/utils/wait-for-healthy.sh" --container="${SERVICE_NAME}-openmrs-db" --timeout=3600; then
             initialize_cleanup
             echo "error: initialize failed -- run '$0 $NAME destroy' before retrying." >&2
             exit 1
