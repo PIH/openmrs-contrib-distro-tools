@@ -667,9 +667,10 @@ Two more fragments under `docker/services/` are attached the same way as OpenHIM
   `openmrs-db`. It's a *profiled* fragment, so `start` deliberately doesn't bring it up; it's a job,
   not a long-running service. Invoke it with `run-service`. It needs `PETL_IMAGE_NAME` set — if it
   isn't, `run-service petl` fails on a placeholder image name rather than a real one.
-- **`petl-sqlserver`** is the SQL Server database petl writes to, built from
-  `docker/petl-sqlserver/`. It creates the `PETL_SQLSERVER_DATABASE` database (default
-  `openmrs_reporting`) on first boot, and reports healthy once that database is actually queryable.
+- **`petl-sqlserver`** is the SQL Server database petl writes to — the stock
+  `mcr.microsoft.com/mssql/server` image directly, no custom build. A companion one-shot
+  `petl-sqlserver-init` service creates the `PETL_SQLSERVER_DATABASE` database (default
+  `openmrs_reporting`) once `petl-sqlserver`'s healthcheck confirms SQL Server itself is up, then exits.
 
 ```bash
 export OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr
