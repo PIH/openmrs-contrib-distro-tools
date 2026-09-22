@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-export TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OPENMRS_DOCKER_HOME="${OPENMRS_DOCKER_HOME:-$HOME/openmrs}"
 SERVICES_DIR="$TOOL_DIR/docker/services"
 MODES_DIR="$TOOL_DIR/docker/modes"
@@ -153,11 +153,6 @@ source "$ENV_FILE"
 set +a
 
 [ -z "$COMMAND" ] && usage
-
-case "$COMMAND" in
-    initialize|start|stop|restart|status|update|sync|wait|build|pull|logs|destroy|add-service|remove-service|run-service) ;;
-    *) echo "Unknown command: '$COMMAND'"; echo ""; usage ;;
-esac
 
 # add-service/remove-service take a required service name as their one positional argument;
 # logs takes the same positional argument, but optionally. Consumed here before the generic
