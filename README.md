@@ -289,17 +289,18 @@ None of the above handle an archive or a raw (not yet copied-back) percona/xtrab
 ready-to-use paths. Preparing one from an archive or a physical backup is a separate step, using
 the standalone scripts in `utils/` (see below):
 
-Only `bin/` is on `PATH` (see "Install" above) -- run these from `$DISTRO_TOOLS_HOME/utils/...`,
-or `cd` there first:
+`openmrs-utils <script-name> [args...]` is on `PATH` (see "Install" above) and is a thin passthrough
+to `$DISTRO_TOOLS_HOME/utils/<script-name>.sh` -- so `openmrs-utils extract-archive --path=...` is
+exactly equivalent to running that script by its full path:
 
 ```bash
 # an archive (optionally password-protected) wrapping a plain dump
-DUMP=$(ARCHIVE_PASSWORD=<password> $DISTRO_TOOLS_HOME/utils/extract-archive.sh --path=/path/to/backup.sql.gz.7z)
+DUMP=$(ARCHIVE_PASSWORD=<password> openmrs-utils extract-archive --path=/path/to/backup.sql.gz.7z)
 RESTORE_MYSQL_DUMP_PATH="$DUMP" openmrs-docker <name> initialize
 
 # a percona/xtrabackup backup: extract the archive, then convert it into a ready datadir
-BACKUP_DIR=$($DISTRO_TOOLS_HOME/utils/extract-archive.sh --path=/path/to/backup.7z --output-dir=./backup)
-DATADIR=$($DISTRO_TOOLS_HOME/utils/convert-percona-backup.sh --backup-dir="$BACKUP_DIR" --output-dir=./datadir)
+BACKUP_DIR=$(openmrs-utils extract-archive --path=/path/to/backup.7z --output-dir=./backup)
+DATADIR=$(openmrs-utils convert-percona-backup --backup-dir="$BACKUP_DIR" --output-dir=./datadir)
 RESTORE_MYSQL_DATA_PATH="$DATADIR" openmrs-docker <name> initialize
 ```
 
@@ -318,35 +319,37 @@ is unaffected -- a logical dump doesn't carry the source's user accounts.
 Standalone, general-purpose scripts in this tool's own `utils/` directory (not part of the
 `openmrs-docker` CLI, and usable entirely on their own -- e.g. against a production server that was
 never created via `openmrs-docker` at all). Named arguments for values; secrets (passwords) are
-environment variables instead, so they never show up in `ps` output. Run any script with no
-arguments for its exact usage.
+environment variables instead, so they never show up in `ps` output. Run via `openmrs-utils
+<script-name> [args...]` (a thin passthrough to the script of that name under `utils/` -- see
+"Install" above), or the script directly by its full path -- the two are equivalent. Run any script
+with no arguments for its exact usage; run `openmrs-utils` with no arguments to list them all.
 
-- **`extract-archive.sh --path=<path> [--output-dir=<dir>]`** -- extracts a `.7z`/`.zip`/`.tar.gz`/
+- **`extract-archive --path=<path> [--output-dir=<dir>]`** -- extracts a `.7z`/`.zip`/`.tar.gz`/
   `.tgz`/`.tar` archive (optional `ARCHIVE_PASSWORD` env var, `.7z`/`.zip` only) and prints the path
   to its single top-level entry; prints `<path>` unchanged for anything else.
-- **`convert-percona-backup.sh --backup-dir=<dir> --output-dir=<dir>`** -- converts an extracted,
+- **`convert-percona-backup --backup-dir=<dir> --output-dir=<dir>`** -- converts an extracted,
   already-prepared (`--apply-log`'d) percona/xtrabackup backup directory into a ready-to-use MySQL
   data directory (`--copy-back`), suitable for `initialize`'s `RESTORE_MYSQL_DATA_PATH`.
-- **`backup-mysqldump.sh --container=<name> --output=<path> [--database=openmrs] [--user=root]`**
+- **`backup-mysqldump --container=<name> --output=<path> [--database=openmrs] [--user=root]`**
   -- dumps a running MySQL container's database (`MYSQL_PASSWORD` env var), including routines and
   triggers, as a faithful, unmodified copy. `--output` ending in `.gz` produces a plain
   gzip-compressed SQL file; ending in `.7z` produces a password-protected archive instead
   (`ARCHIVE_PASSWORD` env var, required), matching PIH's existing backup convention -- either way
   the dump is streamed straight into the compressor, never written to disk unencrypted.
-- **`strip-mysqldump-definers.sh --path=<dump.sql|dump.sql.gz> --output=<path>`** -- an optional
+- **`strip-mysqldump-definers --path=<dump.sql|dump.sql.gz> --output=<path>`** -- an optional
   step for a dump produced above: strips `DEFINER=`user`@`host`` clauses from routines/triggers/
   views into a new copy (the original is untouched), so a definer account that doesn't exist on
   the restore target doesn't cause a restored routine/trigger to fail at execution time. Only
   needed if/when you actually hit that problem.
-- **`backup-percona.sh --container=<name> --volume=<db data volume> --output=<dir>`** -- takes a
+- **`backup-percona --container=<name> --volume=<db data volume> --output=<dir>`** -- takes a
   prepared physical backup of a running MySQL container's data volume (`MYSQL_ROOT_PASSWORD` env
-  var), ready for `convert-percona-backup.sh`.
-- **`clear-configuration-checksums.sh --volume=<openmrs-data volume>`** -- removes
+  var), ready for `convert-percona-backup`.
+- **`clear-configuration-checksums --volume=<openmrs-data volume>`** -- removes
   openmrs-module-initializer's cached `configuration_checksums` from a volume (refuses if a running
   container currently has it mounted), so the next start reprocesses all configuration from
   scratch rather than trusting checksums that may no longer reflect reality -- e.g. after loading a
   different database while keeping an existing `openmrs-data`.
-- **`wait-for-healthy.sh --container=<name> [--timeout=<seconds>] [--fail-on-unhealthy=true|false]`**
+- **`wait-for-healthy --container=<name> [--timeout=<seconds>] [--fail-on-unhealthy=true|false]`**
   -- polls until a container reports healthy; fails fast on exited/dead/restarting, or times out.
 
 ### Starting a server
