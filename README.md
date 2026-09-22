@@ -324,8 +324,13 @@ arguments for its exact usage.
 - **`convert-percona-backup.sh --backup-dir=<dir> --output-dir=<dir>`** -- converts an extracted,
   already-prepared (`--apply-log`'d) percona/xtrabackup backup directory into a ready-to-use MySQL
   data directory (`--copy-back`), suitable for `initialize`'s `RESTORE_MYSQL_DATA_PATH`.
-- **`backup-mysqldump.sh --container=<name> --output=<path> [--database=openmrs]`** -- dumps a
-  running MySQL container's database to a gzip-compressed SQL file (`MYSQL_ROOT_PASSWORD` env var).
+- **`backup-mysqldump.sh --container=<name> --output=<path> [--database=openmrs] [--user=root]`**
+  -- dumps a running MySQL container's database (`MYSQL_PASSWORD` env var), including routines and
+  triggers with their `DEFINER` stripped (so a definer account missing on the restore target
+  doesn't break them). `--output` ending in `.gz` produces a plain gzip-compressed SQL file;
+  ending in `.7z` produces a password-protected archive instead (`ARCHIVE_PASSWORD` env var,
+  required), matching PIH's existing backup convention -- either way the dump is streamed straight
+  into the compressor, never written to disk unencrypted.
 - **`backup-percona.sh --container=<name> --volume=<db data volume> --output=<dir>`** -- takes a
   prepared physical backup of a running MySQL container's data volume (`MYSQL_ROOT_PASSWORD` env
   var), ready for `convert-percona-backup.sh`.
