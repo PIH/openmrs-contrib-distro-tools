@@ -271,7 +271,7 @@ case "$COMMAND" in
         start_stack
         ;;
     initialize)
-        # initialize only runs against a brand-new instance -- check every volume Compose declares, rather than hard-coding openmrs-data/db-data.
+        # initialize only runs against a brand-new instance -- check every volume Compose declares.
         for vol in $(docker compose "${COMPOSE_FILES[@]}" config --volumes); do
             if docker volume inspect "${SERVICE_NAME}_${vol}" >/dev/null 2>&1; then
                 echo "error: ${SERVICE_NAME}_${vol} already exists -- initialize only runs against a brand-new instance with no existing data. Run '$0 $NAME destroy' first if you really want to start over." >&2
