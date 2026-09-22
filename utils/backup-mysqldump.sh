@@ -43,15 +43,14 @@ echo "Backing up $CONTAINER's $DATABASE database to $OUTPUT_PATH..."
 # imports a RESTORE_MYSQL_DUMP_PATH dump into whatever MYSQL_DATABASE the target container
 # already has configured. --single-transaction takes a consistent InnoDB snapshot without locking
 # the tables. --flush-logs rotates the binlog at the start of the dump, so it marks a clean
-# boundary for later binlog purging. MYSQL_PWD rather than -p: container process arguments show
-# up in the host's ps output.
+# boundary for later binlog purging. --routines/--triggers give a fuller backup than table data
+# alone. MYSQL_PWD rather than -p: container process arguments show up in the host's ps output.
 #
-# --routines/--triggers are always included (fuller backup than table data alone), with their
-# DEFINER=`user`@`host` clauses stripped below -- otherwise a routine/trigger created with a
-# DEFINER account that doesn't exist on the target server can fail at execution (not creation)
-# time. Stripping DEFINER (rather than dropping --routines/--triggers to dodge the problem)
-# leaves MySQL to default it to whichever user runs the restore -- root, since that's who
-# MySQL's own docker-entrypoint imports as.
+# This dump is a faithful, unmodified copy -- notably, --routines/--triggers keep their original
+# DEFINER=`user`@`host` clauses, which can fail to restore if that account doesn't exist on the
+# target server. That's handled as a separate, optional step at restore time instead of here (see
+# utils/strip-mysqldump-definers.sh) rather than silently rewriting every backup this script
+# produces, whether or not it ever hits that problem.
 DUMP_CMD=(docker exec -e MYSQL_PWD="${MYSQL_PASSWORD:-openmrs}" "$CONTAINER" \
     mysqldump "-u$DB_USER" --single-transaction --flush-logs --routines --triggers "$DATABASE")
 
@@ -59,14 +58,14 @@ case "$OUTPUT_PATH" in
     *.7z)
         [ -z "${ARCHIVE_PASSWORD:-}" ] && { echo "error: ARCHIVE_PASSWORD must be set to produce a .7z output" >&2; exit 1; }
         DIR=$(dirname "$OUTPUT_PATH")
-        "${DUMP_CMD[@]}" | sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g' | docker run -i --rm \
+        "${DUMP_CMD[@]}" | docker run -i --rm \
             -e ARCHIVE_PW="$ARCHIVE_PASSWORD" -e OUT_NAME="$(basename "$OUTPUT_PATH")" \
             -v "$DIR:/out" \
             alpine:3.21 \
             sh -c 'apk add --no-cache p7zip >/dev/null && 7z a -si"dump.sql" -p"$ARCHIVE_PW" -mx5 -t7z "/out/$OUT_NAME"' >&2
         ;;
     *)
-        "${DUMP_CMD[@]}" | sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g' | gzip > "$OUTPUT_PATH"
+        "${DUMP_CMD[@]}" | gzip > "$OUTPUT_PATH"
         ;;
 esac
 echo "Backed up $CONTAINER's $DATABASE database to $OUTPUT_PATH."

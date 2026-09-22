@@ -326,11 +326,15 @@ arguments for its exact usage.
   data directory (`--copy-back`), suitable for `initialize`'s `RESTORE_MYSQL_DATA_PATH`.
 - **`backup-mysqldump.sh --container=<name> --output=<path> [--database=openmrs] [--user=root]`**
   -- dumps a running MySQL container's database (`MYSQL_PASSWORD` env var), including routines and
-  triggers with their `DEFINER` stripped (so a definer account missing on the restore target
-  doesn't break them). `--output` ending in `.gz` produces a plain gzip-compressed SQL file;
-  ending in `.7z` produces a password-protected archive instead (`ARCHIVE_PASSWORD` env var,
-  required), matching PIH's existing backup convention -- either way the dump is streamed straight
-  into the compressor, never written to disk unencrypted.
+  triggers, as a faithful, unmodified copy. `--output` ending in `.gz` produces a plain
+  gzip-compressed SQL file; ending in `.7z` produces a password-protected archive instead
+  (`ARCHIVE_PASSWORD` env var, required), matching PIH's existing backup convention -- either way
+  the dump is streamed straight into the compressor, never written to disk unencrypted.
+- **`strip-mysqldump-definers.sh --path=<dump.sql|dump.sql.gz> --output=<path>`** -- an optional
+  step for a dump produced above: strips `DEFINER=`user`@`host`` clauses from routines/triggers/
+  views into a new copy (the original is untouched), so a definer account that doesn't exist on
+  the restore target doesn't cause a restored routine/trigger to fail at execution time. Only
+  needed if/when you actually hit that problem.
 - **`backup-percona.sh --container=<name> --volume=<db data volume> --output=<dir>`** -- takes a
   prepared physical backup of a running MySQL container's data volume (`MYSQL_ROOT_PASSWORD` env
   var), ready for `convert-percona-backup.sh`.
