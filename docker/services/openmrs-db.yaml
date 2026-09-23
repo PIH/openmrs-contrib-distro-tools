@@ -37,7 +37,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${OPENMRS_DB_MEMORY_LIMIT:-2g}
+          memory: ${OPENMRS_DB_MEMORY_LIMIT:-3g}
 
 volumes:
   db-data:
