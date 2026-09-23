@@ -1,7 +1,6 @@
 #!/usr/bin/env bats
-# create captures any OMRS_EXTRA_* variable from the calling shell verbatim into the instance's env
-# file, so a distro can supply extra OpenMRS runtime properties without an explicit entry anywhere
-# in distro-tools -- openmrs.yaml's own `env_file: - env` is what gets these into the container.
+# create captures any OMRS_EXTRA_* variable from the calling shell into the instance's env file --
+# see openmrs.yaml's env_file for how these reach the container.
 
 load ../helpers
 

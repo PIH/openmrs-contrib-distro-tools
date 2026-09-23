@@ -16,14 +16,9 @@ services:
         restart: true
     ports:
       - ${OPENMRS_HTTP_PORT:-8080}:8080
-    # Relative to this file's own directory (the instance directory), not the CWD `docker compose`
-    # is invoked from -- confirmed empirically, since openmrs-docker never `cd`s there. This is the
-    # exact same file already passed as `--env-file` for the `${VAR}` interpolation below, so any
-    # OMRS_EXTRA_* variable `create` captured from the calling shell (see bin/openmrs-docker)
-    # reaches the container automatically, without a corresponding explicit `environment:` entry
-    # here -- the generic counterpart to the two named OMRS_EXTRA_* translations below, which exist
-    # only to map an existing friendly variable name (OPENMRS_PIH_CONFIG, etc.) onto the
-    # OMRS_EXTRA_ convention.
+    # Same file as --env-file below (resolves relative to this file's own directory, not CWD).
+    # Passes through any OMRS_EXTRA_* var create captured (bin/openmrs-docker) without needing an
+    # explicit environment: entry per key, like the two named translations below already require.
     env_file:
       - env
     environment:
