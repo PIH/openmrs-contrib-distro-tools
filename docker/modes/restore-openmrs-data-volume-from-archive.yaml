@@ -9,7 +9,7 @@
 #
 # Extracts into a staging directory inside the volume first (so the final move is a same-
 # filesystem rename, not a second copy). If the archive has exactly one top-level entry and it's a
-# directory (backup-openmrs-data-directory.sh's openmrs-data/), that directory's contents become
+# directory (as backup-openmrs-data-directory.sh produces), that directory's contents become
 # the volume's contents; otherwise the archive's top level is used as is (e.g. a `tar czf - .`
 # archive, the way the seed image's data.tar.gz is built).
 #

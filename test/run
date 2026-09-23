@@ -1,0 +1,40 @@
+#!/bin/bash
+# Runs this project's test suite. Usage:
+#   test/run [static|args|integration|all|<test file or dir>] [extra bats args...]
+#
+# Needs only docker and git: bats itself is fetched at a pinned version into test/.deps on first run.
+set -euo pipefail
+
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPS_DIR="$TEST_DIR/.deps"
+
+fetch() {
+    local repo=$1 tag=$2 dir
+    dir="$DEPS_DIR/$(basename "$1")"
+    if [ ! -d "$dir" ] || [ "$(git -C "$dir" describe --tags 2>/dev/null)" != "$tag" ]; then
+        rm -rf "$dir"
+        git clone -q --depth 1 --branch "$tag" "https://github.com/$repo.git" "$dir" 2>/dev/null
+    fi
+}
+fetch bats-core/bats-core v1.14.0
+fetch bats-core/bats-support v0.3.0
+fetch bats-core/bats-assert v2.2.4
+
+LAYER="${1:-all}"
+[ $# -gt 0 ] && shift
+case "$LAYER" in
+    static|args|integration) TARGETS=("$TEST_DIR/$LAYER") ;;
+    all) TARGETS=("$TEST_DIR/static" "$TEST_DIR/args" "$TEST_DIR/integration") ;;
+    *)
+        if [ -e "$LAYER" ]; then
+            TARGETS=("$LAYER")
+        elif [ -e "$TEST_DIR/$LAYER" ]; then
+            TARGETS=("$TEST_DIR/$LAYER")
+        else
+            echo "usage: $0 [static|args|integration|all|<test file or dir>] [bats args...]" >&2
+            exit 1
+        fi
+        ;;
+esac
+
+exec "$DEPS_DIR/bats-core/bin/bats" --timing "$@" "${TARGETS[@]}"

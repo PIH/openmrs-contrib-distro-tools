@@ -1,3 +1,4 @@
+#!/bin/bash
 echo -e "Setting up environment...\n"
 
 # Install required tools
@@ -5,7 +6,7 @@ sudo apt-get update && sudo apt-get install -y git ca-certificates
 
 # Clone this tool
 git clone https://github.com/PIH/openmrs-contrib-distro-tools.git
-cd openmrs-contrib-distro-tools
+cd openmrs-contrib-distro-tools || exit 1
 
 # Add Docker's official GPG key:
 sudo install -m 0755 -d /etc/apt/keyrings

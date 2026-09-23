@@ -10,9 +10,10 @@
 # `docker volume inspect`, so nothing here requires it to be a real named volume.
 #
 # --databases (optional) limits the backup to a space-separated list of database names (e.g.
-# "malawi sys"), passed straight through to innobackupex's own --databases option -- the required
-# system databases (mysql, performance_schema, etc.) are always included regardless. Omit it to
-# back up every database, same as before.
+# "openmrs"), passed through to innobackupex's own --databases option with the mysql and
+# performance_schema system databases added -- innobackupex itself backs up only exactly what's
+# listed, and a datadir restored without mysql comes up with no usable accounts. Omit it to back up
+# every database.
 #
 # MYSQL_ROOT_PASSWORD (env var, not a named argument -- a secret) authenticates as root; defaults
 # to "openmrs" if unset. Passed to the container as a bare `-e MYSQL_ROOT_PASSWORD` (inheriting
@@ -45,6 +46,18 @@ case "$OUTPUT_DIR" in
 esac
 [ -e "$OUTPUT_DIR" ] && { echo "error: $OUTPUT_DIR already exists" >&2; exit 1; }
 mkdir -p "$OUTPUT_DIR"
+# A failed backup leaves a partial directory that looks like a real one -- remove it on any error.
+# Via a container, since innobackupex writes its contents as root.
+trap 'docker run --rm -v "$OUTPUT_DIR:/t" alpine:3.21 find /t -mindepth 1 -delete >/dev/null 2>&1; rm -rf "$OUTPUT_DIR"' ERR
+
+if [ -n "$DATABASES" ]; then
+    for db in mysql performance_schema; do
+        case " $DATABASES " in
+            *" $db "*) ;;
+            *) DATABASES="$DATABASES $db" ;;
+        esac
+    done
+fi
 
 echo "Backing up $CONTAINER (physical/xtrabackup) to $OUTPUT_DIR..." >&2
 # Shares the container's network namespace so it can reach it at 127.0.0.1, and mounts its

@@ -3,10 +3,12 @@
 # usable as `openmrs-docker <name> initialize`'s RESTORE_MYSQL_DUMP_PATH. Usage:
 #   utils/backup-mysqldump.sh --container=<name> --output=<path> [--database=openmrs] [--user=root]
 #
-# --output must end in .gz (plain, gzip-compressed SQL) or .7z (password-protected archive,
-# matching PIH's existing backup convention -- ARCHIVE_PASSWORD env var, required). Either way
-# the dump is streamed straight into the compressor -- it's never written to disk unencrypted,
-# and a failed dump never leaves a partial file behind.
+# --output's extension picks the format: .sql (plain SQL), .gz (gzip-compressed SQL, e.g.
+# backup.sql.gz), or .7z (password-protected archive, matching PIH's existing backup convention --
+# ARCHIVE_PASSWORD env var, required). A .7z holds a single SQL file named after the archive itself
+# (backup.sql.7z and backup.7z both contain backup.sql); .gz.7z is rejected, since 7z already
+# compresses. For .7z the dump is streamed straight into the archive, never written to disk
+# unencrypted. A failed dump never leaves a partial file behind.
 #
 # MYSQL_PASSWORD (env var, not a named argument -- a secret) authenticates as --user; defaults to
 # "openmrs" if unset. Secrets are passed to `docker` as a bare `-e VARNAME` (inheriting the
@@ -28,12 +30,16 @@ for arg in "$@"; do
         *) echo "unknown argument: $arg" >&2; exit 1 ;;
     esac
 done
-usage() { echo "usage: $0 --container=<name> --output=<path.gz|path.7z> [--database=openmrs] [--user=root]" >&2; exit 1; }
+usage() { echo "usage: $0 --container=<name> --output=<path.sql|path.sql.gz|path.sql.7z> [--database=openmrs] [--user=root]" >&2; exit 1; }
 [ -z "$CONTAINER" ] && usage
 [ -z "$OUTPUT_PATH" ] && usage
 case "$OUTPUT_PATH" in
-    *.gz|*.7z) ;;
-    *) echo "error: --output must end in .gz or .7z" >&2; exit 1 ;;
+    *.gz.7z) echo "error: --output must not end in .gz.7z (7z already compresses) -- use .sql.7z instead" >&2; exit 1 ;;
+    *.sql|*.gz|*.7z) ;;
+    *) echo "error: --output must end in .sql, .gz or .7z" >&2; exit 1 ;;
+esac
+case "$OUTPUT_PATH" in
+    *.7z) [ -z "${ARCHIVE_PASSWORD:-}" ] && { echo "error: ARCHIVE_PASSWORD must be set to produce a .7z output" >&2; exit 1; } ;;
 esac
 
 case "$OUTPUT_PATH" in
@@ -66,16 +72,23 @@ DUMP_CMD=(docker exec -e MYSQL_PWD "$CONTAINER" \
 
 case "$OUTPUT_PATH" in
     *.7z)
-        [ -z "${ARCHIVE_PASSWORD:-}" ] && { echo "error: ARCHIVE_PASSWORD must be set to produce a .7z output" >&2; exit 1; }
         DIR=$(dirname "$OUTPUT_PATH")
+        INNER_NAME=$(basename "$OUTPUT_PATH" .7z)
+        case "$INNER_NAME" in
+            *.sql) ;;
+            *) INNER_NAME="$INNER_NAME.sql" ;;
+        esac
         MYSQL_PWD="${MYSQL_PASSWORD:-openmrs}" "${DUMP_CMD[@]}" | ARCHIVE_PW="$ARCHIVE_PASSWORD" docker run -i --rm \
-            -e ARCHIVE_PW -e OUT_NAME="$(basename "$OUTPUT_PATH")" \
+            -e ARCHIVE_PW -e OUT_NAME="$(basename "$OUTPUT_PATH")" -e INNER_NAME="$INNER_NAME" -e OWNER="$(id -u):$(id -g)" \
             -v "$DIR:/out" \
             partnersinhealth/p7zip \
-            sh -c '7z a -si"dump.sql" -p"$ARCHIVE_PW" -mx5 -t7z "/out/$OUT_NAME"' >&2
+            sh -c '7z a -si"$INNER_NAME" -p"$ARCHIVE_PW" -mx5 -t7z "/out/$OUT_NAME" && chown "$OWNER" "/out/$OUT_NAME"' >&2
+        ;;
+    *.gz)
+        MYSQL_PWD="${MYSQL_PASSWORD:-openmrs}" "${DUMP_CMD[@]}" | gzip > "$OUTPUT_PATH"
         ;;
     *)
-        MYSQL_PWD="${MYSQL_PASSWORD:-openmrs}" "${DUMP_CMD[@]}" | gzip > "$OUTPUT_PATH"
+        MYSQL_PWD="${MYSQL_PASSWORD:-openmrs}" "${DUMP_CMD[@]}" > "$OUTPUT_PATH"
         ;;
 esac
 echo "Backed up $CONTAINER's $DATABASE database to $OUTPUT_PATH." >&2

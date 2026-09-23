@@ -29,6 +29,8 @@ case "$SRC" in
     *.7z|*.zip)
         [ -z "$OUTPUT_DIR" ] && OUTPUT_DIR=$(mktemp -d)
         mkdir -p "$OUTPUT_DIR"
+        # Absolute, or `docker run -v` would read a bare relative name as a named volume.
+        OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
         DIR=$(cd "$(dirname "$SRC")" && pwd)
         # Password (if any) and filename are passed as container environment variables rather
         # than interpolated into the `sh -c` string, so neither can be re-parsed as shell
@@ -46,6 +48,7 @@ case "$SRC" in
     *.tar.gz|*.tgz|*.tar)
         [ -z "$OUTPUT_DIR" ] && OUTPUT_DIR=$(mktemp -d)
         mkdir -p "$OUTPUT_DIR"
+        OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
         DIR=$(cd "$(dirname "$SRC")" && pwd)
         docker run --rm \
             -e ARCHIVE_SRC="$(basename "$SRC")" \

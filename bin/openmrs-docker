@@ -34,10 +34,12 @@ usage() {
     echo "itself, not persisted to the instance's env file), so a dump/backup can replace the seed"
     echo "image for one or both volumes -- see utils/ (below) for scripts to prepare these paths"
     echo "from an archive or a percona/xtrabackup backup:"
-    echo "  RESTORE_MYSQL_DUMP_PATH    mysql/db-data from a plain .sql/.sql.gz dump"
+    echo "  RESTORE_MYSQL_DUMP_PATH    mysql/db-data from a .sql/.sql.gz dump, or a .7z/.zip archive of one"
     echo "  RESTORE_MYSQL_DATA_PATH    mysql/db-data from a ready MySQL data directory (physical restore)"
     echo "  RESTORE_OPENMRS_DATA_PATH  openmrs-data from a directory, or a .tar.gz/.tgz/.tar/.7z/.zip archive"
-    echo "                             of one (ARCHIVE_PASSWORD for a protected .7z/.zip)"
+    echo "                             of one"
+    echo "  ARCHIVE_PASSWORD           password for a protected .7z/.zip passed to either of the above"
+    echo "  INITIALIZE_DB_TIMEOUT      seconds to wait for the restored database to become healthy (default 3600)"
     echo ""
     echo "Options:"
     echo "  --build        Build the distribution from source before start/update"
@@ -286,12 +288,13 @@ case "$COMMAND" in
 
         # Each volume's source is chosen independently, so e.g. db-data can come from a
         # RESTORE_MYSQL_DUMP_PATH dump while openmrs-data still comes from SEED_IMAGE_NAME.
-        # Percona/xtrabackup handling and extracting a db archive happen upstream of this command
-        # entirely (see utils/). The one exception is RESTORE_OPENMRS_DATA_PATH, which also takes
-        # an archive directly, extracted straight into the volume (never onto the host) by
-        # restore-openmrs-data-volume-from-archive.yaml.
+        # Percona/xtrabackup handling happens upstream of this command entirely (see utils/).
+        # RESTORE_MYSQL_DUMP_PATH and RESTORE_OPENMRS_DATA_PATH also take an archive directly,
+        # extracted by an init container into a volume (never onto the host) -- see
+        # restore-mysql-volume-from-dump-archive.yaml and restore-openmrs-data-volume-from-archive.yaml.
         DB_SOURCES=0
         DB_RESTORED_FROM_BACKUP=
+        DB_PHYSICAL_RESTORE=false
         if [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ]; then
             [ -f "$RESTORE_MYSQL_DUMP_PATH" ] || { echo "error: no such file: $RESTORE_MYSQL_DUMP_PATH" >&2; exit 1; }
             # Convert relative to absolute path if needed
@@ -300,11 +303,20 @@ case "$COMMAND" in
                 *) RESTORE_MYSQL_DUMP_PATH="$(cd "$(dirname "$RESTORE_MYSQL_DUMP_PATH")" && pwd)/$(basename "$RESTORE_MYSQL_DUMP_PATH")" ;;
             esac
             case "$RESTORE_MYSQL_DUMP_PATH" in
-                *.gz) export RESTORE_MYSQL_DUMP_FILENAME="dump.sql.gz" ;;
-                *)    export RESTORE_MYSQL_DUMP_FILENAME="dump.sql" ;;
+                *.7z|*.zip)
+                    export RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME="archive.${RESTORE_MYSQL_DUMP_PATH##*.}"
+                    COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-dump-archive.yaml")
+                    ;;
+                *.gz)
+                    export RESTORE_MYSQL_DUMP_FILENAME="dump.sql.gz"
+                    COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-dump.yaml")
+                    ;;
+                *)
+                    export RESTORE_MYSQL_DUMP_FILENAME="dump.sql"
+                    COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-dump.yaml")
+                    ;;
             esac
             export RESTORE_MYSQL_DUMP_PATH
-            COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-dump.yaml")
             DB_SOURCES=$((DB_SOURCES + 1))
             DB_RESTORED_FROM_BACKUP=1
         fi
@@ -316,6 +328,7 @@ case "$COMMAND" in
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-data-dir.yaml")
             DB_SOURCES=$((DB_SOURCES + 1))
             DB_RESTORED_FROM_BACKUP=1
+            DB_PHYSICAL_RESTORE=true
         fi
         if [ "$DB_SOURCES" -eq 0 ] && [ -n "${SEED_IMAGE_NAME:-}" ]; then
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-seed.yaml")
@@ -391,9 +404,13 @@ case "$COMMAND" in
             exit 1
         fi
         # fail-on-unhealthy left at its default (false): MySQL doesn't accept TCP connections
-        # until its dump import finishes, so a long import legitimately reports unhealthy for a
-        # while before succeeding.
-        if ! "$TOOL_DIR/utils/wait-for-healthy.sh" --container="${SERVICE_NAME}-openmrs-db" --timeout=3600; then
+        # until its dump import (or a large restored datadir's crash recovery) finishes, so it
+        # legitimately reports unhealthy for a while before succeeding.
+        if ! "$TOOL_DIR/utils/wait-for-healthy.sh" --container="${SERVICE_NAME}-openmrs-db" \
+                --timeout="${INITIALIZE_DB_TIMEOUT:-3600}"; then
+            if $DB_PHYSICAL_RESTORE; then
+                echo "error: the restored database never became usable. A physical backup keeps the source server's own accounts, so OPENMRS_DB_USER, OPENMRS_DB_PASSWORD and OPENMRS_DB_ROOT_PASSWORD in $ENV_FILE must match the source server's credentials (see the README's RESTORE_MYSQL_DATA_PATH caveat)." >&2
+            fi
             initialize_cleanup
             echo "error: initialize failed -- run '$0 $NAME destroy' before retrying." >&2
             exit 1

@@ -11,7 +11,8 @@
 #
 # --output must end in .tar.gz/.tgz (plain, gzip-compressed tar) or .7z (password-protected
 # archive, matching PIH's existing backup convention -- ARCHIVE_PASSWORD env var, required). Either
-# way the archive contains a single top-level openmrs-data/ directory -- initialize unwraps it
+# way the archive contains a single top-level directory named after the archive itself (e.g.
+# malawi-data.tar.gz and malawi-data.7z both contain malawi-data/) -- initialize unwraps it
 # when restoring the archive directly, and `utils/extract-archive.sh --path=<output>` prints
 # exactly that directory's path, for anything wanting a plain directory instead. A failed backup
 # never leaves a partial file behind.
@@ -80,11 +81,16 @@ if [ -n "$RUNNING" ]; then
     fi
 fi
 
+OUTPUT_NAME=$(basename "$OUTPUT_PATH")
+TOP_DIR="${OUTPUT_NAME%.tar.gz}"
+TOP_DIR="${TOP_DIR%.tgz}"
+TOP_DIR="${TOP_DIR%.7z}"
+
 # Contents only (the trailing /*), so the directories themselves are still restored, empty.
 EXCLUDES=()
 if $EXCLUDE_DISTRIBUTION_ARTIFACTS; then
     for dir in modules owa configuration frontend; do
-        EXCLUDES+=("openmrs-data/$dir/*")
+        EXCLUDES+=("$TOP_DIR/$dir/*")
     done
 fi
 
@@ -95,23 +101,25 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 trap 'rm -f "$OUTPUT_PATH"' ERR
 
 echo "Backing up $VOLUME to $OUTPUT_PATH..." >&2
-# Mounted read-only at /openmrs-data so that name becomes the archive's single top-level entry.
+# Mounted read-only at /backup/$TOP_DIR, and archived relative to /backup, so that name becomes the
+# archive's single top-level entry -- under /backup rather than at / so an archive named e.g.
+# etc.tar.gz can't mount over the container's own /etc.
 case "$OUTPUT_PATH" in
     *.7z)
         # 7z can't write a .7z to stdout, so it's written inside the container (as root) and then
         # handed back to whoever's running this script.
         ARCHIVE_PW="$ARCHIVE_PASSWORD" docker run --rm \
-            -e ARCHIVE_PW -e OUT_NAME="$(basename "$OUTPUT_PATH")" -e OWNER="$(id -u):$(id -g)" \
-            -v "$VOLUME:/openmrs-data:ro" \
+            -e ARCHIVE_PW -e OUT_NAME="$OUTPUT_NAME" -e TOP_DIR="$TOP_DIR" -e OWNER="$(id -u):$(id -g)" \
+            -v "$VOLUME:/backup/$TOP_DIR:ro" \
             -v "$(dirname "$OUTPUT_PATH"):/out" \
-            -w / \
+            -w /backup \
             partnersinhealth/p7zip \
-            sh -c '7z a -p"$ARCHIVE_PW" -mx5 -t7z "/out/$OUT_NAME" openmrs-data "$@" && chown "$OWNER" "/out/$OUT_NAME"' \
+            sh -c '7z a -p"$ARCHIVE_PW" -mx5 -t7z "/out/$OUT_NAME" "$TOP_DIR" "$@" && chown "$OWNER" "/out/$OUT_NAME"' \
             sh ${EXCLUDES[@]+"${EXCLUDES[@]/#/-x!}"} >&2
         ;;
     *)
-        docker run --rm -v "$VOLUME:/openmrs-data:ro" alpine:3.21 \
-            tar czf - -C / ${EXCLUDES[@]+"${EXCLUDES[@]/#/--exclude=}"} openmrs-data > "$OUTPUT_PATH"
+        docker run --rm -v "$VOLUME:/backup/$TOP_DIR:ro" alpine:3.21 \
+            tar czf - -C /backup ${EXCLUDES[@]+"${EXCLUDES[@]/#/--exclude=}"} "$TOP_DIR" > "$OUTPUT_PATH"
         ;;
 esac
 echo "Backed up $VOLUME to $OUTPUT_PATH." >&2
