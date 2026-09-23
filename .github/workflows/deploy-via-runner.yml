@@ -43,6 +43,20 @@ jobs:
     if: always()
     runs-on: [self-hosted, "${{ inputs.runner-label }}"]
     steps:
+      # Deploys can be paused on a host (e.g. during maintenance or a demo) by
+      # creating /etc/puppet/build-disabled, optionally containing a reason,
+      # and resumed by deleting it. The job still succeeds, with a warning.
+      # The reason is shown in this job's log, which may be public.
+      - name: Check for build-disabled flag
+        id: gate
+        run: |
+          FLAG=/etc/puppet/build-disabled
+          if [ -e "$FLAG" ]; then
+            REASON=$(cat "$FLAG" 2>/dev/null | tr '\n' ' ')
+            SINCE=$(date -r "$FLAG" '+%Y-%m-%d %H:%M %Z')
+            echo "::warning::Deploy skipped: $FLAG present on ${{ inputs.runner-label }} since ${SINCE}. ${REASON:-No reason given.} Delete the file to resume."
+            echo "disabled=true" >> "$GITHUB_OUTPUT"
+          fi
       # Output is deliberately not streamed to this step's log: puppet-apply.sh
       # runs with Puppet's -v -d flags, which can echo decrypted secrets
       # (resource parameters, exec commands, etc.) to console, and this job
@@ -52,6 +66,7 @@ jobs:
       # itself, which stays behind the same VPN-only access as before this
       # migration; check there for failure details.
       - name: Puppet apply
+        if: steps.gate.outputs.disabled != 'true'
         run: |
           MSG="puppet-apply.sh ${{ inputs.puppet-manifest }}: full log is at /var/log/mirebalais-puppet on the host (VPN access required); not shown here since it may contain secrets."
           cd /etc/puppet
@@ -63,7 +78,7 @@ jobs:
             exit 1
           fi
       - name: Run full ETL
-        if: ${{ inputs.run-etl }}
+        if: ${{ inputs.run-etl && steps.gate.outputs.disabled != 'true' }}
         timeout-minutes: 60
         run: |
           MSG="execute-full.sh: full log is at /var/log/petl.log on the host (VPN access required); not shown here since it may contain secrets."
