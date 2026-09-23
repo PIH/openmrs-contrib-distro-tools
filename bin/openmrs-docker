@@ -298,7 +298,6 @@ case "$COMMAND" in
         # extracted by an init container into a volume (never onto the host) -- see
         # restore-mysql-volume-from-dump-archive.yaml and restore-openmrs-data-volume-from-archive.yaml.
         DB_SOURCES=0
-        DB_RESTORED_FROM_BACKUP=
         DB_PHYSICAL_RESTORE=false
         if [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ]; then
             [ -f "$RESTORE_MYSQL_DUMP_PATH" ] || { echo "error: no such file: $RESTORE_MYSQL_DUMP_PATH" >&2; exit 1; }
@@ -323,7 +322,6 @@ case "$COMMAND" in
             esac
             export RESTORE_MYSQL_DUMP_PATH
             DB_SOURCES=$((DB_SOURCES + 1))
-            DB_RESTORED_FROM_BACKUP=1
         fi
         if [ -n "${RESTORE_MYSQL_DATA_PATH:-}" ]; then
             [ -d "$RESTORE_MYSQL_DATA_PATH" ] || { echo "error: no such directory: $RESTORE_MYSQL_DATA_PATH" >&2; exit 1; }
@@ -332,7 +330,6 @@ case "$COMMAND" in
             export RESTORE_MYSQL_DATA_PATH
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-data-dir.yaml")
             DB_SOURCES=$((DB_SOURCES + 1))
-            DB_RESTORED_FROM_BACKUP=1
             DB_PHYSICAL_RESTORE=true
         fi
         if [ "$DB_SOURCES" -eq 0 ] && [ -n "${SEED_IMAGE_NAME:-}" ]; then
@@ -374,14 +371,6 @@ case "$COMMAND" in
         # volume for OpenMRS's own first-boot module-initializer run to build up from scratch,
         # same as a totally fresh install.
 
-        # db-data already has a real schema but openmrs-data doesn't -- without this, OpenMRS
-        # finds no runtime.properties, assumes a fresh install, and tries to CREATE TABLE
-        # everything from scratch against a database that already has it (see openmrs.yaml).
-        # Respects an explicit OPENMRS_CREATE_TABLES already in the env file.
-        if [ -n "$DB_RESTORED_FROM_BACKUP" ] && [ "$DATA_SOURCES" -eq 0 ] && ! grep -q '^OPENMRS_CREATE_TABLES=' "$ENV_FILE"; then
-            echo "OPENMRS_CREATE_TABLES=false" >> "$ENV_FILE"
-        fi
-
         # Only openmrs-db (pulling in whichever restore/seed containers the above selected via
         # depends_on) — openmrs itself never needs to run here. openmrs-db's own healthcheck is
         # a genuine completion signal for the DB import: MySQL's entrypoint runs
@@ -421,6 +410,24 @@ case "$COMMAND" in
             exit 1
         fi
         initialize_cleanup
+
+        # A restored openmrs-runtime.properties holds the source server's connection settings.
+        # openmrs-core 2.6+'s startup-init.sh only merges OMRS_EXTRA_* properties into an existing
+        # runtime properties file, so those stale connection.* values would win over this
+        # instance's env. Set it aside (not deleted, so any custom properties it held can still be
+        # carried over by hand, e.g. as OMRS_EXTRA_* env vars) and let OpenMRS write a fresh one.
+        if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; then
+            docker run --rm -v "${SERVICE_NAME}_openmrs-data:/data" alpine:3.21 sh -c \
+                'if [ -f /data/openmrs-runtime.properties ]; then mv /data/openmrs-runtime.properties /data/openmrs-runtime.properties.restored && echo "Moved restored openmrs-runtime.properties aside to openmrs-runtime.properties.restored in openmrs-data -- OpenMRS will write a fresh one from this instance'"'"'s env on first start."; fi'
+        fi
+
+        # db-data already has a real schema but openmrs-data now has no runtime properties (none
+        # restored, or set aside above) -- without this, OpenMRS assumes a fresh install and tries
+        # to CREATE TABLE everything from scratch against a database that already has it (see
+        # openmrs.yaml). Respects an explicit OPENMRS_CREATE_TABLES already in the env file.
+        if { [ "$DATA_SOURCES" -eq 0 ] || [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; } && ! grep -q '^OPENMRS_CREATE_TABLES=' "$ENV_FILE"; then
+            echo "OPENMRS_CREATE_TABLES=false" >> "$ENV_FILE"
+        fi
         echo "Initialized $NAME."
         ;;
     sync)
