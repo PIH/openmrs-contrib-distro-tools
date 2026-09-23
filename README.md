@@ -232,7 +232,8 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | `OPENMRS_IMAGE_NAME` | Required | OpenMRS image, no tag |
 | `OPENMRS_PIH_CONFIG` | Optional | PIH config profile for this instance — leave unset if the distro doesn't use one; OpenMRS fails at startup if it does and this is missing |
 | `DISTRO_SOURCE_DIR` | Required for `build`/`--dev`/`--build` only | Path to the distro repo checkout |
-| `SEED_IMAGE_NAME` | Required for `initialize` only | Full seed image name (no tag) |
+| `SEED_IMAGE_NAME` | Required for `initialize` unless a `RESTORE_MYSQL_*`/`RESTORE_OPENMRS_DATA_PATH` source is given for every volume (see "Initializing a server" below) | Full seed image name (no tag) |
+| `OPENMRS_CREATE_TABLES` | Optional (`true`; `initialize` sets it to `false` automatically when relevant, see below) | Whether OpenMRS builds its schema from scratch on first boot |
 | `SERVICE_NAME` | Optional (defaults to the instance name) | Docker Compose project name |
 | `OPENMRS_IMAGE_TAG`, `SEED_IMAGE_TAG` | Optional (`latest`) | Image tags |
 | `OPENMRS_HTTP_PORT`, `OPENMRS_DB_PORT`, `OPENMRS_DEBUG_PORT` | Optional | Port overrides — set differently per instance to run more than one at once |
@@ -242,17 +243,151 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 
 ### Initializing a server
 
-If you have never started the server before, you can dramatically speed up the initial startup process 
-by initializing the database first from a seed image that is built nightly for each supported configuration profile.
-These will be documented in each distribution's README and requires an additional `SEED_IMAGE_NAME` and optional `SEED_IMAGE_TAG` environment variable.
-Running this command will start the services and populate their volumes with data from the seed image.
+If you have never started the server before, you can dramatically speed up the initial startup
+process by initializing the database and application data first, rather than letting OpenMRS build
+them up from an empty state on its own:
 
 ```bash
 openmrs-docker <name> initialize
 ```
 
-NOTE: This command is only supported immediately after the instance is created.  If it has previously been started, this
-command will fail so as not to overwrite any existing data.
+NOTE: This command is only supported immediately after the instance is created. If it has
+previously been started, this command will fail so as not to overwrite any existing data.
+
+`initialize` populates two volumes -- `mysql/db-data` and `openmrs-data` -- and each one's *source*
+is chosen independently, so e.g. the database can be restored from a real backup while
+`openmrs-data` still comes from the nightly seed image, or vice versa. By default (nothing set but
+`SEED_IMAGE_NAME`) both volumes come from that seed image, same as before. Setting one of the
+`RESTORE_*` variables below overrides just that one volume's source for this `initialize`
+invocation only (these aren't persisted to the instance's env file the way `SEED_IMAGE_NAME` is):
+
+| Env var | Populates | Source |
+|---|---|---|
+| `SEED_IMAGE_NAME` / `SEED_IMAGE_TAG` | either, if not overridden | the nightly seed image (documented per-distro) |
+| `RESTORE_MYSQL_DUMP_PATH` | `mysql/db-data` | a `.sql`/`.sql.gz` dump, handed to MySQL's own first-boot import -- or a `.7z`/`.zip` archive holding one (e.g. from `backup-mysqldump`), extracted into a temporary volume without touching the host's disk (`ARCHIVE_PASSWORD` for a protected archive) |
+| `RESTORE_MYSQL_DATA_PATH` | `mysql/db-data` | a ready MySQL data directory, copied straight into the volume before MySQL ever starts (far faster for a large database) |
+| `RESTORE_OPENMRS_DATA_PATH` | `openmrs-data` | a directory, copied straight into the volume -- or a `.tar.gz`/`.tgz`/`.tar`/`.7z`/`.zip` archive of one (e.g. from `backup-openmrs-data-directory`), extracted straight into the volume without touching the host's disk (`ARCHIVE_PASSWORD` for a protected `.7z`/`.zip`) |
+
+`initialize` waits up to `INITIALIZE_DB_TIMEOUT` seconds (default 3600) for the restored database to
+become healthy -- a large dump import, or crash recovery of a large physical restore, can
+legitimately take a long time. Like the `RESTORE_*` variables, it's set on the `initialize`
+invocation itself.
+
+`mysql/db-data` requires exactly one source: `RESTORE_MYSQL_DUMP_PATH`, `RESTORE_MYSQL_DATA_PATH`,
+or `SEED_IMAGE_NAME`. `openmrs-data` is optional -- if neither `RESTORE_OPENMRS_DATA_PATH` nor
+`SEED_IMAGE_NAME` is set, that volume is simply left for OpenMRS's own first-boot
+module-initializer run to build up from scratch, same as a totally fresh install (e.g. when
+restoring a real database backup with no matching `openmrs-data` backup to go with it).
+
+When db-data is restored from a real backup (`RESTORE_MYSQL_DUMP_PATH`/`RESTORE_MYSQL_DATA_PATH`)
+with no matching `openmrs-data`, `initialize` automatically adds `OPENMRS_CREATE_TABLES=false` to
+the instance's `env` file (unless already set) -- otherwise OpenMRS finds no `runtime.properties`
+in the empty `openmrs-data`, assumes a fresh install, and tries to `CREATE TABLE` everything from
+scratch against a database that already has that schema.
+
+```bash
+# restore the database from a logical dump, but still seed openmrs-data from the nightly image
+RESTORE_MYSQL_DUMP_PATH=/path/to/backup.sql.gz SEED_IMAGE_NAME=... openmrs-docker <name> initialize
+
+# restore both volumes from real backups, no seed image involved at all
+RESTORE_MYSQL_DATA_PATH=/path/to/datadir RESTORE_OPENMRS_DATA_PATH=/path/to/data-dir openmrs-docker <name> initialize
+
+# restore only the database from a backup; let openmrs-data build up fresh
+RESTORE_MYSQL_DATA_PATH=/path/to/datadir openmrs-docker <name> initialize
+
+# restore both volumes straight from backup-mysqldump / backup-openmrs-data-directory archives
+ARCHIVE_PASSWORD=<password> RESTORE_MYSQL_DUMP_PATH=/path/to/backup.sql.7z RESTORE_OPENMRS_DATA_PATH=/path/to/openmrs-data.7z openmrs-docker <name> initialize
+```
+
+If an openmrs-data archive has exactly one top-level directory (as `backup-openmrs-data-directory`
+produces), that directory's contents become `openmrs-data`; otherwise the archive's top level is used
+as is. A dump archive must hold exactly one dump file (`.sql` or `.sql.gz`).
+
+`RESTORE_MYSQL_DATA_PATH` is always a plain, ready-to-use MySQL data directory. Preparing one from a
+percona/xtrabackup backup (archived or not) is a separate step, using the standalone scripts in
+`utils/` (see below):
+
+`openmrs-utils <script-name> [args...]` is on `PATH` (see "Install" above) and is a thin passthrough
+to `$DISTRO_TOOLS_HOME/utils/<script-name>.sh` -- so `openmrs-utils extract-archive --path=...` is
+exactly equivalent to running that script by its full path:
+
+```bash
+# a percona/xtrabackup backup: extract the archive, then convert it into a ready datadir
+BACKUP_DIR=$(openmrs-utils extract-archive --path=/path/to/backup.7z --output-dir=./backup)
+DATADIR=$(openmrs-utils convert-percona-backup --backup-dir="$BACKUP_DIR" --output-dir=./datadir)
+RESTORE_MYSQL_DATA_PATH="$DATADIR" openmrs-docker <name> initialize
+```
+
+**A caveat specific to `RESTORE_MYSQL_DATA_PATH`:** a physical backup is a copy of the source
+server's entire data directory, *including its `mysql` system tables* -- so the restored database's
+real credentials are the source server's, not the ones this instance was created with. If
+`OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD` and `OPENMRS_DB_ROOT_PASSWORD` don't match what the source
+server actually used, the database will come up fine but the post-restore health check can never
+authenticate, so `initialize` eventually fails with a message pointing here -- after
+`INITIALIZE_DB_TIMEOUT` (see above), an hour by default -- even though the restore itself succeeded.
+Set those variables to the source server's credentials before running `create`. For the same reason,
+`OPENMRS_DB_IMAGE_TAG` should match the MySQL version the backup was taken from.
+`RESTORE_MYSQL_DUMP_PATH` is unaffected -- a logical dump doesn't carry the source's user accounts.
+
+### Utilities (`utils/`)
+
+Standalone, general-purpose scripts in this tool's own `utils/` directory (not part of the
+`openmrs-docker` CLI, and usable entirely on their own -- e.g. against a production server that was
+never created via `openmrs-docker` at all). Named arguments for values; secrets (passwords) are
+environment variables instead, so they never show up in `ps` output. Run via `openmrs-utils
+<script-name> [args...]` (a thin passthrough to the script of that name under `utils/` -- see
+"Install" above), or the script directly by its full path -- the two are equivalent. Run any script
+with no arguments for its exact usage; run `openmrs-utils` with no arguments to list them all.
+
+- **`extract-archive --path=<path> [--output-dir=<dir>]`** -- extracts a `.7z`/`.zip`/`.tar.gz`/
+  `.tgz`/`.tar` archive (optional `ARCHIVE_PASSWORD` env var, `.7z`/`.zip` only) and prints the path
+  to its single top-level entry; prints `<path>` unchanged for anything else.
+- **`convert-percona-backup --backup-dir=<dir> --output-dir=<dir>`** -- converts an extracted,
+  already-prepared (`--apply-log`'d) percona/xtrabackup backup directory into a ready-to-use MySQL
+  data directory (`--copy-back`), suitable for `initialize`'s `RESTORE_MYSQL_DATA_PATH`.
+- **`backup-mysqldump --container=<name> --output=<path> [--database=openmrs] [--user=root]`**
+  -- dumps a running MySQL container's database (`MYSQL_PASSWORD` env var), including routines and
+  triggers, as a faithful, unmodified copy. `--output`'s extension picks the format: `.sql` is
+  plain SQL, `.gz` (e.g. `backup.sql.gz`) is gzip-compressed SQL, and `.7z` is a
+  password-protected archive (`ARCHIVE_PASSWORD` env var, required), matching PIH's existing
+  backup convention. A `.7z` holds a single SQL file named after the archive (`backup.sql.7z` and
+  `backup.7z` both contain `backup.sql`), streamed straight in, never written to disk unencrypted;
+  `.gz.7z` is rejected, since 7z already compresses. All three are usable directly as
+  `initialize`'s `RESTORE_MYSQL_DUMP_PATH`.
+- **`strip-mysqldump-definers --path=<dump.sql|dump.sql.gz> --output=<path>`** -- an optional
+  step for a dump produced above: strips `DEFINER=`user`@`host`` clauses from routines/triggers/
+  views into a new copy (the original is untouched), so a definer account that doesn't exist on
+  the restore target doesn't cause a restored routine/trigger to fail at execution time. Only
+  needed if/when you actually hit that problem.
+- **`backup-percona --container=<name> --volume=<db data volume or host dir> --output=<dir>
+  [--databases=<list>]`** -- takes a prepared physical backup of a running MySQL container's data
+  volume (`MYSQL_ROOT_PASSWORD` env var; a bind-mounted host directory works too, not just a named
+  volume), ready for `convert-percona-backup`. `--databases` (optional, space-separated) limits the
+  backup to specific databases, passed through to innobackupex's own `--databases` option with the
+  `mysql` and `performance_schema` system databases added (innobackupex backs up only exactly what's
+  listed, and a data directory restored without `mysql` has no usable accounts); omit it to back up
+  everything. A failed backup leaves no output directory behind.
+- **`backup-openmrs-data-directory --volume=<openmrs-data volume or host dir> --output=<path>
+  [--exclude-distribution-artifacts] [--allow-running]`** -- archives an OpenMRS application data
+  directory (a named volume or an absolute host directory path). `--output` ending in
+  `.tar.gz`/`.tgz` produces a plain gzip-compressed tar; ending in `.7z` produces a
+  password-protected archive instead (`ARCHIVE_PASSWORD` env var, required). The archive holds a
+  single top-level directory named after the archive (`malawi-data.tar.gz` contains `malawi-data/`).
+  Pass the archive itself as `initialize`'s `RESTORE_OPENMRS_DATA_PATH`, or extract it first with
+  `extract-archive` for a plain directory. Backs up the whole directory by default, same as the seed
+  image build; `--exclude-distribution-artifacts` skips the contents of `modules/`, `owa/`,
+  `configuration/` and `frontend/`, which OpenMRS re-copies from its image on every start --
+  smaller, and avoids restoring stale `.omod`s alongside a newer distro's. Refuses to run while a
+  running container has the volume mounted (stop OpenMRS first for a consistent copy);
+  `--allow-running` overrides that. `.7z` doesn't record file ownership; use `.tar.gz` if that
+  matters.
+- **`clear-configuration-checksums --volume=<openmrs-data volume>`** -- removes
+  openmrs-module-initializer's cached `configuration_checksums` from a volume (refuses if a running
+  container currently has it mounted), so the next start reprocesses all configuration from
+  scratch rather than trusting checksums that may no longer reflect reality -- e.g. after loading a
+  different database while keeping an existing `openmrs-data`.
+- **`wait-for-healthy --container=<name> [--timeout=<seconds>] [--fail-on-unhealthy=true|false]`**
+  -- polls until a container reports healthy; fails fast on exited/dead/restarting, or times out.
 
 ### Starting a server
 
@@ -617,3 +752,50 @@ openmrs-docker create <name>
 openmrs-docker <name> initialize
 openmrs-docker <name> start
 ```
+
+## Adding petl and its SQL Server target
+
+Two more fragments under `docker/services/` are attached the same way as OpenHIM and its mediators
+— via `SERVICES=` at `create` time, or `add-service` on an existing instance:
+
+- **`petl`** runs the [petl](https://github.com/PIH/petl) ETL pipeline against this instance's
+  `openmrs-db`. It's a *profiled* fragment, so `start` deliberately doesn't bring it up; it's a job,
+  not a long-running service. Invoke it with `run-service`. It needs `PETL_IMAGE_NAME` set — if it
+  isn't, `run-service petl` fails on a placeholder image name rather than a real one.
+- **`petl-sqlserver`** is the SQL Server database petl writes to — the stock
+  `mcr.microsoft.com/mssql/server` image directly, no custom build. A companion one-shot
+  `petl-sqlserver-init` service creates the `PETL_SQLSERVER_DATABASE` database (default
+  `openmrs_reporting`) once `petl-sqlserver`'s healthcheck confirms SQL Server itself is up, then exits.
+
+```bash
+export OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr
+export PETL_IMAGE_NAME=partnersinhealth/petl
+export PETL_SQLSERVER_PASSWORD=<pick-a-password>
+export SERVICES=openmrs-db,openmrs,petl,petl-sqlserver
+openmrs-docker create <name>
+openmrs-docker <name> start
+openmrs-docker <name> run-service petl
+```
+
+Note that `PETL_SQLSERVER_PASSWORD` has a default committed to this repo, which exists only so the
+fragment works out of the box for local development — override it for anything else.
+
+## Testing this project
+
+The `test/` directory holds a [bats](https://github.com/bats-core/bats-core) test suite for this
+project's own scripts, run by `.github/workflows/test.yml` on every push and pull request that touches
+`bin/`, `utils/`, `docker/` or `test/`. Run it locally with:
+
+```bash
+test/run                 # everything
+test/run static          # shellcheck, and every Compose fragment/overlay validates (seconds)
+test/run args            # argument validation and safety checks (seconds)
+test/run integration     # backup -> restore -> verify round trips against real containers (minutes)
+test/run integration/dump.bats -f '7z'   # one file, filtered by test name
+```
+
+It needs only Docker and git: `test/run` fetches pinned versions of bats into `test/.deps/` on first
+use, and falls back to the `koalaman/shellcheck-alpine` image if `shellcheck` isn't installed. Tests
+create everything under a unique name prefix (throwaway `OPENMRS_DOCKER_HOME`, random host ports, a
+placeholder OpenMRS image -- `initialize` only ever starts the database) and remove it all afterwards,
+so they don't touch existing instances.

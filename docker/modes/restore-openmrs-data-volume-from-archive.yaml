@@ -1,0 +1,63 @@
+# Overlay used by `openmrs-docker <name> initialize` when the openmrs-data volume is being
+# populated from a local archive (RESTORE_OPENMRS_DATA_PATH pointing at a .tar.gz/.tgz/.tar/.7z/
+# .zip file, e.g. from utils/backup-openmrs-data-directory.sh) rather than a directory or
+# SEED_IMAGE_NAME. Runs a one-shot init container that extracts the archive straight into
+# openmrs-data -- never onto the host, so a multi-GB data directory doesn't need twice its size in
+# free host disk. Also declared as an openmrs-db dependency (not because openmrs-db needs
+# openmrs-data, but because `initialize` only ever targets `up -d openmrs-db`, and Compose only
+# starts a service that's targeted directly or pulled in as a dependency).
+#
+# Extracts into a staging directory inside the volume first (so the final move is a same-
+# filesystem rename, not a second copy). If the archive has exactly one top-level entry and it's a
+# directory (as backup-openmrs-data-directory.sh produces), that directory's contents become
+# the volume's contents; otherwise the archive's top level is used as is (e.g. a `tar czf - .`
+# archive, the way the seed image's data.tar.gz is built).
+#
+# ARCHIVE_PASSWORD (optional, .7z/.zip only -- a secret) is passed through from initialize's own
+# environment by name only, so its value never appears in any command line. `-p` is always given,
+# even empty, so 7z never falls back to an interactive prompt (same as utils/extract-archive.sh).
+#
+# Set by initialize itself, not persisted to the instance's env file:
+#   RESTORE_OPENMRS_DATA_PATH             -- absolute path to the archive on the host
+#   RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME -- "archive.<ext>", matching the archive's actual format
+#                                            so the right extractor is chosen
+
+services:
+  restore-openmrs-data-volume:
+    image: partnersinhealth/p7zip
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-restore-openmrs-data-volume
+    environment:
+      - ARCHIVE_PASSWORD
+      - ARCHIVE_NAME=${RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME:?RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME must be set}
+    volumes:
+      - ${RESTORE_OPENMRS_DATA_PATH:?RESTORE_OPENMRS_DATA_PATH must be set}:/source/${RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME:?RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME must be set}:ro
+      - openmrs-data:/target
+    # No chown, same as restore-openmrs-data-volume-from-backup.yaml and the seed image path. tar
+    # (run as root) preserves the archive's recorded ownership; 7z records none.
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        STAGING=/target/.restore-staging
+        mkdir "$$STAGING"
+        case "$$ARCHIVE_NAME" in
+            *.7z|*.zip)
+                7z x -p"$${ARCHIVE_PASSWORD:-}" -o"$$STAGING" -y "/source/$$ARCHIVE_NAME" >/dev/null
+                ;;
+            *)
+                tar xf "/source/$$ARCHIVE_NAME" -C "$$STAGING"
+                ;;
+        esac
+        ROOT="$$STAGING"
+        TOP=$$(find "$$STAGING" -mindepth 1 -maxdepth 1)
+        if [ -n "$$TOP" ] && [ "$$(echo "$$TOP" | wc -l)" -eq 1 ] && [ -d "$$TOP" ]; then
+            ROOT="$$TOP"
+        fi
+        find "$$ROOT" -mindepth 1 -maxdepth 1 -exec mv {} /target/ \;
+        rm -rf "$$STAGING"
+
+  openmrs-db:
+    depends_on:
+      restore-openmrs-data-volume:
+        condition: service_completed_successfully

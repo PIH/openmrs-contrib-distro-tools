@@ -1,0 +1,56 @@
+# Overlay used by `openmrs-docker <name> initialize` when the mysql/db-data volume is being
+# populated from a logical dump inside a .7z/.zip archive (RESTORE_MYSQL_DUMP_PATH, e.g. from
+# utils/backup-mysqldump.sh). A one-shot init container extracts the archive's single dump file
+# into the db-init volume -- never onto the host -- which openmrs-db then mounts as
+# /docker-entrypoint-initdb.d, so MySQL's own first-boot import picks it up, the same way
+# restore-mysql-volume-from-seed.yaml does. db-init is removed again by initialize once it's done.
+#
+# The dump inside may be plain (.sql) or gzip-compressed (.sql.gz); it's renamed to dump.sql or
+# dump.sql.gz to match, so MySQL's entrypoint decompresses (or doesn't) correctly.
+#
+# ARCHIVE_PASSWORD (optional -- a secret) is passed through from initialize's own environment by
+# name only, so its value never appears in any command line. `-p` is always given, even empty, so
+# 7z never falls back to an interactive prompt.
+#
+# Set by initialize itself, not persisted to the instance's env file:
+#   RESTORE_MYSQL_DUMP_PATH             -- absolute path to the archive on the host
+#   RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME -- "archive.7z" or "archive.zip", matching its format
+
+services:
+  restore-mysql-dump-archive:
+    image: partnersinhealth/p7zip
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-restore-mysql-dump-archive
+    environment:
+      - ARCHIVE_PASSWORD
+      - ARCHIVE_NAME=${RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME:?RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME must be set}
+    volumes:
+      - ${RESTORE_MYSQL_DUMP_PATH:?RESTORE_MYSQL_DUMP_PATH must be set}:/source/${RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME:?RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME must be set}:ro
+      - db-init:/target
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        STAGING=/target/.restore-staging
+        mkdir "$$STAGING"
+        7z x -p"$${ARCHIVE_PASSWORD:-}" -o"$$STAGING" -y "/source/$$ARCHIVE_NAME" >/dev/null
+        FILES=$$(find "$$STAGING" -type f)
+        if [ -z "$$FILES" ] || [ "$$(echo "$$FILES" | wc -l)" -ne 1 ]; then
+            echo "error: $$ARCHIVE_NAME must contain exactly one dump file" >&2
+            exit 1
+        fi
+        case "$$FILES" in
+            *.gz) mv "$$FILES" /target/dump.sql.gz ;;
+            *)    mv "$$FILES" /target/dump.sql ;;
+        esac
+        rm -rf "$$STAGING"
+
+  openmrs-db:
+    depends_on:
+      restore-mysql-dump-archive:
+        condition: service_completed_successfully
+    volumes:
+      - db-init:/docker-entrypoint-initdb.d
+
+volumes:
+  db-init:

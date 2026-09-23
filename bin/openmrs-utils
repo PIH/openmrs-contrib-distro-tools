@@ -1,0 +1,27 @@
+#!/bin/bash
+set -euo pipefail
+
+TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+UTILS_DIR="$TOOL_DIR/utils"
+
+usage() {
+    echo "Usage: $0 <script-name> [args...]" >&2
+    echo "" >&2
+    echo "Thin passthrough to \$DISTRO_TOOLS_HOME/utils/<script-name>.sh -- e.g." >&2
+    echo "'openmrs-utils backup-mysqldump ...' runs utils/backup-mysqldump.sh with the same args." >&2
+    echo "" >&2
+    echo "Available scripts:" >&2
+    for script in "$UTILS_DIR"/*.sh; do
+        echo "  $(basename "$script" .sh)" >&2
+    done
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+SCRIPT_NAME="$1"
+shift
+
+SCRIPT_PATH="$UTILS_DIR/$SCRIPT_NAME.sh"
+[ -f "$SCRIPT_PATH" ] || { echo "error: no such utility script: $SCRIPT_NAME" >&2; usage; }
+
+exec "$SCRIPT_PATH" "$@"

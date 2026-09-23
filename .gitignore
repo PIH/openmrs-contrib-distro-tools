@@ -1,3 +1,7 @@
 .DS_Store
 *.iml
 .idea/
+.worktrees
+
+# test dependencies fetched by test/run
+test/.deps/

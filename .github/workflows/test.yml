@@ -1,0 +1,41 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - 'bin/**'
+      - 'utils/**'
+      - 'docker/**'
+      - 'test/**'
+      - '.github/workflows/test.yml'
+  pull_request:
+    paths:
+      - 'bin/**'
+      - 'utils/**'
+      - 'docker/**'
+      - 'test/**'
+      - '.github/workflows/test.yml'
+
+jobs:
+  static-and-args:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Static checks
+        run: test/run static
+
+      - name: Argument and safety checks
+        run: test/run args
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Backup and restore round trips
+        run: test/run integration

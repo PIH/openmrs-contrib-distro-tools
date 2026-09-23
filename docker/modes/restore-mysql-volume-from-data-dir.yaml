@@ -1,0 +1,29 @@
+# Overlay used by `openmrs-docker <name> initialize` when the mysql/db-data volume is being
+# populated from a local, ready-to-use MySQL data directory (RESTORE_MYSQL_DATA_PATH) rather than
+# SEED_IMAGE_NAME or RESTORE_MYSQL_DUMP_PATH. Runs a one-shot init container that copies the
+# directory straight into db-data before openmrs-db ever starts -- unlike
+# restore-mysql-volume-from-dump.yaml, this writes the datadir directly rather than going through
+# MySQL's own SQL-import entrypoint. Any percona/xtrabackup handling (if that's how the directory
+# was produced -- see utils/backup-percona.sh, utils/convert-percona-backup.sh) already happened
+# upstream of this; by this point RESTORE_MYSQL_DATA_PATH is just a plain directory of MySQL data
+# files to copy in, however it was produced.
+#
+# Set by initialize itself, not persisted to the instance's env file:
+#   RESTORE_MYSQL_DATA_PATH -- absolute path to a ready MySQL data directory on the host
+
+services:
+  restore-mysql-volume:
+    image: alpine:3.21
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-restore-mysql-volume
+    volumes:
+      - ${RESTORE_MYSQL_DATA_PATH:?RESTORE_MYSQL_DATA_PATH must be set}:/source:ro
+      - db-data:/target
+    # 999:999 is the mysql user/group in the official mysql images (mysql:5.6 by default here --
+    # see services/openmrs-db.yaml's OPENMRS_DB_IMAGE_NAME); a different base image with a
+    # different uid would need this adjusted to match.
+    command: ["sh", "-c", "cp -a /source/. /target/ && chown -R 999:999 /target"]
+
+  openmrs-db:
+    depends_on:
+      restore-mysql-volume:
+        condition: service_completed_successfully

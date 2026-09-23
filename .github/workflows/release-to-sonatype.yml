@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: ''
+      docker_context:
+        description: Docker build context directory, relative to the repo root (a built distro/web directory for an OpenMRS distro)
+        required: false
+        type: string
+        default: 'distro/target/distro/web'
     secrets:
       SONATYPE_USERNAME:
         required: true
@@ -67,7 +72,7 @@ jobs:
         uses: PIH/openmrs-contrib-distro-tools/.github/actions/build-and-push-docker@main
         with:
           image_name: ${{ inputs.image_name }}
-          context: target/checkout/distro/target/distro/web
+          context: target/checkout/${{ inputs.docker_context }}
           version: ${{ steps.released-version.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
@@ -91,6 +96,6 @@ jobs:
         uses: PIH/openmrs-contrib-distro-tools/.github/actions/build-and-push-docker@main
         with:
           image_name: ${{ inputs.image_name }}
-          context: distro/target/distro/web
+          context: ${{ inputs.docker_context }}
           version: ${{ steps.next-snapshot.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
