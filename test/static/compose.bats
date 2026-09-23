@@ -87,3 +87,14 @@ assert_valid() {
     compose_config restore-mysql-volume-from-seed.yaml restore-openmrs-data-volume-from-seed.yaml
     assert_valid
 }
+
+@test "an OMRS_EXTRA_* variable set at create time reaches the openmrs service's resolved config" {
+    local name="$RUN_PREFIX-f-compose-extra" dir
+    OMRS_EXTRA_pihmalawi_warehouse_connection_url="jdbc:mysql://openmrs-db:3306/openmrs_warehouse" \
+        SERVICES=openmrs-db,openmrs create_instance "$name"
+    dir="$OPENMRS_DOCKER_HOME/$name"
+    run docker compose --env-file "$dir/env" -f "$dir/openmrs-db.yaml" -f "$dir/openmrs.yaml" config
+    assert_success
+    assert_output --partial 'OMRS_EXTRA_pihmalawi_warehouse_connection_url: jdbc:mysql://openmrs-db:3306/openmrs_warehouse'
+    rm -rf "$dir"
+}

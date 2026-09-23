@@ -16,6 +16,11 @@ services:
         restart: true
     ports:
       - ${OPENMRS_HTTP_PORT:-8080}:8080
+    # Same file as --env-file below (resolves relative to this file's own directory, not CWD).
+    # Passes through any OMRS_EXTRA_* var create captured (bin/openmrs-docker) without needing an
+    # explicit environment: entry per key, like the two named translations below already require.
+    env_file:
+      - env
     environment:
       OMRS_CONFIG_MODULE_WEB_ADMIN: "true"
       OMRS_CONFIG_AUTO_UPDATE_DATABASE: "true"

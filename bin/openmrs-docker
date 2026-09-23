@@ -122,6 +122,11 @@ EOF
         for svc in "${SERVICE_LIST[@]}"; do
             render_service_env_defaults "$svc"
         done
+        # Captures any OMRS_EXTRA_* var verbatim -- openmrs-core's startup-init.sh already treats
+        # this prefix as a wildcard extension point; openmrs.yaml's env_file passes these through.
+        for var in "${!OMRS_EXTRA_@}"; do
+            printf '%s="%s"\n' "$var" "${!var}"
+        done
     } > "$INSTANCE_DIR/env"
     # Copy validated service fragments
     for svc in "${SERVICE_LIST[@]}"; do
