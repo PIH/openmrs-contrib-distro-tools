@@ -192,7 +192,8 @@ with the name of the instance you want to create (this can be any name you like)
 OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr \
 OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci \
 DISTRO_SOURCE_DIR="<path_to_lesotho_emr_src>" \
-openmrs-docker create <name> --build
+openmrs-docker create <name>
+openmrs-docker <name> start --build
 ```
 
 Every setting `create` writes falls back to a default only if it isn't already set in your shell —
