@@ -70,6 +70,8 @@ jobs:
           OPENMRS_IMAGE_NAME: ${{ inputs.image_name }}
           OPENMRS_PIH_CONFIG: ${{ inputs.pih_config }}
           SEED_IMAGE_NAME: ${{ inputs.seed_image_name }}
+          # avoid OOM/swap-thrashing on the 7GB ubuntu-latest runner
+          OPENMRS_DB_INNODB_BUFFER_POOL_SIZE: 1G
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker create ${{ env.INSTANCE_NAME }}
 
       - name: Add smoke-tests service
