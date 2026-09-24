@@ -25,6 +25,10 @@ export OPENMRS_IMAGE_NAME=placeholder/openmrs
 export OPENMRS_DB_PORT=0
 export OPENMRS_HTTP_PORT=0
 export OPENMRS_DB_INNODB_BUFFER_POOL_SIZE=256M
+# initialize would otherwise run the (placeholder) OpenMRS image to find the owner for a restored
+# openmrs-data. The test runner's own ids keep restored fixtures readable by the tests.
+OPENMRS_DATA_OWNER="$(id -u):$(id -g)"
+export OPENMRS_DATA_OWNER
 
 # A name for a Docker resource owned by the current test, e.g. `res db` -> odt1234-t7-db.
 res() { echo "$RUN_PREFIX-t${BATS_TEST_NUMBER}-$1"; }
@@ -146,7 +150,7 @@ write_tiny_dump() { # <path>
 # nested dirs, real state (runtime properties, complex_obs), and the four distribution-artifact dirs
 # that --exclude-distribution-artifacts empties.
 make_data_fixture() { # <dir>
-    mkdir -p "$1"/{modules,owa,configuration/addresshierarchy,frontend,complex_obs,.hidden}
+    mkdir -p "$1"/{modules,owa,configuration/addresshierarchy,frontend,complex_obs,.hidden,.openmrs-lib-cache}
     echo 'connection.url=jdbc:mysql://x/openmrs' > "$1/openmrs-runtime.properties"
     echo omod > "$1/modules/a.omod"
     echo owa > "$1/owa/app.zip"
@@ -154,11 +158,14 @@ make_data_fixture() { # <dir>
     echo js > "$1/frontend/f.js"
     echo img > "$1/complex_obs/1.jpg"
     echo h > "$1/.hidden/h"
+    echo cls > "$1/.openmrs-lib-cache/c.class"
 }
 
 # The full fixture tree, written out by hand (not computed from make_data_fixture).
 FIXTURE_TREE="./.hidden
 ./.hidden/h
+./.openmrs-lib-cache
+./.openmrs-lib-cache/c.class
 ./complex_obs
 ./complex_obs/1.jpg
 ./configuration
@@ -172,7 +179,8 @@ FIXTURE_TREE="./.hidden
 ./owa
 ./owa/app.zip"
 
-# The fixture tree after --exclude-distribution-artifacts: those four dirs kept, but empty.
+# The fixture tree after --exclude-distribution-artifacts: those four dirs kept, but empty, and
+# .openmrs-lib-cache left out.
 FIXTURE_TREE_EXCLUDED="./.hidden
 ./.hidden/h
 ./complex_obs

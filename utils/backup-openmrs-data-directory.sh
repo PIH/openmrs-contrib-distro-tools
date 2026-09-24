@@ -23,7 +23,8 @@
 #
 # By default the whole directory is backed up, same as the seed image build
 # (.github/workflows/build-seeded-image.yml). --exclude-distribution-artifacts skips the contents
-# of modules/, owa/, configuration/ and frontend/ (keeping the empty directories): the openmrs-core
+# of modules/, owa/, configuration/ and frontend/ (keeping the empty directories), and the
+# .openmrs-lib-cache directory OpenMRS rebuilds from modules/: the openmrs-core
 # image's startup-init.sh re-copies all four from the image's own /openmrs/distribution on every
 # start, so they're not state. Excluding them also avoids restoring stale artifacts onto a
 # different distro version -- startup-init.sh's attempt to clear them first
@@ -92,6 +93,8 @@ if $EXCLUDE_DISTRIBUTION_ARTIFACTS; then
     for dir in modules owa configuration frontend; do
         EXCLUDES+=("$TOP_DIR/$dir/*")
     done
+    # Module classes OpenMRS unpacks from modules/ on startup and rebuilds when missing.
+    EXCLUDES+=("$TOP_DIR/.openmrs-lib-cache")
 fi
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
