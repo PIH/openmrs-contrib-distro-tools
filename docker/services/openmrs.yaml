@@ -30,10 +30,6 @@ services:
       OMRS_CONFIG_CONNECTION_DATABASE: openmrs
       OMRS_CONFIG_CONNECTION_USERNAME: ${OPENMRS_DB_USER:-openmrs}
       OMRS_CONFIG_CONNECTION_PASSWORD: ${OPENMRS_DB_PASSWORD:-openmrs}
-      # OMRS_EXTRA_* names below must match the case the OpenMRS SDK uses when it bakes
-      # openmrs-distro.properties `property.*` entries into the image as ENV (key with '.' -> '_',
-      # original case). A differently-cased name is a second variable, not an override, and
-      # openmrs-core then keeps the image's value on a first install.
       OMRS_EXTRA_pih_config: ${OPENMRS_PIH_CONFIG:-}
       OMRS_JAVA_MEMORY_OPTS: ${OPENMRS_JAVA_MEMORY_OPTS:--Xms512m -Xmx2g -XX:NewSize=128m}
       OMRS_EXTRA_activitylog__enabled: ${OPENMRS_ACTIVITYLOG_ENABLED:-true}
