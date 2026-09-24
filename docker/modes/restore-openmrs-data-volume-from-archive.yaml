@@ -32,8 +32,6 @@ services:
     volumes:
       - ${RESTORE_OPENMRS_DATA_PATH:?RESTORE_OPENMRS_DATA_PATH must be set}:/source/${RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME:?RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME must be set}:ro
       - openmrs-data:/target
-    # No chown, same as restore-openmrs-data-volume-from-backup.yaml and the seed image path. tar
-    # (run as root) preserves the archive's recorded ownership; 7z records none.
     command:
       - sh
       - -c

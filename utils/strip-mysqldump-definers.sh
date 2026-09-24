@@ -4,9 +4,9 @@
 # routine/trigger/view created with a DEFINER account that doesn't exist on the restore target
 # can fail at execution time (not creation time), often surfacing well after the restore looked
 # successful; removing the clause leaves MySQL to default the definer to whichever user performs
-# the restore instead. This is a separate, optional step -- run it against a dump only if/when you
-# actually hit that problem, then feed the result to `initialize`'s RESTORE_MYSQL_DUMP_PATH in
-# place of the original. mysqldump itself has no flag to omit DEFINER, hence the text rewrite.
+# the restore instead. Feed the result to `initialize`'s RESTORE_MYSQL_DUMP_PATH in place of the
+# original. For a new backup, backup-mysqldump.sh --strip-definers does the same while dumping
+# (and works for .7z output). mysqldump itself has no flag to omit DEFINER, hence the text rewrite.
 # Usage:
 #   utils/strip-mysqldump-definers.sh --path=<dump.sql|dump.sql.gz> --output=<path>
 #

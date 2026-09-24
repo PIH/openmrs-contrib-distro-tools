@@ -16,9 +16,6 @@ services:
     volumes:
       - ${RESTORE_OPENMRS_DATA_PATH:?RESTORE_OPENMRS_DATA_PATH must be set}:/source:ro
       - openmrs-data:/target
-    # No chown after copying, unlike the mysql overlay's chown to MySQL's well-known uid 999 --
-    # openmrs-data has no single well-known owning uid across distros, and the seed-image path
-    # (seed-entrypoint.sh) has never chowned it either, so this preserves that same behavior.
     command: ["sh", "-c", "cp -a /source/. /target/"]
 
   openmrs-db:

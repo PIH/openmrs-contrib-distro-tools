@@ -171,3 +171,31 @@ initialize_from() { # <dump> [VAR=value...]
     run db_query_in_volume "${NAME}_db-data" 'INSERT INTO audited VALUES (7); SELECT id FROM audit;'
     assert_output 7
 }
+
+@test "--strip-definers writes a dump with no DEFINER clauses whose triggers still fire" {
+    dump out.sql --strip-definers 2>/dev/null
+    run grep -c 'DEFINER=' out.sql
+    assert_output 0
+    initialize_from out.sql
+    assert_success
+    run db_query_in_volume "${NAME}_db-data" 'INSERT INTO audited VALUES (8); SELECT id FROM audit;'
+    assert_output 8
+}
+
+@test "--strip-definers also applies to a .7z dump" {
+    ARCHIVE_PASSWORD=pw dump backup.sql.7z --strip-definers >/dev/null 2>&1
+    initialize_from backup.sql.7z ARCHIVE_PASSWORD=pw
+    assert_success
+    run db_query_in_volume "${NAME}_db-data" 'INSERT INTO audited VALUES (9); SELECT id FROM audit;'
+    assert_output 9
+}
+
+@test "--host dumps over TCP, for a MySQL that isn't in a container" {
+    local ip
+    ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$SRC_DB")
+    MYSQL_PASSWORD=openmrs "$UTILS/backup-mysqldump.sh" --host="$ip" --port=3306 --output=out.sql 2>/dev/null
+    initialize_from out.sql
+    assert_success
+    run db_marker_in_volume "${NAME}_db-data"
+    assert_output 1
+}

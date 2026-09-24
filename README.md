@@ -234,6 +234,7 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | `OPENMRS_PIH_CONFIG` | Optional | PIH config profile for this instance — leave unset if the distro doesn't use one; OpenMRS fails at startup if it does and this is missing |
 | `DISTRO_SOURCE_DIR` | Required for `build`/`--dev`/`--build` only | Path to the distro repo checkout |
 | `SEED_IMAGE_NAME` | Required for `initialize` unless a `RESTORE_MYSQL_*`/`RESTORE_OPENMRS_DATA_PATH` source is given for every volume (see "Initializing a server" below) | Full seed image name (no tag) |
+| `OPENMRS_DATA_OWNER` | Optional (the openmrs image's runtime `uid:gid`) | Owner `initialize` gives a restored `openmrs-data` -- see "Initializing a server" below |
 | `OPENMRS_CREATE_TABLES` | Optional (`true`; `initialize` sets it to `false` automatically when relevant, see below) | Whether OpenMRS builds its schema from scratch on first boot |
 | `SERVICE_NAME` | Optional (defaults to the instance name) | Docker Compose project name |
 | `OPENMRS_IMAGE_TAG`, `SEED_IMAGE_TAG` | Optional (`latest`) | Image tags |
@@ -308,6 +309,11 @@ In that case, and when `openmrs-data` isn't restored or seeded at all, `initiali
 finds no runtime properties in `openmrs-data`, assumes a fresh install, and tries to `CREATE TABLE`
 everything from scratch against a database that already has that schema.
 
+Files restored from `RESTORE_OPENMRS_DATA_PATH` keep the owners they had on the source host, so
+`initialize` then changes the owner of everything in `openmrs-data` to the openmrs image's runtime
+user (read from the image with `id`, e.g. `1001:0` for PIH's images). Set `OPENMRS_DATA_OWNER=<uid>:<gid>`
+to choose it explicitly instead.
+
 ```bash
 # restore the database from a logical dump, but still seed openmrs-data from the nightly image
 RESTORE_MYSQL_DUMP_PATH=/path/to/backup.sql.gz SEED_IMAGE_NAME=... openmrs-docker <name> initialize
@@ -368,20 +374,24 @@ with no arguments for its exact usage; run `openmrs-utils` with no arguments to 
 - **`convert-percona-backup --backup-dir=<dir> --output-dir=<dir>`** -- converts an extracted,
   already-prepared (`--apply-log`'d) percona/xtrabackup backup directory into a ready-to-use MySQL
   data directory (`--copy-back`), suitable for `initialize`'s `RESTORE_MYSQL_DATA_PATH`.
-- **`backup-mysqldump --container=<name> --output=<path> [--database=openmrs] [--user=root]`**
-  -- dumps a running MySQL container's database (`MYSQL_PASSWORD` env var), including routines and
-  triggers, as a faithful, unmodified copy. `--output`'s extension picks the format: `.sql` is
+- **`backup-mysqldump (--container=<name> | --host=<host> [--port=3306]) --output=<path>
+  [--database=openmrs] [--user=root] [--strip-definers] [--client-image=mysql:5.6]`** -- dumps a
+  MySQL database (`MYSQL_PASSWORD` env var), including routines and triggers. `--container` dumps
+  from inside a running MySQL container; `--host` connects over TCP instead (e.g. `--host=127.0.0.1`
+  for MySQL installed directly on a legacy host), running mysqldump from `--client-image` with host
+  networking, so the host needs only docker. By default the dump is a faithful, unmodified copy;
+  `--strip-definers` removes `DEFINER=` clauses as it streams (see `strip-mysqldump-definers`),
+  so the result restores cleanly on a server that doesn't have the source's accounts. `--output`'s extension picks the format: `.sql` is
   plain SQL, `.gz` (e.g. `backup.sql.gz`) is gzip-compressed SQL, and `.7z` is a
   password-protected archive (`ARCHIVE_PASSWORD` env var, required), matching PIH's existing
   backup convention. A `.7z` holds a single SQL file named after the archive (`backup.sql.7z` and
   `backup.7z` both contain `backup.sql`), streamed straight in, never written to disk unencrypted;
   `.gz.7z` is rejected, since 7z already compresses. All three are usable directly as
   `initialize`'s `RESTORE_MYSQL_DUMP_PATH`.
-- **`strip-mysqldump-definers --path=<dump.sql|dump.sql.gz> --output=<path>`** -- an optional
-  step for a dump produced above: strips `DEFINER=`user`@`host`` clauses from routines/triggers/
+- **`strip-mysqldump-definers --path=<dump.sql|dump.sql.gz> --output=<path>`** -- for an existing
+  dump (for a new one, use `backup-mysqldump --strip-definers`): strips `DEFINER=`user`@`host`` clauses from routines/triggers/
   views into a new copy (the original is untouched), so a definer account that doesn't exist on
-  the restore target doesn't cause a restored routine/trigger to fail at execution time. Only
-  needed if/when you actually hit that problem.
+  the restore target doesn't cause a restored routine/trigger to fail at execution time.
 - **`backup-percona --container=<name> --volume=<db data volume or host dir> --output=<dir>
   [--databases=<list>]`** -- takes a prepared physical backup of a running MySQL container's data
   volume (`MYSQL_ROOT_PASSWORD` env var; a bind-mounted host directory works too, not just a named
@@ -399,7 +409,8 @@ with no arguments for its exact usage; run `openmrs-utils` with no arguments to 
   Pass the archive itself as `initialize`'s `RESTORE_OPENMRS_DATA_PATH`, or extract it first with
   `extract-archive` for a plain directory. Backs up the whole directory by default, same as the seed
   image build; `--exclude-distribution-artifacts` skips the contents of `modules/`, `owa/`,
-  `configuration/` and `frontend/`, which OpenMRS re-copies from its image on every start --
+  `configuration/` and `frontend/`, which OpenMRS re-copies from its image on every start, and
+  `.openmrs-lib-cache`, which it rebuilds --
   smaller, and avoids restoring stale `.omod`s alongside a newer distro's. Refuses to run while a
   running container has the volume mounted (stop OpenMRS first for a consistent copy);
   `--allow-running` overrides that. `.7z` doesn't record file ownership; use `.tar.gz` if that

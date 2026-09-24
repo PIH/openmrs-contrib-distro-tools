@@ -6,7 +6,7 @@ load ../helpers
 setup() { cd "$BATS_TEST_TMPDIR"; }
 teardown() { common_teardown; }
 
-@test "requires --container and --output" {
+@test "requires --container (or --host) and --output" {
     run "$UTILS/backup-mysqldump.sh" --output=out.sql
     assert_failure
     assert_output --partial usage
@@ -54,4 +54,17 @@ teardown() { common_teardown; }
     run "$UTILS/backup-mysqldump.sh" --container="$(res no-such-container)" --output=out.sql.gz
     assert_failure
     assert [ ! -e out.sql.gz ]
+}
+
+@test "rejects --container and --host together" {
+    run "$UTILS/backup-mysqldump.sh" --container=db --host=127.0.0.1 --output=out.sql
+    assert_failure
+    assert_output --partial 'either --container or --host, not both'
+    assert [ ! -e out.sql ]
+}
+
+@test "--host alone is enough to identify the source" {
+    run "$UTILS/backup-mysqldump.sh" --host=127.0.0.1 --output=out.txt
+    assert_failure
+    assert_output --partial 'must end in .sql, .gz or .7z'
 }

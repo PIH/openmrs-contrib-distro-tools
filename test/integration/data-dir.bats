@@ -70,12 +70,12 @@ env_file() { echo "$OPENMRS_DOCKER_HOME/$NAME/env"; }
     assert_equal "$(stat -c %u nightly.7z)" "$(id -u)"
 }
 
-@test "--exclude-distribution-artifacts empties modules, owa, configuration and frontend (.tar.gz)" {
+@test "--exclude-distribution-artifacts empties modules, owa, configuration and frontend, drops .openmrs-lib-cache (.tar.gz)" {
     backup lean.tar.gz --exclude-distribution-artifacts 2>/dev/null
     assert_extracts_to lean.tar.gz lean "$FIXTURE_TREE_EXCLUDED"
 }
 
-@test "--exclude-distribution-artifacts empties modules, owa, configuration and frontend (.7z)" {
+@test "--exclude-distribution-artifacts empties modules, owa, configuration and frontend, drops .openmrs-lib-cache (.7z)" {
     ARCHIVE_PASSWORD=pw backup lean.7z --exclude-distribution-artifacts >/dev/null 2>&1
     ARCHIVE_PASSWORD=pw assert_extracts_to lean.7z lean "$FIXTURE_TREE_EXCLUDED"
 }
@@ -215,4 +215,42 @@ env_file() { echo "$OPENMRS_DOCKER_HOME/$NAME/env"; }
     assert_failure
     run grep '^OPENMRS_CREATE_TABLES=' "$(env_file)"
     assert_failure
+}
+
+# --- initialize: ownership of a restored openmrs-data ----------------------------------------------
+
+# Prints every entry in <volume> whose owner isn't <uid>:<gid>.
+not_owned_by() { # <volume> <uid> <gid>
+    docker run --rm -v "$1:/d:ro" alpine:3.21 find /d \( ! -user "$2" -o ! -group "$3" \)
+}
+
+@test "initialize gives a restored openmrs-data to OPENMRS_DATA_OWNER" {
+    backup data.tar.gz 2>/dev/null
+    NAME="$(instance)"
+    create_instance "$NAME"
+    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH=data.tar.gz OPENMRS_DATA_OWNER=1234:5678
+    assert_success
+    assert_output --partial 'Changed the owner of the restored openmrs-data to 1234:5678'
+    run not_owned_by "${NAME}_openmrs-data" 1234 5678
+    assert_success
+    assert_output ''
+}
+
+@test "initialize reads the restored openmrs-data's owner from the openmrs image when OPENMRS_DATA_OWNER is unset" {
+    NAME="$(instance)"
+    OPENMRS_IMAGE_NAME=alpine OPENMRS_IMAGE_TAG=3.21 create_instance "$NAME"
+    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data" OPENMRS_DATA_OWNER=
+    assert_success
+    assert_output --partial 'Changed the owner of the restored openmrs-data to 0:0'
+    run not_owned_by "${NAME}_openmrs-data" 0 0
+    assert_output ''
+}
+
+@test "initialize fails before creating any volume when the openmrs image can't be run to find the owner" {
+    NAME="$(instance)"
+    create_instance "$NAME"
+    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data" OPENMRS_DATA_OWNER=
+    assert_failure
+    assert_output --partial 'set OPENMRS_DATA_OWNER'
+    assert_equal "$(docker volume ls -q --filter "name=^${NAME}_")" ""
 }

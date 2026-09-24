@@ -365,6 +365,18 @@ case "$COMMAND" in
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-seed.yaml")
             DATA_SOURCES=$((DATA_SOURCES + 1))
         fi
+        # Files restored from RESTORE_OPENMRS_DATA_PATH keep the owners they had on the source host
+        # (tar runs as root in the restore container), which the openmrs image's non-root runtime
+        # user can't write to. They're chowned to that user once restored, below. Resolved here,
+        # before any volume exists, so an image that can't be run fails before anything is created.
+        if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ] && [ -z "${OPENMRS_DATA_OWNER:-}" ]; then
+            OPENMRS_IMAGE="${OPENMRS_IMAGE_NAME:?OPENMRS_IMAGE_NAME must be set}:${OPENMRS_IMAGE_TAG:-latest}"
+            # shellcheck disable=SC2016
+            OPENMRS_DATA_OWNER=$(docker run --rm --entrypoint sh "$OPENMRS_IMAGE" -c 'echo "$(id -u):$(id -g)"') || {
+                echo "error: couldn't determine the runtime user of $OPENMRS_IMAGE -- set OPENMRS_DATA_OWNER=<uid>:<gid> to choose the owner of the restored openmrs-data explicitly" >&2
+                exit 1
+            }
+        fi
         # Unlike db-data, openmrs-data is optional to restore/seed here: leaving both
         # RESTORE_OPENMRS_DATA_PATH and SEED_IMAGE_NAME unset is a valid choice -- e.g. restoring
         # a real db-data backup with no matching openmrs-data backup -- and just leaves that
@@ -419,6 +431,9 @@ case "$COMMAND" in
         if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; then
             docker run --rm -v "${SERVICE_NAME}_openmrs-data:/data" alpine:3.21 sh -c \
                 'if [ -f /data/openmrs-runtime.properties ]; then mv /data/openmrs-runtime.properties /data/openmrs-runtime.properties.restored && echo "Moved restored openmrs-runtime.properties aside to openmrs-runtime.properties.restored in openmrs-data -- OpenMRS will write a fresh one from this instance'"'"'s env on first start."; fi'
+            docker run --rm -e OWNER="$OPENMRS_DATA_OWNER" -v "${SERVICE_NAME}_openmrs-data:/data" alpine:3.21 \
+                sh -c 'chown -R "$OWNER" /data'
+            echo "Changed the owner of the restored openmrs-data to $OPENMRS_DATA_OWNER."
         fi
 
         # db-data already has a real schema but openmrs-data now has no runtime properties (none
