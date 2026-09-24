@@ -241,6 +241,22 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | `TZ` | Optional (`UTC`) | Container timezone |
 | `OPENMRS_DB_IMAGE_NAME` (`mysql`), `OPENMRS_DB_IMAGE_TAG` (`5.6`), `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD`, `OPENMRS_ACTIVITYLOG_ENABLED`, `OPENMRS_DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS`, `OPENMRS_DB_MAX_ALLOWED_PACKET`, `OPENMRS_DB_INNODB_BUFFER_POOL_SIZE` | Optional | Tuning knobs |
 | `SERVICES` | Optional (`openmrs-db,openmrs`) | Comma-separated canonical fragments to copy into the instance at `create` time — see `docker/services/` |
+| `OMRS_EXTRA_*` | Optional | Extra OpenMRS runtime properties, captured from the calling shell at `create` time and passed through to the openmrs container — see below |
+
+#### Runtime properties via `OMRS_EXTRA_*`
+
+openmrs-core's `startup-init.sh` turns each `OMRS_EXTRA_<name>` into a runtime property: the name is
+lowercased, `_` becomes `.` and `__` becomes `_` (so `OMRS_EXTRA_pihmalawi_warehouse_connection_url`
+sets `pihmalawi.warehouse.connection.url`). Property keys containing capital letters can't be set this
+way.
+
+Distro images already set some of these: the OpenMRS SDK's `build-distro` bakes each `property.<key>`
+from `openmrs-distro.properties` into the image as `ENV OMRS_EXTRA_<key with . replaced by _>`, e.g.
+`OMRS_EXTRA_pih_config` and `OMRS_EXTRA_initializer_startup_load`. To override one of those, use
+exactly that name, including its case. Environment variable names are case-sensitive, so
+`OMRS_EXTRA_INITIALIZER_STARTUP_LOAD` would be a second variable for the same property rather than an
+override, and on a first install openmrs-core keeps the image's value. Check an image's baked values
+with `docker image inspect <image> --format '{{range .Config.Env}}{{println .}}{{end}}' | grep OMRS_EXTRA_`.
 
 ### Initializing a server
 

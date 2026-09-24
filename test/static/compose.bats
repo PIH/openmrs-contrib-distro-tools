@@ -98,3 +98,14 @@ assert_valid() {
     assert_output --partial 'OMRS_EXTRA_pihmalawi_warehouse_connection_url: jdbc:mysql://openmrs-db:3306/openmrs_warehouse'
     rm -rf "$dir"
 }
+
+@test "openmrs service sets pih_config under the image's own OMRS_EXTRA_ name, so it overrides the image default" {
+    local name="$RUN_PREFIX-f-compose-pihconfig" dir
+    OPENMRS_PIH_CONFIG="haiti,haiti-test" SERVICES=openmrs-db,openmrs create_instance "$name"
+    dir="$OPENMRS_DOCKER_HOME/$name"
+    run docker compose --env-file "$dir/env" -f "$dir/openmrs-db.yaml" -f "$dir/openmrs.yaml" config
+    assert_success
+    assert_output --partial 'OMRS_EXTRA_pih_config: haiti,haiti-test'
+    refute_output --partial 'OMRS_EXTRA_PIH_CONFIG'
+    rm -rf "$dir"
+}
