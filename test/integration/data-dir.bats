@@ -28,7 +28,8 @@ assert_extracts_to() { # <archive> <expected folder name> <expected tree>
     assert_output "$3"
 }
 
-# Runs initialize with RESTORE_OPENMRS_DATA_PATH=<source> and checks the resulting volume's tree.
+# Runs initialize with RESTORE_OPENMRS_DATA_PATH=<source> and checks the resulting volume's tree --
+# <expected tree> as backed up, so with openmrs-runtime.properties moved aside by initialize.
 assert_initializes_to() { # <source> <expected tree> [VAR=value...]
     local src=$1 tree=$2; shift 2
     NAME="$(instance)"
@@ -36,8 +37,10 @@ assert_initializes_to() { # <source> <expected tree> [VAR=value...]
     run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$src" "$@"
     assert_success
     run tree_of_volume "${NAME}_openmrs-data"
-    assert_output "$tree"
+    assert_output "${tree/.\/openmrs-runtime.properties/./openmrs-runtime.properties.restored}"
 }
+
+env_file() { echo "$OPENMRS_DOCKER_HOME/$NAME/env"; }
 
 # --- backup + extract-archive ----------------------------------------------------------------------
 
@@ -167,4 +170,49 @@ assert_initializes_to() { # <source> <expected tree> [VAR=value...]
     record_docker_argv
     assert_initializes_to data.7z "$FIXTURE_TREE" ARCHIVE_PASSWORD=s3cret-restore-pw
     assert_not_in_docker_argv s3cret-restore-pw
+}
+
+@test "initialize moves a restored openmrs-runtime.properties aside, contents intact" {
+    NAME="$(instance)"
+    create_instance "$NAME"
+    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data"
+    assert_success
+    assert_output --partial 'Moved restored openmrs-runtime.properties aside'
+    run docker run --rm -v "${NAME}_openmrs-data:/v" alpine:3.21 cat /v/openmrs-runtime.properties.restored
+    assert_output 'connection.url=jdbc:mysql://x/openmrs'
+}
+
+@test "initialize sets OPENMRS_CREATE_TABLES=false after restoring openmrs-data" {
+    assert_initializes_to "$BATS_TEST_TMPDIR/data" "$FIXTURE_TREE"
+    run grep '^OPENMRS_CREATE_TABLES=' "$(env_file)"
+    assert_output 'OPENMRS_CREATE_TABLES=false'
+}
+
+@test "initialize sets OPENMRS_CREATE_TABLES=false when openmrs-data is neither restored nor seeded" {
+    NAME="$(instance)"
+    create_instance "$NAME"
+    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
+    assert_success
+    run grep '^OPENMRS_CREATE_TABLES=' "$(env_file)"
+    assert_output 'OPENMRS_CREATE_TABLES=false'
+}
+
+@test "initialize keeps an OPENMRS_CREATE_TABLES already in the env file" {
+    NAME="$(instance)"
+    create_instance "$NAME"
+    echo 'OPENMRS_CREATE_TABLES=true' >> "$(env_file)"
+    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data"
+    assert_success
+    run grep '^OPENMRS_CREATE_TABLES=' "$(env_file)"
+    assert_output 'OPENMRS_CREATE_TABLES=true'
+}
+
+@test "initialize with a failed restore leaves OPENMRS_CREATE_TABLES unset" {
+    ARCHIVE_PASSWORD=pw backup data.7z >/dev/null 2>&1
+    NAME="$(instance)"
+    create_instance "$NAME"
+    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH=data.7z ARCHIVE_PASSWORD=wrong
+    assert_failure
+    run grep '^OPENMRS_CREATE_TABLES=' "$(env_file)"
+    assert_failure
 }

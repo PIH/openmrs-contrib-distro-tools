@@ -280,11 +280,17 @@ or `SEED_IMAGE_NAME`. `openmrs-data` is optional -- if neither `RESTORE_OPENMRS_
 module-initializer run to build up from scratch, same as a totally fresh install (e.g. when
 restoring a real database backup with no matching `openmrs-data` backup to go with it).
 
-When db-data is restored from a real backup (`RESTORE_MYSQL_DUMP_PATH`/`RESTORE_MYSQL_DATA_PATH`)
-with no matching `openmrs-data`, `initialize` automatically adds `OPENMRS_CREATE_TABLES=false` to
-the instance's `env` file (unless already set) -- otherwise OpenMRS finds no `runtime.properties`
-in the empty `openmrs-data`, assumes a fresh install, and tries to `CREATE TABLE` everything from
-scratch against a database that already has that schema.
+When `openmrs-data` is restored from `RESTORE_OPENMRS_DATA_PATH`, `initialize` moves any restored
+`openmrs-runtime.properties` aside to `openmrs-runtime.properties.restored`. It holds the source
+server's connection settings, and openmrs-core 2.6+ only merges `OMRS_EXTRA_*` properties into an
+existing runtime properties file, so those stale `connection.*` values would otherwise win over this
+instance's. OpenMRS writes a fresh one from the instance's `env` on first start; carry over any
+custom properties from the `.restored` copy by hand (e.g. as `OMRS_EXTRA_*` variables).
+
+In that case, and when `openmrs-data` isn't restored or seeded at all, `initialize` also adds
+`OPENMRS_CREATE_TABLES=false` to the instance's `env` file (unless already set) -- otherwise OpenMRS
+finds no runtime properties in `openmrs-data`, assumes a fresh install, and tries to `CREATE TABLE`
+everything from scratch against a database that already has that schema.
 
 ```bash
 # restore the database from a logical dump, but still seed openmrs-data from the nightly image
