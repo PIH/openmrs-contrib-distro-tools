@@ -87,15 +87,15 @@ jobs:
       - name: Stop OpenMRS
         run: |
           docker compose --env-file "$HOME/openmrs/${{ env.INSTANCE_NAME }}/env" \
-            -f .openmrs-contrib-distro-tools/docker/services/openmrs-db.yaml \
-            -f .openmrs-contrib-distro-tools/docker/services/openmrs.yaml \
+            -f "$HOME/openmrs/${{ env.INSTANCE_NAME }}/openmrs-db.yaml" \
+            -f "$HOME/openmrs/${{ env.INSTANCE_NAME }}/openmrs.yaml" \
             stop openmrs
 
       - name: Export database
         run: |
           DB_CONTAINER=$(docker compose --env-file "$HOME/openmrs/${{ env.INSTANCE_NAME }}/env" \
-            -f .openmrs-contrib-distro-tools/docker/services/openmrs-db.yaml \
-            -f .openmrs-contrib-distro-tools/docker/services/openmrs.yaml \
+            -f "$HOME/openmrs/${{ env.INSTANCE_NAME }}/openmrs-db.yaml" \
+            -f "$HOME/openmrs/${{ env.INSTANCE_NAME }}/openmrs.yaml" \
             ps -q openmrs-db)
           docker exec "$DB_CONTAINER" \
             sh -c 'mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" --databases openmrs' \
@@ -105,8 +105,8 @@ jobs:
       - name: Export openmrs-data volume
         run: |
           OPENMRS_CONTAINER=$(docker compose --env-file "$HOME/openmrs/${{ env.INSTANCE_NAME }}/env" \
-            -f .openmrs-contrib-distro-tools/docker/services/openmrs-db.yaml \
-            -f .openmrs-contrib-distro-tools/docker/services/openmrs.yaml \
+            -f "$HOME/openmrs/${{ env.INSTANCE_NAME }}/openmrs-db.yaml" \
+            -f "$HOME/openmrs/${{ env.INSTANCE_NAME }}/openmrs.yaml" \
             ps -q --all openmrs)
           DATA_VOLUME=$(docker inspect "$OPENMRS_CONTAINER" \
             --format '{{range .Mounts}}{{if eq .Destination "/openmrs/data"}}{{.Name}}{{end}}{{end}}')
