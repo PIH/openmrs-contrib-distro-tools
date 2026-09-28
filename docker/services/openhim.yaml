@@ -28,6 +28,10 @@ services:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-core
     image: jembi/openhim-core:${OPENHIM_CORE_IMAGE_TAG:-latest}
     restart: unless-stopped
+    # PID 1 is otherwise Node, which never reaps the ssl_client helper that BusyBox wget spawns
+    # for the HTTPS healthcheck below. Each zombie pins a seccomp filter's BPF JIT memory, and
+    # after a few weeks the host can no longer start container processes (errno 524).
+    init: true
     environment:
       mongo_url: mongodb://mongo-db/openhim-development
       mongo_atnaUrl: mongodb://mongo-db/openhim-development
