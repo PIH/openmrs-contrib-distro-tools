@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: ''
+      image_variants:
+        description: Optional additional OpenMRS images built from the same distro on variants of the base image, one per line as <image name>=<base image variant> (e.g. partnersinhealth/zl-emr-java8=amazoncorretto-8; an empty variant uses the default base image)
+        required: false
+        type: string
+        default: ''
       maven_profiles:
         description: Comma-separated Maven profiles to activate during deploy (e.g. distro-zip)
         required: false
@@ -72,6 +77,7 @@ jobs:
           context: ${{ inputs.docker_context }}
           version: ${{ steps.maven-deploy.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          image_variants: ${{ inputs.image_variants }}
 
   notify-ci-dashboard:
     needs: build-and-publish

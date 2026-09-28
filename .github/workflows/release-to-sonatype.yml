@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: ''
+      image_variants:
+        description: Optional additional OpenMRS images built from the same distro on variants of the base image, one per line as <image name>=<base image variant> (e.g. partnersinhealth/zl-emr-java8=amazoncorretto-8; an empty variant uses the default base image)
+        required: false
+        type: string
+        default: ''
       maven_profiles:
         description: Comma-separated additional Maven profiles to activate during release:perform (e.g. distro-zip), alongside the release profile
         required: false
@@ -75,6 +80,7 @@ jobs:
           context: target/checkout/${{ inputs.docker_context }}
           version: ${{ steps.released-version.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          image_variants: ${{ inputs.image_variants }}
 
       # release:prepare only bumps the working copy to the next SNAPSHOT and commits/pushes it -
       # it never deploys that snapshot itself. That push also doesn't trigger the push-based
@@ -99,3 +105,4 @@ jobs:
           context: ${{ inputs.docker_context }}
           version: ${{ steps.next-snapshot.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          image_variants: ${{ inputs.image_variants }}
