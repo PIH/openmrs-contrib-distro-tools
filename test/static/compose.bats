@@ -109,3 +109,14 @@ assert_valid() {
     refute_output --partial 'OMRS_EXTRA_PIH_CONFIG'
     rm -rf "$dir"
 }
+
+@test "openhim-core runs an init process, so zombie ssl_client processes from its healthcheck are reaped" {
+    # BusyBox wget spawns an ssl_client helper per HTTPS request. When wget exits, the helper is
+    # reparented to the container's PID 1 -- in openhim-core that's Node, which never reaps it.
+    # Each zombie pins a seccomp filter's BPF JIT memory until the host can't load new filters.
+    local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f
+    for f in "$dir"/*.yaml; do args+=(-f "$f"); done
+    run docker compose --env-file "$dir/env" "${args[@]}" config openhim-core
+    assert_success
+    assert_output --partial 'init: true'
+}
