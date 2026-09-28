@@ -631,6 +631,21 @@ Requires `OPENMRS_MAVEN_USERNAME`, `OPENMRS_MAVEN_PASSWORD`, and `DOCKERHUB_PASS
 
 All four workflows above that build a Docker image (`build-and-deploy-to-sonatype.yml`, `build-and-deploy-to-openmrs-jfrog.yml`, `release-to-sonatype.yml`, `release-to-openmrs-jfrog.yml`) share the same QEMU/Buildx/login/build-push steps via the `.github/actions/build-and-push-docker` composite action, so that logic only needs to change in one place. Similarly, all four also share the same `mvn deploy` + version-extraction steps via `.github/actions/maven-deploy` — the two snapshot workflows use it for their one deploy, and the two release workflows use it a second time, after `release:prepare`/`release:perform`, to deploy the next development version (see above). Both are internal implementation details of those workflows, not something a distro repo calls directly.
 
+### Base image variants
+
+Each of those four workflows can also push additional images built from the same distro on variants of the `openmrs/openmrs-core` base image — for example, on Java 8 to match production servers, while `image_name` stays on the default (Java 17) image. Pass `image_variants`, one variant per line as `<image name>=<base image variant>`. The variant replaces the variant part of the base image tag the SDK chose, e.g. `amazoncorretto-8` turns `2.8.9` into `2.8.9-amazoncorretto-8`. Leave it empty after the `=` to use the plain base image tag instead — useful when the distro itself defaults to a variant (via `docker.image.javaVersion`). Each variant is tagged the same way as `image_name` (`latest` plus the version), so an instance switches to one by changing only its `OPENMRS_IMAGE_NAME`:
+
+```yaml
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/build-and-deploy-to-openmrs-jfrog.yml@main
+    with:
+      image_name: partnersinhealth/zl-emr
+      image_variants: |
+        partnersinhealth/zl-emr-java8=amazoncorretto-8
+        partnersinhealth/zl-emr-java21=amazoncorretto-21
+```
+
+This relies on the SDK generating a Dockerfile with the base image tag's version and variant as separate build args (`ARG BASE_IMAGE_VERSION=...` and `ARG BASE_IMAGE_VARIANT=...`), added in [SDK-404](https://openmrs.atlassian.net/browse/SDK-404); the build fails with an explicit error if the Dockerfile doesn't have them. The SDK can only split the tag when the distro sets `docker.image.openmrsVersion`/`docker.image.javaVersion` (or neither) — if it sets a full `docker.image.tag`, that whole tag is the version and each variant is appended to it. Maven runs only once — every image is built from the same Docker context. The variants are built one after another after `image_name` is pushed, and each is a full multi-arch build, so each one adds noticeably to the job's run time.
+
 ## Seed image builds
 
 `.github/workflows/build-seeded-image.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it builds a distro
