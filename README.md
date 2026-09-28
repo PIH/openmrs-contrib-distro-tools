@@ -633,18 +633,18 @@ All four workflows above that build a Docker image (`build-and-deploy-to-sonatyp
 
 ### Base image variants
 
-Each of those four workflows can also push additional images built from the same distro on variants of the `openmrs/openmrs-core` base image — for example, on Java 8 to match production servers, while `image_name` stays on the default (Java 17) image. Pass `image_variants`, one variant per line as `<image name>=<base image variant>`. The variant replaces the variant part of the base image tag the SDK chose, e.g. `amazoncorretto-8` turns `2.8.9` into `2.8.9-amazoncorretto-8`. Leave it empty after the `=` to use the plain base image tag instead — useful when the distro itself defaults to a variant (via `docker.image.javaVersion`). Each variant is tagged the same way as `image_name` (`latest` plus the version), so an instance switches to one by changing only its `OPENMRS_IMAGE_NAME`:
+Each of those four workflows can also push additional tags of `image_name` built from the same distro on variants of the `openmrs/openmrs-core` base image — for example, on Java 8 to match production servers, while `latest` and the plain version tag stay on the default (Java 17) base image. Pass `image_variants`, one variant per line as `<tag suffix>=<base image variant>`; each is pushed as `latest-<suffix>` and `<version>-<suffix>`. The variant replaces the variant part of the base image tag the SDK chose, e.g. `amazoncorretto-8` turns `2.8.9` into `2.8.9-amazoncorretto-8`. Leave it empty after the `=` to use the plain base image tag instead — useful when the distro itself defaults to a variant (via `docker.image.javaVersion`). An instance switches to a variant by setting its `OPENMRS_IMAGE_TAG` (e.g. `latest-java8`):
 
 ```yaml
     uses: PIH/openmrs-contrib-distro-tools/.github/workflows/build-and-deploy-to-openmrs-jfrog.yml@main
     with:
       image_name: partnersinhealth/zl-emr
       image_variants: |
-        partnersinhealth/zl-emr-java8=amazoncorretto-8
-        partnersinhealth/zl-emr-java21=amazoncorretto-21
+        java8=amazoncorretto-8
+        java21=amazoncorretto-21
 ```
 
-This relies on the SDK generating a Dockerfile with the base image tag's version and variant as separate build args (`ARG BASE_IMAGE_VERSION=...` and `ARG BASE_IMAGE_VARIANT=...`), added in [SDK-404](https://openmrs.atlassian.net/browse/SDK-404); the build fails with an explicit error if the Dockerfile doesn't have them. The SDK can only split the tag when the distro sets `docker.image.openmrsVersion`/`docker.image.javaVersion` (or neither) — if it sets a full `docker.image.tag`, that whole tag is the version and each variant is appended to it. Maven runs only once — every image is built from the same Docker context. The variants are built one after another after `image_name` is pushed, and each is a full multi-arch build, so each one adds noticeably to the job's run time.
+This relies on the SDK generating a Dockerfile with the base image tag's version and variant as separate build args (`ARG BASE_IMAGE_VERSION=...` and `ARG BASE_IMAGE_VARIANT=...`), added in [SDK-404](https://openmrs.atlassian.net/browse/SDK-404); the build fails with an explicit error if the Dockerfile doesn't have them. The SDK can only split the tag when the distro sets `docker.image.openmrsVersion`/`docker.image.javaVersion` (or neither) — if it sets a full `docker.image.tag`, that whole tag is the version and each variant is appended to it. Maven runs only once — every tag is built from the same Docker context. The variants are built one after another after the `latest` and version tags are pushed, and each is a full multi-arch build, so each one adds noticeably to the job's run time.
 
 ## Seed image builds
 
