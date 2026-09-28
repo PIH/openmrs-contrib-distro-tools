@@ -9,7 +9,7 @@ on:
         type: string
         default: ''
       image_variants:
-        description: Optional additional OpenMRS images built from the same distro on variants of the base image, one per line as <image name>=<base image variant> (e.g. partnersinhealth/zl-emr-java8=amazoncorretto-8; an empty variant uses the default base image)
+        description: Optional additional tags of image_name built from the same distro on variants of the base image, one per line as <tag suffix>=<base image variant> (e.g. java8=amazoncorretto-8 pushes latest-java8 and <version>-java8; an empty variant uses the default base image)
         required: false
         type: string
         default: ''
