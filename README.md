@@ -214,8 +214,8 @@ openmrs-docker create <name>
 ```
 
 To reuse one of the tool's own generated `env` files as a starting point instead, wrap the
-`source` in `set -a`/`set +a` — those files use plain `KEY=value` (no `export`), since they also
-have to work as a Docker Compose `--env-file`:
+`source` in `set -a`/`set +a` — those files use plain `KEY='value'` lines (no `export`), since they
+also have to work as a Docker Compose `--env-file`:
 
 ```bash
 set -a; source ~/openmrs/other-instance/env; set +a
@@ -227,6 +227,19 @@ containing the environment configuration and a pre-initialized Docker image.  If
 separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_DOCKER_HOME` environment variable to a different location.
 
 ## `env` file reference
+
+Each line is `KEY='value'`. bash sources the file and Docker Compose reads it, and a single-quoted
+value is literal to both, so passwords can contain `$`, `"`, backticks and backslashes. A value can't
+contain a single quote or a newline: `create` and `add-service` refuse one, naming the variable. If
+you edit `env` by hand, keep to single quotes (a double-quoted value is expanded by bash and by
+Compose, differently).
+
+Containers don't get the whole file. On every command, `openmrs-docker` copies the `OMRS_*` lines
+into `openmrs.env` and the `OPENMRS_DB_OPT_*` lines into `openmrs-db.env` (mode 600), and those are
+the `env_file` of the openmrs and openmrs-db containers. Everything else in `env` (passwords, other
+services' secrets) reaches a container only where its fragment names it under `environment:`. Edit
+`env`, not the generated files. An instance created before this change keeps its copied fragments,
+which pass the whole of `env` to both containers, until `openmrs-docker <name> sync`.
 
 | Variable | Required? | Purpose |
 |---|---|---|
@@ -243,7 +256,7 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | `OPENMRS_DB_IMAGE_NAME` (`mysql`), `OPENMRS_DB_IMAGE_TAG` (`5.6`), `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD`, `OPENMRS_ACTIVITYLOG_ENABLED`, `OPENMRS_DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS` | Optional | Tuning knobs |
 | `OPENMRS_DB_OPT_<option>` | Optional | MySQL/MariaDB server options -- see "Database server options" below |
 | `SERVICES` | Optional (`openmrs-db,openmrs`) | Comma-separated canonical fragments to copy into the instance at `create` time — see `docker/services/` |
-| `OMRS_EXTRA_*` | Optional | Extra OpenMRS runtime properties, captured from the calling shell at `create` time and passed through to the openmrs container — see below |
+| `OMRS_EXTRA_*` | Optional | Extra OpenMRS runtime properties, captured from the calling shell at `create` time and passed through to the openmrs container (as are other `OMRS_*` image variables such as `OMRS_JAVA_SERVER_OPTS`) — see below |
 
 #### Database server options via `OPENMRS_DB_OPT_*`
 
@@ -270,10 +283,10 @@ Binary logging, e.g. for a CDC tool such as Debezium, is left at the server's de
 5.6 and MariaDB, on (30-day expiry) on MySQL 8+. To turn it on for 5.6:
 
 ```bash
-OPENMRS_DB_OPT_log_bin="mysql-bin"
-OPENMRS_DB_OPT_server_id="1"
-OPENMRS_DB_OPT_binlog_format="ROW"
-OPENMRS_DB_OPT_expire_logs_days="10"            # MySQL 8+ / MariaDB 10.6+: binlog_expire_logs_seconds
+OPENMRS_DB_OPT_log_bin='mysql-bin'
+OPENMRS_DB_OPT_server_id='1'
+OPENMRS_DB_OPT_binlog_format='ROW'
+OPENMRS_DB_OPT_expire_logs_days='10'            # MySQL 8+ / MariaDB 10.6+: binlog_expire_logs_seconds
 ```
 
 To turn it off again, run `purge-binlogs` first (see Utilities), then remove those lines (or, on

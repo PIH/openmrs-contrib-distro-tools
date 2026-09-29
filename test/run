@@ -2,7 +2,7 @@
 # Runs this project's test suite. Usage:
 #   test/run [static|args|integration|all|<test file or dir>] [extra bats args...]
 #
-# Needs only docker and git: bats itself is fetched at a pinned version into test/.deps on first run.
+# Needs only docker, git and jq: bats itself is fetched at a pinned version into test/.deps on first run.
 set -euo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
