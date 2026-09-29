@@ -18,7 +18,8 @@ db_compose() { # <instance> <compose args...>
 }
 
 start_db() { # <instance>
-    db_compose "$1" up -d openmrs-db >/dev/null 2>&1
+    # Through openmrs-docker, which regenerates openmrs-db.env from env first.
+    "$BIN/openmrs-docker" "$1" start >/dev/null 2>&1
     wait_for_mysql "$1-openmrs-db" root openmrs
 }
 
