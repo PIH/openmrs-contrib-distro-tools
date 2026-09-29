@@ -128,6 +128,11 @@ EOF
             printf '%s="%s"\n' "$var" "${!var}"
         done
     } > "$INSTANCE_DIR/env"
+    # Likewise any OPENMRS_DB_OPT_* server option (see openmrs-db.yaml) that openmrs-db.env.defaults
+    # doesn't already write.
+    for var in "${!OPENMRS_DB_OPT_@}"; do
+        grep -q "^$var=" "$INSTANCE_DIR/env" || printf '%s="%s"\n' "$var" "${!var}" >> "$INSTANCE_DIR/env"
+    done
     # Copy validated service fragments
     for svc in "${SERVICE_LIST[@]}"; do
         cp "$SERVICES_DIR/$svc.yaml" "$INSTANCE_DIR/$svc.yaml"
@@ -462,7 +467,7 @@ case "$COMMAND" in
         # present in the env file (e.g. shared with a service added earlier, or a
         # re-run of add-service) so this never produces a duplicate/conflicting line.
         while IFS= read -r line; do
-            if [[ "$line" =~ ^([A-Z_][A-Z0-9_]*)= ]]; then
+            if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]]; then
                 grep -q "^${BASH_REMATCH[1]}=" "$ENV_FILE" && continue
             fi
             echo "$line" >> "$ENV_FILE"

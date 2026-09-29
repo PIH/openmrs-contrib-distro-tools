@@ -10,7 +10,7 @@ teardown() { common_teardown; }
     run "$BIN/openmrs-utils"
     assert_failure
     for script in backup-mysqldump backup-openmrs-data-directory backup-percona convert-percona-backup \
-        extract-archive strip-mysqldump-definers clear-configuration-checksums wait-for-healthy; do
+        extract-archive strip-mysqldump-definers clear-configuration-checksums wait-for-healthy purge-binlogs; do
         assert_output --partial "  $script"
     done
 }

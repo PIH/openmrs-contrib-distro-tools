@@ -120,3 +120,12 @@ assert_valid() {
     assert_success
     assert_output --partial 'init: true'
 }
+
+@test "openmrs-db gets its OPENMRS_DB_OPT_* server options from the env file" {
+    local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE"
+    run docker compose --env-file "$dir/env" -f "$dir/openmrs-db.yaml" config openmrs-db
+    assert_success
+    assert_output --partial 'OPENMRS_DB_OPT_character_set_server: utf8'
+    assert_output --partial 'OPENMRS_DB_OPT_max_allowed_packet: 1G'
+    refute_output --partial 'log_bin:'
+}

@@ -240,9 +240,45 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | `OPENMRS_IMAGE_TAG`, `SEED_IMAGE_TAG` | Optional (`latest`) | Image tags |
 | `OPENMRS_HTTP_PORT`, `OPENMRS_DB_PORT`, `OPENMRS_DEBUG_PORT` | Optional | Port overrides — set differently per instance to run more than one at once |
 | `TZ` | Optional (`UTC`) | Container timezone |
-| `OPENMRS_DB_IMAGE_NAME` (`mysql`), `OPENMRS_DB_IMAGE_TAG` (`5.6`), `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD`, `OPENMRS_ACTIVITYLOG_ENABLED`, `OPENMRS_DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS`, `OPENMRS_DB_MAX_ALLOWED_PACKET`, `OPENMRS_DB_INNODB_BUFFER_POOL_SIZE` | Optional | Tuning knobs |
+| `OPENMRS_DB_IMAGE_NAME` (`mysql`), `OPENMRS_DB_IMAGE_TAG` (`5.6`), `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD`, `OPENMRS_ACTIVITYLOG_ENABLED`, `OPENMRS_DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS` | Optional | Tuning knobs |
+| `OPENMRS_DB_OPT_<option>` | Optional | MySQL/MariaDB server options -- see "Database server options" below |
 | `SERVICES` | Optional (`openmrs-db,openmrs`) | Comma-separated canonical fragments to copy into the instance at `create` time — see `docker/services/` |
 | `OMRS_EXTRA_*` | Optional | Extra OpenMRS runtime properties, captured from the calling shell at `create` time and passed through to the openmrs container — see below |
+
+#### Database server options via `OPENMRS_DB_OPT_*`
+
+Each `OPENMRS_DB_OPT_<option>` variable in the env file becomes a `--<option>=<value>` flag on the
+`mysqld`/`mariadbd` command line, with `_` in the name turned into `-` (MySQL and MariaDB treat the
+two the same in option names). An empty value gives a bare flag: `OPENMRS_DB_OPT_skip_name_resolve=`
+becomes `--skip-name-resolve`. Any option not set is left at the server's own default, so the same
+settings carry over to a different MySQL or MariaDB version as long as each option exists there. To
+drop one of the defaults below, delete its line from the env file.
+
+`create` writes these defaults (from `docker/services/openmrs-db.env.defaults`), and captures any
+other `OPENMRS_DB_OPT_*` set in the calling shell:
+
+| Option | Default |
+|---|---|
+| `character_set_server` | `utf8` |
+| `collation_server` | `utf8_general_ci` |
+| `max_allowed_packet` | `1G` |
+| `innodb_buffer_pool_size` | `1G` |
+| `net_read_timeout`, `net_write_timeout` | `3600` |
+| `log_bin_trust_function_creators` | `1` (only matters when binary logging is on, e.g. by default on MySQL 8+: lets PETL create functions) |
+
+Binary logging, e.g. for a CDC tool such as Debezium, is left at the server's default: off on MySQL
+5.6 and MariaDB, on (30-day expiry) on MySQL 8+. To turn it on for 5.6:
+
+```bash
+OPENMRS_DB_OPT_log_bin="mysql-bin"
+OPENMRS_DB_OPT_server_id="1"
+OPENMRS_DB_OPT_binlog_format="ROW"
+OPENMRS_DB_OPT_expire_logs_days="10"            # MySQL 8+ / MariaDB 10.6+: binlog_expire_logs_seconds
+```
+
+To turn it off again, run `purge-binlogs` first (see Utilities), then remove those lines (or, on
+MySQL 8+, add `OPENMRS_DB_OPT_skip_log_bin=`) and restart: once binary logging is off, the server
+can't delete the binlogs it already has.
 
 #### Runtime properties via `OMRS_EXTRA_*`
 
@@ -420,6 +456,12 @@ with no arguments for its exact usage; run `openmrs-utils` with no arguments to 
   container currently has it mounted), so the next start reprocesses all configuration from
   scratch rather than trusting checksums that may no longer reflect reality -- e.g. after loading a
   different database while keeping an existing `openmrs-data`.
+- **`purge-binlogs (--container=<name> | --host=<host> [--port=3306]) [--user=root]
+  [--client-image=mysql:5.6]`** -- has a MySQL or MariaDB server delete all its binary logs except
+  the one it's writing (`MYSQL_PASSWORD` env var, for a user with `SUPER`/`BINLOG_ADMIN`, root by
+  default), via its own `PURGE BINARY LOGS`. Run it before turning binary logging off:
+  once binary logging is off the server can't purge them, and the files stay on disk. Prints the
+  number and total size of binlogs before and after.
 - **`wait-for-healthy --container=<name> [--timeout=<seconds>] [--fail-on-unhealthy=true|false]`**
   -- polls until a container reports healthy; fails fast on exited/dead/restarting, or times out.
 

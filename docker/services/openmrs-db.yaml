@@ -4,19 +4,26 @@ services:
   openmrs-db:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openmrs-db
     image: ${OPENMRS_DB_IMAGE_NAME:-mysql}:${OPENMRS_DB_IMAGE_TAG:-5.6}
-    command: >
-      mysqld
-      --character-set-server=utf8
-      --collation-server=utf8_general_ci
-      --log-bin=mysql-bin
-      --log_bin_trust_function_creators=1
-      --binlog_format=ROW
-      --max_binlog_size=100M
-      --server-id=1
-      --max_allowed_packet=${OPENMRS_DB_MAX_ALLOWED_PACKET:-1G}
-      --innodb-buffer-pool-size=${OPENMRS_DB_INNODB_BUFFER_POOL_SIZE:-2G}
-      --net_write_timeout=3600
-      --net_read_timeout=3600
+    # Every OPENMRS_DB_OPT_<option> variable becomes a --<option>=<value> server flag (`_` becomes
+    # `-`, which MySQL and MariaDB treat the same in option names); an empty value gives a bare
+    # --<option>, e.g. OPENMRS_DB_OPT_skip_name_resolve=. Anything not set is the server's own
+    # default. The defaults written into a new instance's env file are in openmrs-db.env.defaults.
+    # The image's own entrypoint then does its usual first-boot setup.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        args=()
+        for var in $${!OPENMRS_DB_OPT_@}; do
+          opt=$${var#OPENMRS_DB_OPT_}
+          opt=$${opt//_/-}
+          if [ -n "$${!var}" ]; then args+=("--$$opt=$${!var}"); else args+=("--$$opt"); fi
+        done
+        [ $${#args[@]} -gt 0 ] || echo "No OPENMRS_DB_OPT_* variables set: starting with the server's own defaults" >&2
+        server=mariadbd
+        command -v mariadbd >/dev/null || server=mysqld
+        exec docker-entrypoint.sh "$$server" "$${args[@]}"
+    env_file: env
     environment:
       MYSQL_DATABASE: openmrs
       MYSQL_USER: ${OPENMRS_DB_USER:-openmrs}

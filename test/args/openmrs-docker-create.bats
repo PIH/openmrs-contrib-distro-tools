@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
-# create captures any OMRS_EXTRA_* variable from the calling shell into the instance's env file --
-# see openmrs.yaml's env_file for how these reach the container.
+# create captures any OMRS_EXTRA_* and OPENMRS_DB_OPT_* variable from the calling shell into the
+# instance's env file -- see openmrs.yaml's and openmrs-db.yaml's env_file for how these reach the
+# containers.
 
 load ../helpers
 
@@ -22,4 +23,31 @@ teardown() {
     run cat "$OPENMRS_DOCKER_HOME/$NAME/env"
     assert_output --partial 'OMRS_EXTRA_real="yes"'
     refute_output --partial 'LOOKALIKE'
+}
+
+@test "writes the default OPENMRS_DB_OPT_* server options, overridable from the environment" {
+    NAME="$(instance)"
+    OPENMRS_DB_OPT_max_allowed_packet=256M "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    run cat "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_output --partial 'OPENMRS_DB_OPT_character_set_server="utf8"'
+    assert_output --partial 'OPENMRS_DB_OPT_max_allowed_packet="256M"'
+    run grep -c '^OPENMRS_DB_OPT_max_allowed_packet=' "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_output 1
+}
+
+@test "captures OPENMRS_DB_OPT_* variables with no default, including empty ones" {
+    NAME="$(instance)"
+    OPENMRS_DB_OPT_log_bin=mysql-bin OPENMRS_DB_OPT_skip_name_resolve= "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    run cat "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_output --partial 'OPENMRS_DB_OPT_log_bin="mysql-bin"'
+    assert_output --partial 'OPENMRS_DB_OPT_skip_name_resolve=""'
+}
+
+@test "add-service doesn't duplicate lower-case env names already in the env file" {
+    NAME="$(instance)"
+    SERVICES=openmrs "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    "$BIN/openmrs-docker" "$NAME" add-service openmrs-db >/dev/null
+    "$BIN/openmrs-docker" "$NAME" add-service openmrs-db >/dev/null 2>&1 || true
+    run grep -c '^OPENMRS_DB_OPT_character_set_server=' "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_output 1
 }
