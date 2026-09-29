@@ -241,6 +241,8 @@ separate from your openmrs-sdk instance directories, you can set the `$OPENMRS_D
 | `OPENMRS_HTTP_PORT`, `OPENMRS_DB_PORT`, `OPENMRS_DEBUG_PORT` | Optional | Port overrides — set differently per instance to run more than one at once |
 | `TZ` | Optional (`UTC`) | Container timezone |
 | `OPENMRS_DB_IMAGE_NAME` (`mysql`), `OPENMRS_DB_IMAGE_TAG` (`5.6`), `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD`, `OPENMRS_ACTIVITYLOG_ENABLED`, `OPENMRS_DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS`, `OPENMRS_DB_MAX_ALLOWED_PACKET`, `OPENMRS_DB_INNODB_BUFFER_POOL_SIZE` | Optional | Tuning knobs |
+| `OPENMRS_DB_BINLOG_ENABLED` (`false`), `OPENMRS_DB_BINLOG_EXPIRE_DAYS` (`10`), `OPENMRS_DB_SERVER_ID` (`1`) | Optional | MySQL binary logging, e.g. for a CDC tool such as Debezium. Off by default; turning it on or off takes effect on the next restart. When on, the server deletes binlogs older than the expiry (checked at startup and each time a new binlog file starts); `0` keeps them forever. To turn it off, run `purge-binlogs` first (see Utilities): once it's off, the server can't delete the binlogs it already has |
+| `OPENMRS_DB_EXTRA_ARGS` | Optional | Extra `mysqld` flags, space-separated, added after all the others so they override them -- e.g. `--slow_query_log=1` |
 | `SERVICES` | Optional (`openmrs-db,openmrs`) | Comma-separated canonical fragments to copy into the instance at `create` time — see `docker/services/` |
 | `OMRS_EXTRA_*` | Optional | Extra OpenMRS runtime properties, captured from the calling shell at `create` time and passed through to the openmrs container — see below |
 
@@ -420,6 +422,12 @@ with no arguments for its exact usage; run `openmrs-utils` with no arguments to 
   container currently has it mounted), so the next start reprocesses all configuration from
   scratch rather than trusting checksums that may no longer reflect reality -- e.g. after loading a
   different database while keeping an existing `openmrs-data`.
+- **`purge-binlogs (--container=<name> | --host=<host> [--port=3306]) [--user=root]
+  [--client-image=mysql:5.6]`** -- has a MySQL or MariaDB server delete all its binary logs except
+  the one it's writing (`MYSQL_PASSWORD` env var, for a user with `SUPER`/`BINLOG_ADMIN`, root by
+  default), via its own `PURGE BINARY LOGS`. Run it before setting `OPENMRS_DB_BINLOG_ENABLED=false`:
+  once binary logging is off the server can't purge them, and the files stay on disk. Prints the
+  number and total size of binlogs before and after.
 - **`wait-for-healthy --container=<name> [--timeout=<seconds>] [--fail-on-unhealthy=true|false]`**
   -- polls until a container reports healthy; fails fast on exited/dead/restarting, or times out.
 
