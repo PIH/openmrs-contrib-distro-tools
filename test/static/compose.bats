@@ -121,23 +121,11 @@ assert_valid() {
     assert_output --partial 'init: true'
 }
 
-@test "openmrs-db has binary logging off by default" {
+@test "openmrs-db gets its OPENMRS_DB_OPT_* server options from the env file" {
     local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE"
     run docker compose --env-file "$dir/env" -f "$dir/openmrs-db.yaml" config openmrs-db
     assert_success
-    assert_output --partial 'case "false" in'
-    assert_output --partial 'days="10"'
-}
-
-@test "openmrs-db extra mysqld flags come from the env file, after all the others" {
-    local name="$RUN_PREFIX-f-compose-db-args" dir
-    OPENMRS_DB_SERVER_ID=3 OPENMRS_DB_EXTRA_ARGS="--slow_query_log=1 --long_query_time=5" \
-        SERVICES=openmrs-db create_instance "$name"
-    dir="$OPENMRS_DOCKER_HOME/$name"
-    run docker compose --env-file "$dir/env" -f "$dir/openmrs-db.yaml" config openmrs-db
-    assert_success
-    assert_output --partial -- '- --server-id=3'
-    # Last in the command list (container_name follows it), so they override the flags above.
-    assert_output --partial -- $'- --slow_query_log=1\n      - --long_query_time=5\n    container_name:'
-    rm -rf "$dir"
+    assert_output --partial 'OPENMRS_DB_OPT_character_set_server: utf8'
+    assert_output --partial 'OPENMRS_DB_OPT_max_allowed_packet: 1G'
+    refute_output --partial 'log_bin:'
 }

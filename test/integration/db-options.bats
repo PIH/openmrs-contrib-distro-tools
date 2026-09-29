@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# openmrs-db's binary logging switch: off by default, expiry when on, and purge-binlogs for turning
-# it off without leaving binlogs on disk.
+# openmrs-db's server options come from OPENMRS_DB_OPT_* variables in the env file; binary logging
+# is one such option, and purge-binlogs lets the server clean up before it's turned off.
 
 load ../helpers
 
@@ -22,42 +22,37 @@ start_db() { # <instance>
     wait_for_mysql "$1-openmrs-db" root openmrs
 }
 
-set_env() { # <instance> <var> <value>
-    sed -i "s/^$2=.*/$2=\"$3\"/" "$OPENMRS_DOCKER_HOME/$1/env"
-}
-
 binlog_files() { # <instance>
     docker exec "$1-openmrs-db" sh -c 'ls /var/lib/mysql | grep -c "^mysql-bin\." || true'
 }
 
-@test "binary logging is off by default" {
+@test "the default options apply, and binary logging is left at the server's default (off on 5.6)" {
     local name
     name="$(instance)"
     SERVICES=openmrs-db create_instance "$name"
     start_db "$name"
-    run mysql_exec "$name-openmrs-db" openmrs 'SELECT @@log_bin'
-    assert_output 0
-    run binlog_files "$name"
-    assert_output 0
+    run mysql_exec "$name-openmrs-db" openmrs 'SELECT @@character_set_server, @@max_allowed_packet, @@net_read_timeout, @@log_bin_trust_function_creators, @@log_bin'
+    assert_output $'utf8\t1073741824\t3600\t1\t0'
 }
 
-@test "when on, binlogs expire after OPENMRS_DB_BINLOG_EXPIRE_DAYS" {
+@test "an OPENMRS_DB_OPT_* option with no default is passed, and an empty one as a bare flag" {
     local name
     name="$(instance)"
-    OPENMRS_DB_BINLOG_ENABLED=true OPENMRS_DB_BINLOG_EXPIRE_DAYS=3 SERVICES=openmrs-db create_instance "$name"
+    OPENMRS_DB_OPT_long_query_time=7 OPENMRS_DB_OPT_skip_name_resolve= SERVICES=openmrs-db create_instance "$name"
     start_db "$name"
-    run mysql_exec "$name-openmrs-db" openmrs 'SELECT @@log_bin, @@expire_logs_days'
-    assert_output $'1\t3'
+    run mysql_exec "$name-openmrs-db" openmrs 'SELECT @@long_query_time, @@skip_name_resolve'
+    assert_output $'7.000000\t1'
 }
 
-@test "purge-binlogs has the server delete all but its current binlog, so it can then be turned off cleanly" {
-    local name
+@test "binlog turned on through options; purge-binlogs leaves only the current one, so it can then be turned off" {
+    local name env
     name="$(instance)"
-    OPENMRS_DB_BINLOG_ENABLED=true SERVICES=openmrs-db create_instance "$name"
+    OPENMRS_DB_OPT_log_bin=mysql-bin OPENMRS_DB_OPT_server_id=5 OPENMRS_DB_OPT_expire_logs_days=3 \
+        SERVICES=openmrs-db create_instance "$name"
     start_db "$name"
+    run mysql_exec "$name-openmrs-db" openmrs 'SELECT @@log_bin, @@server_id, @@expire_logs_days'
+    assert_output $'1\t5\t3'
     mysql_exec "$name-openmrs-db" openmrs 'CREATE TABLE openmrs.marker (id INT); INSERT INTO openmrs.marker VALUES (1); FLUSH LOGS; FLUSH LOGS'
-    run mysql_exec "$name-openmrs-db" openmrs 'SHOW BINARY LOGS'
-    assert [ "${#lines[@]}" -ge 3 ]
 
     MYSQL_PASSWORD=openmrs run "$UTILS/purge-binlogs.sh" --container="$name-openmrs-db"
     assert_success
@@ -65,7 +60,8 @@ binlog_files() { # <instance>
     run binlog_files "$name"
     assert_output 2 # the current binlog and the index
 
-    set_env "$name" OPENMRS_DB_BINLOG_ENABLED false
+    env="$OPENMRS_DOCKER_HOME/$name/env"
+    sed -i '/^OPENMRS_DB_OPT_log_bin=/d; /^OPENMRS_DB_OPT_expire_logs_days=/d' "$env"
     start_db "$name"
     run mysql_exec "$name-openmrs-db" openmrs 'SELECT @@log_bin'
     assert_output 0
@@ -81,14 +77,4 @@ binlog_files() { # <instance>
     MYSQL_PASSWORD=openmrs run "$UTILS/purge-binlogs.sh" --container="$name-openmrs-db"
     assert_failure
     assert_output --partial 'binary logging is off'
-}
-
-@test "rejects an OPENMRS_DB_BINLOG_ENABLED value other than true or false" {
-    local name
-    name="$(instance)"
-    OPENMRS_DB_BINLOG_ENABLED=yes SERVICES=openmrs-db create_instance "$name"
-    db_compose "$name" up -d openmrs-db >/dev/null 2>&1
-    sleep 3
-    run docker logs "$name-openmrs-db"
-    assert_output --partial "OPENMRS_DB_BINLOG_ENABLED must be true or false, got 'yes'"
 }

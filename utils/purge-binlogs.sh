@@ -46,7 +46,7 @@ sql() { MYSQL_PWD="${MYSQL_PASSWORD:-openmrs}" "${SQL_CMD[@]}" -e "$1"; }
 
 SOURCE="${CONTAINER:-$DB_HOST:$DB_PORT}"
 [ "$(sql 'SELECT @@log_bin')" = 1 ] || {
-    echo "error: binary logging is off on $SOURCE, so the server can't purge its binlogs. Turn it back on (OPENMRS_DB_BINLOG_ENABLED=true), restart, then run this again." >&2
+    echo "error: binary logging is off on $SOURCE, so the server can't purge its binlogs. Turn it back on (e.g. OPENMRS_DB_OPT_log_bin=mysql-bin), restart, then run this again." >&2
     exit 1
 }
 summary() { sql 'SHOW BINARY LOGS' | awk '{ n++; b += $2 } END { printf "%d file(s), %d bytes", n, b }'; }
