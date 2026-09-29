@@ -115,3 +115,18 @@ teardown() {
     run cat "$OPENMRS_DOCKER_HOME/$NAME/openmrs-db.env"
     assert_output --partial "OPENMRS_DB_OPT_long_query_time='7'"
 }
+
+@test "only services with a container-env directive get a generated env file, and the directive stays out of env" {
+    NAME="$(instance)"
+    local dir
+    SERVICES=openmrs-db,openmrs,openhim "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    dir="$OPENMRS_DOCKER_HOME/$NAME"
+    [ -f "$dir/openmrs.env" ] && [ -f "$dir/openmrs-db.env" ]
+    [ ! -e "$dir/openhim.env" ]
+    run grep -c 'container-env' "$dir/env"
+    assert_output 0
+    # A generated file whose service no longer declares container-env is removed on the next command.
+    echo "OPENHIM_PASSWORD='stale'" > "$dir/openhim.env"
+    "$BIN/openmrs-docker" "$NAME" status >/dev/null
+    [ ! -e "$dir/openhim.env" ]
+}

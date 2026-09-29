@@ -23,8 +23,9 @@ services:
         server=mariadbd
         command -v mariadbd >/dev/null || server=mysqld
         exec docker-entrypoint.sh "$$server" "$${args[@]}"
-    # Only the OPENMRS_DB_OPT_* lines of the instance's env, which openmrs-docker copies into
-    # openmrs-db.env on every command -- not every secret in env.
+    # Only the lines of the instance's env matching the "# container-env:" prefixes in
+    # openmrs-db.env.defaults (OPENMRS_DB_OPT_*), which openmrs-docker copies into openmrs-db.env on
+    # every command -- not every secret in env.
     env_file: openmrs-db.env
     environment:
       MYSQL_DATABASE: openmrs

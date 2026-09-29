@@ -234,12 +234,16 @@ contain a single quote or a newline: `create` and `add-service` refuse one, nami
 you edit `env` by hand, keep to single quotes (a double-quoted value is expanded by bash and by
 Compose, differently).
 
-Containers don't get the whole file. On every command, `openmrs-docker` copies the `OMRS_*` lines
-into `openmrs.env` and the `OPENMRS_DB_OPT_*` lines into `openmrs-db.env` (mode 600), and those are
-the `env_file` of the openmrs and openmrs-db containers. Everything else in `env` (passwords, other
-services' secrets) reaches a container only where its fragment names it under `environment:`. Edit
-`env`, not the generated files. An instance created before this change keeps its copied fragments,
-which pass the whole of `env` to both containers, until `openmrs-docker <name> sync`.
+Containers don't get the whole file. A service whose container takes variables from `env` declares
+their name prefixes in its `docker/services/<svc>.env.defaults`, as a `# container-env: PREFIX_ ...`
+line: `OMRS_` for openmrs (`OMRS_EXTRA_*` runtime properties, `OMRS_JAVA_SERVER_OPTS`),
+`OPENMRS_DB_OPT_` for openmrs-db. On every command, `openmrs-docker` copies the matching lines of
+`env` into `<svc>.env` (mode 600) in the instance directory, which is that fragment's `env_file`.
+Without the directive nothing from `env` is passed: the container gets only what its fragment names
+under `environment:`, which is how every secret it needs (DB passwords, OpenHIM and mediator
+settings) reaches it. Edit `env`, not the generated files. An instance created before this change
+keeps its copied fragments, which pass the whole of `env` to the openmrs and openmrs-db containers,
+until `openmrs-docker <name> sync`.
 
 | Variable | Required? | Purpose |
 |---|---|---|
@@ -834,7 +838,9 @@ instance without recreating it. Each mediator is its own fragment file; more tha
 attached to the same OpenHIM instance at once. A service's default env vars live in a sibling
 `<service>.env.defaults` file next to its `docker/services/<service>.yaml`; `create` and
 `add-service` both pick these up automatically for whichever services you select, so attaching a
-service via either command writes its required settings into the instance's `env` file for you.
+service via either command writes its required settings into the instance's `env` file for you. Its
+`# container-env:` line, if any, says which of those variables go into the container itself (see
+"`env` file reference").
 
 The following example will create an instance with OpenHIM and its mediators installed,
 configured for Lesotho:
