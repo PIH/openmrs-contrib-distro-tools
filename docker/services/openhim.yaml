@@ -109,7 +109,7 @@ services:
       # container-internal 8080 a browser can't reach directly.
       OPENHIM_MEDIATOR_API_PORT: ${OPENHIM_ADMIN_API_HOST_PORT:-8081}
     ports:
-      - "127.0.0.1:${OPENHIM_CONSOLE_HOST_PORT:-9000}:80"
+      - "${OPENHIM_CONSOLE_HOST_PORT:-9000}:80"
     healthcheck:
       test: "wget -qO- http://openhim-console || exit 1"
       interval: 30s
