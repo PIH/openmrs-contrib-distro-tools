@@ -354,8 +354,60 @@ When `openmrs-data` is restored from `RESTORE_OPENMRS_DATA_PATH`, `initialize` m
 `openmrs-runtime.properties` aside to `openmrs-runtime.properties.restored`. It holds the source
 server's connection settings, and openmrs-core 2.6+ only merges `OMRS_EXTRA_*` properties into an
 existing runtime properties file, so those stale `connection.*` values would otherwise win over this
-instance's. OpenMRS writes a fresh one from the instance's `env` on first start; carry over any
-custom properties from the `.restored` copy by hand (e.g. as `OMRS_EXTRA_*` variables).
+instance's. OpenMRS writes a fresh one from the instance's `env` on first start.
+
+#### Carrying over runtime properties from the restored server
+
+**Nothing else from the source server's runtime properties file is carried over.** The new file has
+only the connection settings, `pih.config`, `activitylog_enabled`, the image's own properties and the
+instance's `OMRS_EXTRA_*` variables. Anything else the source had (mail, integration credentials,
+`encryption.key` / `encryption.vector`, paths, ...) is gone until you set it for this instance.
+Which keys to carry over is your call: go through the whole source file. After the first start,
+compare the two:
+
+```bash
+docker run --rm -v <name>_openmrs-data:/data alpine:3.21 sh -c '
+  for f in openmrs-runtime.properties.restored openmrs-runtime.properties; do
+    grep -v "^[[:space:]]*\(#\|!\|$\)" "/data/$f" | sort > "/tmp/$f"
+  done
+  diff /tmp/openmrs-runtime.properties.restored /tmp/openmrs-runtime.properties'
+```
+
+If `openmrs-data` wasn't restored, there's no `.restored` file: take a copy of the source server's
+`openmrs-runtime.properties` and add
+`-v /path/to/that/copy:/data/openmrs-runtime.properties.restored:ro` to the command.
+
+Lines starting with `-` are only in the source file, or have a different value there. OpenMRS writes
+the new file in Java's properties format, so `\:` / `\=` there (e.g. `jdbc\:mysql\://...`) is the
+same value as the source's without the backslashes. `connection.*`, `auto_update_database` and
+`module.allow_web_admin` are this instance's own. Paths from the source host (e.g.
+`custom.images.dir`) need pointing under `/openmrs/data`. **Always carry over `encryption.key` and
+`encryption.vector`**: the first start generates new ones, and anything encrypted with the source's
+(e.g. authentication module 2FA secrets) can't be read otherwise. If the source file has none, it
+used core's defaults (`OpenmrsConstants.ENCRYPTION_KEY_DEFAULT` / `ENCRYPTION_VECTOR_DEFAULT`); set
+those.
+
+To set a property on an instance you manage by hand (a local or dev instance), add it to the
+instance's `env` and start it again:
+
+```bash
+# lowercase keys: OMRS_EXTRA_<key>, with '_' written as '__' and '.' as '_'
+OMRS_EXTRA_mail_smtp_host='smtp.example.org'
+OMRS_EXTRA_terms__and__conditions__enabled='true'
+# keys that aren't lowercase: -D<key>=<value> in OMRS_JAVA_SERVER_OPTS, after the image's defaults
+OMRS_JAVA_SERVER_OPTS='-Dfile.encoding=UTF-8 -server -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Djava.awt.headlesslib=true -Dmail.smtp.socketFactory.class=javax.net.ssl.SSLSocketFactory'
+```
+
+```bash
+openmrs-docker <name> start    # not restart: restart doesn't pick up env changes
+```
+
+`OMRS_EXTRA_*` values are merged into the runtime properties file on every start, overriding it (see
+"Runtime properties via `OMRS_EXTRA_*`" above); removing one later leaves its last value in the file.
+On an instance whose `env` is managed by puppet (mirebalais-puppet's `openmrs_docker` module), set
+them with the module's `runtime_properties` / `java_system_properties` instead: puppet rewrites
+`env` on every apply. Once you've finished comparing, delete `openmrs-runtime.properties.restored`
+(it holds the source's secrets).
 
 In that case, and when `openmrs-data` isn't restored or seeded at all, `initialize` also adds
 `OPENMRS_CREATE_TABLES=false` to the instance's `env` file (unless already set) -- otherwise OpenMRS
