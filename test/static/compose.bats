@@ -26,6 +26,7 @@ compose_config() { # [overlay...]
         RESTORE_MYSQL_DUMP_PATH=/tmp/dump.sql RESTORE_MYSQL_DUMP_FILENAME=dump.sql \
         RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME=archive.7z \
         RESTORE_MYSQL_DATA_PATH=/tmp/datadir DISTRO_TOOLS_UTILS_DIR="$REPO_ROOT/utils" \
+        P7ZIP_IMAGE=placeholder/p7zip PERCONA_IMAGE=placeholder/percona \
         RESTORE_OPENMRS_DATA_PATH=/tmp/data RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME=archive.tar.gz \
         docker compose --env-file "$dir/env" "${args[@]}" config -q
 }

@@ -10,13 +10,13 @@ teardown() { common_teardown; }
 @test "backup-percona requires --container, --volume and --output" {
     run "$UTILS/backup-percona.sh" --volume=v --output=out
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
     run "$UTILS/backup-percona.sh" --container=c --output=out
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
     run "$UTILS/backup-percona.sh" --container=c --volume=v
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
 }
 
 @test "backup-percona refuses an output directory that already exists" {

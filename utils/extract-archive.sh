@@ -1,20 +1,18 @@
 #!/bin/bash
-# General-purpose: extracts a recognized archive. Usage:
-#   utils/extract-archive.sh --path=<path> [--output-dir=<dir>]
+# Extracts an archive and prints where its contents are: the path of its single top-level entry,
+# or, for an archive with several (e.g. a legacy percona.7z), the directory it extracted into.
+# Prints --path unchanged if it isn't an archive.
 #
-# If <path> is a recognized archive (.7z, .zip, .tar.gz, .tgz, .tar), extracts it into
-# --output-dir (default: a fresh directory from mktemp -d) and prints the path to its single
-# top-level entry -- or, for an archive with more than one (a "flat" archive, e.g. a legacy
-# percona.7z with the backup's files at its top level), the directory it was extracted into.
-# Otherwise prints <path> unchanged. Refuses before extracting if the output's filesystem clearly
-# hasn't room for the archive's contents (utils/lib/disk-space.sh; SKIP_DISK_SPACE_CHECK=true). ARCHIVE_PASSWORD (env var, optional,
-# .7z/.zip only -- a secret) is used if set; extraction is attempted with an empty password if
-# it's unset, which succeeds for an unprotected archive and fails cleanly (not hangs) if the
-# archive actually needed one. It reaches the container as a bare `-e ARCHIVE_PW` and 7z on stdin, so
-# it's on no command line (`ps` shows command lines, including those inside containers).
+# Usage: openmrs-utils extract-archive --path=<path> [--output-dir=<dir>]
+#   --path            a .7z, .zip, .tar.gz, .tgz or .tar archive
+#   --output-dir      where to extract it (default: a new temporary directory)
+#   ARCHIVE_PASSWORD  for a protected .7z or .zip (without it, one fails cleanly)
+#   SKIP_DISK_SPACE_CHECK=true  skips the free-space check
 set -euo pipefail
+# shellcheck source=lib/common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 # shellcheck source=lib/disk-space.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/disk-space.sh"
+. "$UTILS_DIR/lib/disk-space.sh"
 
 SRC=
 OUTPUT_DIR=
@@ -22,61 +20,29 @@ for arg in "$@"; do
     case "$arg" in
         --path=*) SRC="${arg#*=}" ;;
         --output-dir=*) OUTPUT_DIR="${arg#*=}" ;;
-        *) echo "unknown argument: $arg" >&2; exit 1 ;;
+        *) die "unknown argument: $arg" ;;
     esac
 done
-[ -z "$SRC" ] && { echo "usage: $0 --path=<path> [--output-dir=<dir>]" >&2; exit 1; }
-[ -e "$SRC" ] || { echo "error: no such file or directory: $SRC" >&2; exit 1; }
-
+[ -n "$SRC" ] || usage
+[ -e "$SRC" ] || die "no such file or directory: $SRC"
 case "$SRC" in
-    *.7z|*.zip|*.tar.gz|*.tgz|*.tar)
-        disk_space_require "extracting $SRC" "$(disk_space_contents_size "$SRC")" \
-            "$(disk_space_free_at "${OUTPUT_DIR:-${TMPDIR:-/tmp}}")" "the filesystem of ${OUTPUT_DIR:-${TMPDIR:-/tmp}}"
-        ;;
+    *.7z|*.zip|*.tar.gz|*.tgz|*.tar) ;;
+    *) echo "$SRC"; exit 0 ;;
 esac
 
-case "$SRC" in
-    *.7z|*.zip)
-        [ -z "$OUTPUT_DIR" ] && OUTPUT_DIR=$(mktemp -d)
-        mkdir -p "$OUTPUT_DIR"
-        # Absolute, or `docker run -v` would read a bare relative name as a named volume.
-        OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
-        DIR=$(cd "$(dirname "$SRC")" && pwd)
-        # Password and filename are passed as container environment variables rather than
-        # interpolated into the `sh -c` string, so neither can be re-parsed as shell syntax. 7z
-        # reads the password from stdin when it asks for one (so it's on no command line); an
-        # unprotected archive never asks, and a wrong or empty password fails cleanly.
-        ARCHIVE_PW="${ARCHIVE_PASSWORD:-}" docker run --rm \
-            -e ARCHIVE_PW -e ARCHIVE_SRC="$(basename "$SRC")" \
-            -v "$DIR:/archive:ro" \
-            -v "$OUTPUT_DIR:/out" \
-            partnersinhealth/p7zip \
-            sh -c 'printf "%s\n" "$ARCHIVE_PW" | 7z x -o/out -y "/archive/$ARCHIVE_SRC"' >&2
-        ;;
-    *.tar.gz|*.tgz|*.tar)
-        [ -z "$OUTPUT_DIR" ] && OUTPUT_DIR=$(mktemp -d)
-        mkdir -p "$OUTPUT_DIR"
-        OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
-        DIR=$(cd "$(dirname "$SRC")" && pwd)
-        docker run --rm \
-            -e ARCHIVE_SRC="$(basename "$SRC")" \
-            -v "$DIR:/archive:ro" \
-            -v "$OUTPUT_DIR:/out" \
-            alpine:3.21 \
-            sh -c 'case "$ARCHIVE_SRC" in *.tar) tar xf "/archive/$ARCHIVE_SRC" -C /out ;; *) tar xzf "/archive/$ARCHIVE_SRC" -C /out ;; esac' >&2
-        ;;
-    *)
-        echo "$SRC"
-        exit 0
-        ;;
-esac
+WHERE=${OUTPUT_DIR:-${TMPDIR:-/tmp}}
+disk_space_require "extracting $SRC" "$(disk_space_contents_size "$SRC")" \
+    "$(disk_space_free_at "$WHERE")" "the filesystem of $WHERE"
+OUTPUT_DIR=${OUTPUT_DIR:-$(mktemp -d)}
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
 
+docker run --rm -e ARCHIVE_PASSWORD \
+    -v "$(cd "$(dirname "$SRC")" && pwd):/archive:ro" -v "$OUTPUT_DIR:/out" \
+    -v "$UTILS_DIR/lib/in-container/extract.sh:/extract.sh:ro" "$P7ZIP_IMAGE" \
+    sh /extract.sh "/archive/$(basename "$SRC")" /out >&2
+
+# One path, whatever the archive holds, since callers capture it.
 EXTRACTED=$(find "$OUTPUT_DIR" -mindepth 1 -maxdepth 1)
-[ -z "$EXTRACTED" ] && { echo "error: extraction of $SRC produced no files" >&2; exit 1; }
-# Always a single path, since callers capture this command's stdout as one: the one top-level entry
-# (a dump file, or an archive's own folder), or else the directory holding them all.
-if [ "$(echo "$EXTRACTED" | wc -l)" -eq 1 ]; then
-    echo "$EXTRACTED"
-else
-    echo "$OUTPUT_DIR"
-fi
+[ -n "$EXTRACTED" ] || die "extraction of $SRC produced no files"
+if [ "$(wc -l <<< "$EXTRACTED")" -eq 1 ]; then echo "$EXTRACTED"; else echo "$OUTPUT_DIR"; fi

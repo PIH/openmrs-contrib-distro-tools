@@ -465,6 +465,8 @@ case "$COMMAND" in
         # RESTORE_MYSQL_DUMP_PATH and RESTORE_OPENMRS_DATA_PATH also take an archive directly,
         # extracted by an init container into a volume (never onto the host) -- see
         # restore-mysql-volume-from-dump-archive.yaml and restore-openmrs-data-volume-from-archive.yaml.
+        # For the restore overlays: the scripts they mount, and the images they run (images.sh).
+        export DISTRO_TOOLS_UTILS_DIR="$TOOL_DIR/utils" P7ZIP_IMAGE PERCONA_IMAGE
         DB_SOURCES=0
         DB_PHYSICAL_RESTORE=false
         if [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ]; then
@@ -524,7 +526,6 @@ case "$COMMAND" in
             DB_PHYSICAL_RESTORE=true
         fi
         if $DB_PHYSICAL_RESTORE; then
-            export DISTRO_TOOLS_UTILS_DIR="$TOOL_DIR/utils"
             COMPOSE_FILES+=(-f "$MODES_DIR/reset-mysql-accounts.yaml")
         fi
         if [ "$DB_SOURCES" -eq 0 ] && [ -n "${SEED_IMAGE_NAME:-}" ]; then

@@ -14,23 +14,25 @@
 # archive, the way the seed image's data.tar.gz is built).
 #
 # ARCHIVE_PASSWORD (optional, .7z/.zip only -- a secret) is passed through from initialize's own
-# environment by name only, and 7z reads it from stdin, so it's on no command line (same as
-# utils/extract-archive.sh).
+# environment by name only, and reaches 7z on stdin (lib/in-container/extract.sh).
 #
 # Set by initialize itself, not persisted to the instance's env file:
+#   DISTRO_TOOLS_UTILS_DIR -- this tool's utils/ directory, for lib/in-container/extract.sh
+#   P7ZIP_IMAGE -- the image it runs, from utils/lib/images.sh
 #   RESTORE_OPENMRS_DATA_PATH             -- absolute path to the archive on the host
 #   RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME -- "archive.<ext>", matching the archive's actual format
 #                                            so the right extractor is chosen
 
 services:
   restore-openmrs-data-volume:
-    image: partnersinhealth/p7zip
+    image: ${P7ZIP_IMAGE:?P7ZIP_IMAGE must be set}
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-restore-openmrs-data-volume
     environment:
       - ARCHIVE_PASSWORD
       - ARCHIVE_NAME=${RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME:?RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME must be set}
     volumes:
       - ${RESTORE_OPENMRS_DATA_PATH:?RESTORE_OPENMRS_DATA_PATH must be set}:/source/${RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME:?RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME must be set}:ro
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/extract.sh:/extract.sh:ro
       - openmrs-data:/target
     command:
       - sh
@@ -38,25 +40,7 @@ services:
       - |
         set -e
         STAGING=/target/.restore-staging
-        mkdir "$$STAGING"
-        case "$$ARCHIVE_NAME" in
-            *.7z|*.zip)
-                printf '%s\n' "$${ARCHIVE_PASSWORD:-}" | 7z x -o"$$STAGING" -y "/source/$$ARCHIVE_NAME" >/dev/null
-                ;;
-            # z given explicitly: busybox tar's own gzip detection fails on long runs of zeros
-            # ("invalid tar header checksum").
-            *.tar.gz)
-                tar xzf "/source/$$ARCHIVE_NAME" -C "$$STAGING"
-                ;;
-            *)
-                tar xf "/source/$$ARCHIVE_NAME" -C "$$STAGING"
-                ;;
-        esac
-        ROOT="$$STAGING"
-        TOP=$$(find "$$STAGING" -mindepth 1 -maxdepth 1)
-        if [ -n "$$TOP" ] && [ "$$(echo "$$TOP" | wc -l)" -eq 1 ] && [ -d "$$TOP" ]; then
-            ROOT="$$TOP"
-        fi
+        ROOT=$$(sh /extract.sh "/source/$$ARCHIVE_NAME" "$$STAGING" --print-root)
         find "$$ROOT" -mindepth 1 -maxdepth 1 -exec mv {} /target/ \;
         rm -rf "$$STAGING"
 
