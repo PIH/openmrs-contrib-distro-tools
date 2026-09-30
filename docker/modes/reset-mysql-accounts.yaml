@@ -1,0 +1,30 @@
+# Overlay used by `openmrs-docker <name> initialize` after a physical restore (together with
+# restore-mysql-volume-from-data-dir.yaml or restore-mysql-volume-from-percona.yaml, each of which
+# fills db-data in a restore-mysql-volume service). A physical backup's accounts are the source
+# server's -- the image only creates its own on an empty data directory -- so they're set to this
+# instance's before openmrs-db first starts (see utils/reset-mysql-accounts.sh).
+#
+# Set by initialize itself, not persisted to the instance's env file:
+#   DISTRO_TOOLS_UTILS_DIR -- this tool's utils/ directory
+
+services:
+  reset-mysql-accounts:
+    image: ${OPENMRS_DB_IMAGE_NAME?}:${OPENMRS_DB_IMAGE_TAG?}
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-reset-mysql-accounts
+    depends_on:
+      restore-mysql-volume:
+        condition: service_completed_successfully
+    entrypoint: ["bash", "/reset-mysql-accounts.sh", "--in-container"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD?}
+      MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD?}
+      RESET_DB_USER: ${OPENMRS_DB_USER?}
+      RESET_DB_NAME: openmrs
+    volumes:
+      - db-data:/var/lib/mysql
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/reset-mysql-accounts.sh:/reset-mysql-accounts.sh:ro
+
+  openmrs-db:
+    depends_on:
+      reset-mysql-accounts:
+        condition: service_completed_successfully

@@ -28,7 +28,7 @@ teardown() {
 @test "requires a database source" {
     run_initialize "$NAME" SEED_IMAGE_NAME=
     assert_failure
-    assert_output --partial 'set exactly one of RESTORE_MYSQL_DUMP_PATH, RESTORE_MYSQL_DATA_PATH, or SEED_IMAGE_NAME'
+    assert_output --partial 'set exactly one of RESTORE_MYSQL_DUMP_PATH, RESTORE_MYSQL_DATA_PATH, RESTORE_MYSQL_PERCONA_PATH, or SEED_IMAGE_NAME'
     assert_no_leftovers
 }
 

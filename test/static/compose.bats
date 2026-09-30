@@ -58,8 +58,14 @@ assert_valid() {
     assert_valid
 }
 
-@test "restore-mysql-volume-from-data-dir overlay is valid" {
-    compose_config restore-mysql-volume-from-data-dir.yaml
+@test "restore-mysql-volume-from-data-dir overlay is valid, with reset-mysql-accounts" {
+    compose_config restore-mysql-volume-from-data-dir.yaml reset-mysql-accounts.yaml
+    assert_valid
+}
+
+@test "restore-mysql-volume-from-percona overlay is valid, with reset-mysql-accounts" {
+    RESTORE_MYSQL_PERCONA_PATH=/tmp/percona.7z RESTORE_MYSQL_PERCONA_NAME=archive.7z \
+        compose_config restore-mysql-volume-from-percona.yaml reset-mysql-accounts.yaml
     assert_valid
 }
 

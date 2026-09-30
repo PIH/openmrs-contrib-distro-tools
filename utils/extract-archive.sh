@@ -67,7 +67,7 @@ case "$SRC" in
             -v "$DIR:/archive:ro" \
             -v "$OUTPUT_DIR:/out" \
             alpine:3.21 \
-            sh -c 'tar xf "/archive/$ARCHIVE_SRC" -C /out' >&2
+            sh -c 'case "$ARCHIVE_SRC" in *.tar) tar xf "/archive/$ARCHIVE_SRC" -C /out ;; *) tar xzf "/archive/$ARCHIVE_SRC" -C /out ;; esac' >&2
         ;;
     *)
         echo "$SRC"

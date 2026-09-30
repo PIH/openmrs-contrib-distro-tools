@@ -8,6 +8,9 @@
 # upstream of this; by this point RESTORE_MYSQL_DATA_PATH is just a plain directory of MySQL data
 # files to copy in, however it was produced.
 #
+# Always used together with reset-mysql-accounts.yaml, which runs after restore-mysql-volume and
+# before openmrs-db first starts.
+#
 # Set by initialize itself, not persisted to the instance's env file:
 #   RESTORE_MYSQL_DATA_PATH -- absolute path to a ready MySQL data directory on the host
 
@@ -22,27 +25,3 @@ services:
     # see services/openmrs-db.yaml's OPENMRS_DB_IMAGE_NAME); a different base image with a
     # different uid would need this adjusted to match.
     command: ["sh", "-c", "cp -a /source/. /target/ && chown -R 999:999 /target"]
-
-  # A physical backup's accounts are the source server's (the image only creates its own on an empty
-  # data directory), so they're set to this instance's before openmrs-db first starts -- see
-  # utils/reset-mysql-accounts.sh.
-  reset-mysql-accounts:
-    image: ${OPENMRS_DB_IMAGE_NAME?}:${OPENMRS_DB_IMAGE_TAG?}
-    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-reset-mysql-accounts
-    depends_on:
-      restore-mysql-volume:
-        condition: service_completed_successfully
-    entrypoint: ["bash", "/reset-mysql-accounts.sh", "--in-container"]
-    environment:
-      MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD?}
-      MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD?}
-      RESET_DB_USER: ${OPENMRS_DB_USER?}
-      RESET_DB_NAME: openmrs
-    volumes:
-      - db-data:/var/lib/mysql
-      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/reset-mysql-accounts.sh:/reset-mysql-accounts.sh:ro
-
-  openmrs-db:
-    depends_on:
-      reset-mysql-accounts:
-        condition: service_completed_successfully

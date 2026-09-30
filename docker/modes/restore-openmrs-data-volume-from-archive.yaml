@@ -43,6 +43,11 @@ services:
             *.7z|*.zip)
                 7z x -p"$${ARCHIVE_PASSWORD:-}" -o"$$STAGING" -y "/source/$$ARCHIVE_NAME" >/dev/null
                 ;;
+            # z given explicitly: busybox tar's own gzip detection fails on long runs of zeros
+            # ("invalid tar header checksum").
+            *.tar.gz)
+                tar xzf "/source/$$ARCHIVE_NAME" -C "$$STAGING"
+                ;;
             *)
                 tar xf "/source/$$ARCHIVE_NAME" -C "$$STAGING"
                 ;;
