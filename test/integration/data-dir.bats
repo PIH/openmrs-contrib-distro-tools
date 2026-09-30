@@ -274,3 +274,17 @@ not_owned_by() { # <volume> <uid> <gid>
     assert_failure
     assert_output --partial "run '$BIN/openmrs-docker $NAME destroy' before retrying"
 }
+
+@test "ARCHIVE_PASSWORD never appears in any process's command line, in or out of containers" {
+    # enough data that 7z runs long enough to be seen
+    head -c 30000000 /dev/urandom > "$BATS_TEST_TMPDIR/data/complex_obs/big.bin"
+    ARCHIVE_PASSWORD=s3cret-ps-archive assert_not_in_ps_while s3cret-ps-archive backup nightly.7z
+    ARCHIVE_PASSWORD=s3cret-ps-archive assert_not_in_ps_while s3cret-ps-archive \
+        "$UTILS/extract-archive.sh" --path=nightly.7z --output-dir="$BATS_TEST_TMPDIR/x"
+    NAME="$(instance)"
+    create_instance "$NAME"
+    ARCHIVE_PASSWORD=s3cret-ps-archive RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH=nightly.7z \
+        assert_not_in_ps_while s3cret-ps-archive "$BIN/openmrs-docker" "$NAME" initialize
+    run docker run --rm -v "${NAME}_openmrs-data:/d:ro" alpine:3.21 stat -c %s /d/complex_obs/big.bin
+    assert_output 30000000
+}

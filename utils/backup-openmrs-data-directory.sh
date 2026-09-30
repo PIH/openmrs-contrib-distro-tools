@@ -121,14 +121,15 @@ echo "Backing up $VOLUME to $OUTPUT_PATH..." >&2
 case "$OUTPUT_PATH" in
     *.7z)
         # 7z can't write a .7z to stdout, so it's written inside the container (as root) and then
-        # handed back to whoever's running this script.
+        # handed back to whoever's running this script. A bare -p makes 7z read the password from
+        # stdin, so it's on no command line.
         ARCHIVE_PW="$ARCHIVE_PASSWORD" docker run --rm \
             -e ARCHIVE_PW -e OUT_NAME="$OUTPUT_NAME" -e TOP_DIR="$TOP_DIR" -e OWNER="$(id -u):$(id -g)" \
             -v "$VOLUME:/backup/$TOP_DIR:ro" \
             -v "$(dirname "$OUTPUT_PATH"):/out" \
             -w /backup \
             partnersinhealth/p7zip \
-            sh -c '7z a -p"$ARCHIVE_PW" -mx5 -t7z "/out/$OUT_NAME" "$TOP_DIR" "$@" && chown "$OWNER" "/out/$OUT_NAME"' \
+            sh -c 'printf "%s\n" "$ARCHIVE_PW" | 7z a -p -mx5 -t7z "/out/$OUT_NAME" "$TOP_DIR" "$@" && chown "$OWNER" "/out/$OUT_NAME"' \
             sh ${EXCLUDES[@]+"${EXCLUDES[@]/#/-x!}"} >&2
         ;;
     *)

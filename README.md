@@ -506,7 +506,10 @@ affected: a logical dump doesn't carry the source's accounts.
 Standalone, general-purpose scripts in this tool's own `utils/` directory (not part of the
 `openmrs-docker` CLI, and usable entirely on their own -- e.g. against a production server that was
 never created via `openmrs-docker` at all). Named arguments for values; secrets (passwords) are
-environment variables instead, so they never show up in `ps` output. Run via `openmrs-utils
+environment variables instead, and reach the tools inside containers by environment or stdin, so
+they're on no command line: `ps` on the host shows the command lines of processes in containers too.
+The one exception is `backup-mysqldump --output=<name>.7z`, which streams the dump into 7z on stdin,
+so `ARCHIVE_PASSWORD` is on 7z's command line inside its container while the dump runs. Run via `openmrs-utils
 <script-name> [args...]` (a thin passthrough to the script of that name under `utils/` -- see
 "Install" above), or the script directly by its full path -- the two are equivalent. Run any script
 with no arguments for its exact usage; run `openmrs-utils` with no arguments to list them all.
@@ -1009,6 +1012,9 @@ falling back to a second default or a blank. `openmrs-docker <name> sync` adds a
 missing. Its
 `# container-env:` line, if any, says which of those variables go into the container itself (see
 "`env` file reference").
+
+OpenHIM's clients authenticate with Basic auth or custom tokens; its JWT authentication is off,
+since nothing uses it and it would otherwise accept a token signed with a shared secret for any client.
 
 The following example will create an instance with OpenHIM and its mediators installed,
 configured for Lesotho:

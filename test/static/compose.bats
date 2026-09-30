@@ -147,3 +147,13 @@ assert_valid() {
     [ -z "$repeated" ] || fail "yaml default repeats .env.defaults (use \${VAR?}): $repeated"
     [ -z "$missing" ] || fail "\${VAR?} with no .env.defaults entry: $missing"
 }
+
+@test "openhim has JWT authentication off, and openhim-setup passes no credentials on curl's command line" {
+    local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f
+    for f in "$dir"/*.yaml; do args+=(-f "$f"); done
+    run docker compose --env-file "$dir/env" "${args[@]}" config openhim-core openhim-setup
+    assert_success
+    assert_output --partial 'authentication_enableJWTAuthentication: "false"'
+    refute_output --partial 'authentication_jwt_secretOrPublicKey'
+    refute_output --regexp 'curl [^\n]*-u'
+}

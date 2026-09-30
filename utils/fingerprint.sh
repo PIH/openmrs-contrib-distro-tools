@@ -10,7 +10,7 @@
 # --container reads a running MySQL/MariaDB container (`docker exec`). --host connects over TCP with
 # host networking, e.g. --host=127.0.0.1 for a MySQL installed on a legacy host, using the client
 # from --client-image. Both log in as root with MYSQL_ROOT_PASSWORD (env var, a secret; passed to
-# `docker` by name only, so it never appears in argv). --db-volume reads a *stopped* instance's
+# `docker` by name only and read as MYSQL_PWD, so it's on no command line). --db-volume reads a *stopped* instance's
 # data directory: it starts --image's server on it with --skip-grant-tables --skip-networking (no
 # password needed, nothing can connect), and stops it cleanly afterwards. It refuses while a
 # container is using the volume. Use the image the instance runs, and give each of its server options

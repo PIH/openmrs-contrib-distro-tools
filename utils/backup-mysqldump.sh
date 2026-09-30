@@ -17,9 +17,12 @@
 #
 # MYSQL_PASSWORD (env var, not a named argument -- a secret) authenticates as --user; defaults to
 # "openmrs" if unset. Secrets are passed to `docker` as a bare `-e VARNAME` (inheriting the
-# already-set value from this script's own environment) rather than `-e VARNAME=value`, so the
-# value itself never appears in `docker`'s argv -- and so never shows up in `ps` output, which
-# shows argv but not environment.
+# already-set value from this script's own environment) rather than `-e VARNAME=value`, so they're
+# not in `docker`'s command line, and MYSQL_PASSWORD is on none (mysqldump reads MYSQL_PWD). The
+# exception is ARCHIVE_PASSWORD for a .7z: the dump streams into 7z on stdin, so 7z can't also read
+# the password there, and it's on 7z's command line inside its container while the dump runs
+# (visible to `ps` on the host). Writing the dump to disk first would avoid that, but would put it
+# there unencrypted.
 set -euo pipefail
 
 CONTAINER=
