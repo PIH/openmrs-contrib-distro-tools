@@ -157,3 +157,28 @@ assert_valid() {
     refute_output --partial 'authentication_jwt_secretOrPublicKey'
     refute_output --regexp 'curl [^\n]*-u'
 }
+
+@test "openhim services talk plain HTTP inside the Docker network, and publish only the ports that are used from outside" {
+    local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f config
+    for f in "$dir"/*.yaml; do args+=(-f "$f"); done
+    run docker compose --env-file "$dir/env" "${args[@]}" config --format json
+    assert_success
+    config=$output
+    # no HTTPS to openhim-core, and nothing that skips certificate checks
+    run jq -r '.services | to_entries[] | select(.key | startswith("openhim") or startswith("mongo")) | .value' <<< "$config"
+    refute_output --partial 'https://openhim-core'
+    refute_output --partial 'no-check-certificate'
+    refute_output --partial 'TRUST_SELF_SIGNED'
+    refute_output --regexp 'curl -[a-z]*k'
+    run jq -r '.services["openhim-core"].environment.api_protocol' <<< "$config"
+    assert_output http
+    run jq -r '.services["openhim-core"].environment | .mongo_url, .mongo_atnaUrl' <<< "$config"
+    assert_output $'mongodb://mongo-db/openhim\nmongodb://mongo-db/openhim'
+    # the admin API (for the console, which runs in the admin's browser) and the router's HTTP port
+    run jq -c '[.services["openhim-core"].ports[].target] | sort' <<< "$config"
+    assert_output '[5001,8080]'
+    run jq -c '[.services["openhim-console"].ports[].target]' <<< "$config"
+    assert_output '[80]'
+    run jq -r '[.services["mongo-db"].ports // [], .services["openhim-advapacs-mediator"].ports // []] | flatten | length' <<< "$config"
+    assert_output 0
+}
