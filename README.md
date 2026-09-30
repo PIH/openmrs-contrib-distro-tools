@@ -608,6 +608,13 @@ check free disk space before writing anything, as `initialize` does (see "Disk s
   missing, removes anonymous accounts, and lists the other accounts it kept. Refuses while a
   container is using the volume. Used by `initialize` after a physical restore and by
   `openmrs-docker <name> reset-openmrs-db-accounts`.
+- **`runtime-properties --volume=<openmrs-data volume or dir> (--set-aside | --set)`** -- edits the
+  data directory's `openmrs-runtime.properties`, which openmrs-core 2.6+ writes once and afterwards
+  only merges `OMRS_EXTRA_*` into. `--set-aside` renames it to `openmrs-runtime.properties.restored`,
+  so OpenMRS writes a fresh one from env on its next start (`initialize` does this after a restore).
+  `--set` sets the `key=value` lines given on stdin (so secrets are on no command line), replacing
+  those keys' lines and keeping the file's owner and mode, with the previous file kept as
+  `openmrs-runtime.properties.bak` (`reset-openmrs-db-accounts` sets `connection.*` this way).
 - **`wait-for-healthy --container=<name> [--timeout=<seconds>] [--fail-on-unhealthy=true|false]`**
   -- polls until a container reports healthy; fails fast on exited/dead/restarting or a container with no
   healthcheck, or times out.

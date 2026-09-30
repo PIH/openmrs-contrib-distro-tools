@@ -64,7 +64,7 @@ else
     [ -z "$DB_CONTAINER$DB_HOST" ] || usage
     refuse_if_in_use "$DB_VOLUME" "two servers on one data directory corrupt it"
     DB_CONTAINER="fingerprint-$(date +%Y%m%d%H%M%S)-$$"
-    on_exit 'docker stop -t 60 "$DB_CONTAINER"; docker rm -f "$DB_CONTAINER"'
+    on_exit 'docker stop -t 60 "$DB_CONTAINER" >/dev/null 2>&1; docker rm -f "$DB_CONTAINER" >/dev/null 2>&1'
     # The image's entrypoint leaves an existing data directory alone and passes the flags on.
     docker run -d --name "$DB_CONTAINER" -v "$DB_VOLUME:/var/lib/mysql" "$IMAGE" \
         ${SERVER_OPTS[@]+"${SERVER_OPTS[@]}"} --skip-grant-tables --skip-networking >/dev/null
