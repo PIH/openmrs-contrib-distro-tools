@@ -29,8 +29,10 @@ services:
     image: jembi/openhim-core:${OPENHIM_CORE_IMAGE_TAG?}
     restart: unless-stopped
     # PID 1 is otherwise Node, which never reaps the ssl_client helper that BusyBox wget spawns
-    # for the HTTPS healthcheck below. Each zombie pins a seccomp filter's BPF JIT memory, and
-    # after a few weeks the host can no longer start container processes (errno 524).
+    # for the HTTPS healthcheck below.
+    # init: true runs tini as PID 1 to reap them; see
+    # https://docs.docker.com/reference/compose-file/services/#init and
+    # https://github.com/krallin/tini
     init: true
     environment:
       mongo_url: mongodb://mongo-db/openhim-development
