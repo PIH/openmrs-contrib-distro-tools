@@ -452,16 +452,16 @@ DATADIR=$(openmrs-utils convert-percona-backup --backup-dir="$BACKUP_DIR" --outp
 RESTORE_MYSQL_DATA_PATH="$DATADIR" openmrs-docker <name> initialize
 ```
 
-**A caveat specific to `RESTORE_MYSQL_DATA_PATH`:** a physical backup is a copy of the source
-server's entire data directory, *including its `mysql` system tables* -- so the restored database's
-real credentials are the source server's, not the ones this instance was created with. If
-`OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD` and `OPENMRS_DB_ROOT_PASSWORD` don't match what the source
-server actually used, the database will come up fine but the post-restore health check can never
-authenticate, so `initialize` eventually fails with a message pointing here -- after
-`INITIALIZE_DB_TIMEOUT` (see above), an hour by default -- even though the restore itself succeeded.
-Set those variables to the source server's credentials before running `create`. For the same reason,
-`OPENMRS_DB_IMAGE_TAG` should match the MySQL version the backup was taken from.
-`RESTORE_MYSQL_DUMP_PATH` is unaffected -- a logical dump doesn't carry the source's user accounts.
+**Accounts after `RESTORE_MYSQL_DATA_PATH`:** a physical backup is a copy of the source server's
+entire data directory, *including its `mysql` system tables*, so it arrives with the source's
+accounts and passwords (the image only creates its own on an empty data directory). `initialize`
+sets them to this instance's before the database first starts, with `reset-mysql-accounts` (see
+Utilities): every `root` and `OPENMRS_DB_USER` account gets this instance's password,
+`OPENMRS_DB_USER@'%'` (how the openmrs container connects) and `root@'%'` are created if missing,
+and anonymous accounts are removed. The source's other accounts (e.g. PETL or backup users) are
+kept, and `initialize` lists them so you can remove the ones you don't need. `OPENMRS_DB_IMAGE_TAG`
+should still match the MySQL version the backup was taken from. `RESTORE_MYSQL_DUMP_PATH` isn't
+affected: a logical dump doesn't carry the source's accounts.
 
 ### Utilities (`utils/`)
 
@@ -531,6 +531,14 @@ with no arguments for its exact usage; run `openmrs-utils` with no arguments to 
   default), via its own `PURGE BINARY LOGS`. Run it before turning binary logging off:
   once binary logging is off the server can't purge them, and the files stay on disk. Prints the
   number and total size of binlogs before and after.
+- **`reset-mysql-accounts --volume=<db data volume or host dir> [--image=mysql:5.6] [--user=openmrs]
+  [--database=openmrs]`** -- sets a *stopped* MySQL/MariaDB data directory's accounts to new
+  passwords (`MYSQL_ROOT_PASSWORD` and `MYSQL_PASSWORD` env vars) without knowing the current ones:
+  starts `--image` on it with `--skip-grant-tables --skip-networking`, sets every `root@*` and
+  `--user@*` password, creates `root@'%'` and `--user@'%'` (all privileges on `--database`) if
+  missing, removes anonymous accounts, and lists the other accounts it kept. Refuses while a
+  container is using the volume. Used by `initialize` after a physical restore and by
+  `openmrs-docker <name> reset-db-accounts`.
 - **`wait-for-healthy --container=<name> [--timeout=<seconds>] [--fail-on-unhealthy=true|false]`**
   -- polls until a container reports healthy; fails fast on exited/dead/restarting, or times out.
 
@@ -571,6 +579,22 @@ To wipe all data and start completely fresh next time:
 ```bash
 openmrs-docker <name> destroy
 ```
+
+### Changing the database passwords
+
+Changing `OPENMRS_DB_PASSWORD` or `OPENMRS_DB_ROOT_PASSWORD` in `env` on its own changes nothing:
+MySQL only takes them when it first sets up an empty data directory, and OpenMRS (core 2.6+) keeps
+the connection settings its runtime properties file got on its first start. After editing `env`, run:
+
+```bash
+openmrs-docker <name> reset-db-accounts
+```
+
+It stops the instance, sets the MySQL accounts to the passwords in `env` (with
+`reset-mysql-accounts`, see Utilities), sets `connection.username` and `connection.password` in
+`openmrs-runtime.properties` in openmrs-data (keeping the previous file as
+`openmrs-runtime.properties.bak`, which still holds the old password), and starts it again. Until it
+runs, the database reports unhealthy: its healthcheck already uses the new password.
 
 ### Updating to the latest version
 

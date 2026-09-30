@@ -20,6 +20,7 @@ usage() {
     echo "  status                  Show the state of this instance's containers"
     echo "  update                  Pull latest images and reconcile the stack (recreates only what changed)"
     echo "  sync                    Refresh this instance's copied service fragments from the tool's current templates"
+    echo "  reset-db-accounts       Set the MySQL accounts and OpenMRS's connection settings to the passwords in env (restarts)"
     echo "  add-service <svc>       Attach a canonical service fragment (e.g. 'add-service reporting-db')"
     echo "  remove-service <svc>    Detach a service fragment and remove its now-orphaned container"
     echo "  run-service <svc> [cmd...]  Run a one-off container for an attached service via 'docker compose run' (e.g. after add-service)"
@@ -437,7 +438,7 @@ case "$COMMAND" in
             [ -d "$RESTORE_MYSQL_DATA_PATH" ] || { echo "error: no such directory: $RESTORE_MYSQL_DATA_PATH" >&2; exit 1; }
             # Convert relative to absolute path if needed
             RESTORE_MYSQL_DATA_PATH="$(cd "$RESTORE_MYSQL_DATA_PATH" && pwd)"
-            export RESTORE_MYSQL_DATA_PATH
+            export RESTORE_MYSQL_DATA_PATH DISTRO_TOOLS_UTILS_DIR="$TOOL_DIR/utils"
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-data-dir.yaml")
             DB_SOURCES=$((DB_SOURCES + 1))
             DB_PHYSICAL_RESTORE=true
@@ -522,11 +523,13 @@ case "$COMMAND" in
         # fail-on-unhealthy left at its default (false): MySQL doesn't accept TCP connections
         # until its dump import (or a large restored datadir's crash recovery) finishes, so it
         # legitimately reports unhealthy for a while before succeeding.
+        # What reset-mysql-accounts did to the restored accounts, including the source's other
+        # accounts it kept.
+        if $DB_PHYSICAL_RESTORE; then
+            docker logs "${SERVICE_NAME}-reset-mysql-accounts" 2>&1 || true
+        fi
         if ! "$TOOL_DIR/utils/wait-for-healthy.sh" --container="${SERVICE_NAME}-openmrs-db" \
                 --timeout="${INITIALIZE_DB_TIMEOUT:-3600}"; then
-            if $DB_PHYSICAL_RESTORE; then
-                echo "error: the restored database never became usable. A physical backup keeps the source server's own accounts, so OPENMRS_DB_USER, OPENMRS_DB_PASSWORD and OPENMRS_DB_ROOT_PASSWORD in $ENV_FILE must match the source server's credentials (see the README's RESTORE_MYSQL_DATA_PATH caveat)." >&2
-            fi
             initialize_cleanup
             echo "error: initialize failed -- run '$0 $NAME destroy' before retrying." >&2
             exit 1
@@ -554,6 +557,35 @@ case "$COMMAND" in
             echo "OPENMRS_CREATE_TABLES=false" >> "$ENV_FILE"
         fi
         echo "Initialized $NAME."
+        ;;
+    reset-db-accounts)
+        # Sets the MySQL accounts and OpenMRS's own connection settings to the passwords now in env
+        # (e.g. after rotating them). MySQL only takes MYSQL_ROOT_PASSWORD / MYSQL_PASSWORD when it
+        # first sets up an empty data directory, and openmrs-core 2.6+ only applies
+        # OMRS_CONFIG_CONNECTION_* on its first install, so changing them in env alone changes
+        # neither. Both volumes are changed with the instance stopped.
+        docker volume inspect "${SERVICE_NAME}_db-data" >/dev/null 2>&1 \
+            || { echo "error: ${SERVICE_NAME}_db-data doesn't exist -- nothing to reset" >&2; exit 1; }
+        docker compose "${COMPOSE_FILES[@]}" down --remove-orphans
+        MYSQL_ROOT_PASSWORD="$OPENMRS_DB_ROOT_PASSWORD" MYSQL_PASSWORD="$OPENMRS_DB_PASSWORD" \
+            "$TOOL_DIR/utils/reset-mysql-accounts.sh" --volume="${SERVICE_NAME}_db-data" \
+            --image="$OPENMRS_DB_IMAGE_NAME:$OPENMRS_DB_IMAGE_TAG" --user="$OPENMRS_DB_USER"
+        if docker volume inspect "${SERVICE_NAME}_openmrs-data" >/dev/null 2>&1; then
+            # connection.username / connection.password in the runtime properties file, written in
+            # the properties format (a backslash doubled); the file's owner and mode are kept (cat >).
+            # shellcheck disable=SC2016
+            OPENMRS_DB_USER="$OPENMRS_DB_USER" OPENMRS_DB_PASSWORD="$OPENMRS_DB_PASSWORD" docker run --rm \
+                -e OPENMRS_DB_USER -e OPENMRS_DB_PASSWORD -v "${SERVICE_NAME}_openmrs-data:/data" alpine:3.21 sh -c '
+                    f=/data/openmrs-runtime.properties
+                    [ -f "$f" ] || { echo "No openmrs-runtime.properties in openmrs-data yet: OpenMRS writes it from env on its first start."; exit 0; }
+                    cp -p "$f" "$f.bak"
+                    esc() { printf "%s" "$1" | sed "s/\\\\/\\\\\\\\/g"; }
+                    { grep -v "^[[:space:]]*connection\.\(username\|password\)[[:space:]]*[=:]" "$f.bak" || true
+                      printf "connection.username=%s\nconnection.password=%s\n" "$(esc "$OPENMRS_DB_USER")" "$(esc "$OPENMRS_DB_PASSWORD")"
+                    } > /tmp/new && cat /tmp/new > "$f"
+                    echo "Set connection.username and connection.password in openmrs-runtime.properties (the previous file is openmrs-runtime.properties.bak)."'
+        fi
+        start_stack
         ;;
     sync)
         sync_services

@@ -1,14 +1,23 @@
 #!/usr/bin/env bats
 # backup-percona -> convert-percona-backup -> initialize RESTORE_MYSQL_DATA_PATH round trips.
 #
-# The source's credentials match openmrs-docker's defaults: a physical backup carries the source's
-# own user accounts, so that's what lets the restored instance log in (see the README caveat).
+# A physical backup carries the source's own accounts; initialize sets them to the instance's
+# passwords (utils/reset-mysql-accounts.sh). The source gets accounts like a legacy server's: an
+# openmrs@localhost with its own password, an anonymous account, and an unrelated petl account.
 
 load ../helpers
 
 setup_file() {
+    # One test changes the source's root password for a moment, which would break a backup another
+    # test took at the same time.
+    export BATS_NO_PARALLELIZE_WITHIN_FILE=true
     export SRC_DB="$(file_res src)"
     start_source_db "$SRC_DB"
+    mysql_exec "$SRC_DB" openmrs "
+        CREATE USER 'openmrs'@'localhost' IDENTIFIED BY 'legacy-openmrs-pw';
+        GRANT ALL PRIVILEGES ON openmrs.* TO 'openmrs'@'localhost';
+        CREATE USER ''@'localhost';
+        CREATE USER 'petl'@'localhost' IDENTIFIED BY 'petl-pw';"
 }
 teardown_file() { common_teardown_file; }
 
@@ -46,17 +55,27 @@ restore_physical() { # [backup-percona args...]
     assert_output 1
 }
 
-@test "a physical restore whose credentials don't match fails within INITIALIZE_DB_TIMEOUT, saying why" {
+@test "a physical restore's accounts get the instance's passwords; the source's other accounts are kept and listed" {
     percona_backup backup >/dev/null 2>&1
     local datadir
     datadir=$("$UTILS/convert-percona-backup.sh" --backup-dir=backup --output-dir="$BATS_TEST_TMPDIR/datadir" 2>/dev/null)
     NAME="$(instance)"
-    OPENMRS_DB_PASSWORD=not-the-source-password create_instance "$NAME"
-    SECONDS=0
-    run_initialize "$NAME" RESTORE_MYSQL_DATA_PATH="$datadir" INITIALIZE_DB_TIMEOUT=20
-    assert_failure
-    assert_output --partial 'credentials'
-    assert [ "$SECONDS" -lt 60 ]
+    OPENMRS_DB_PASSWORD=instance-pw OPENMRS_DB_ROOT_PASSWORD=instance-root SERVICES=openmrs-db create_instance "$NAME"
+    run_initialize "$NAME" RESTORE_MYSQL_DATA_PATH="$datadir"
+    assert_success
+    assert_output --partial "Set the password of openmrs@localhost"
+    assert_output --partial "Set the password of root@%"
+    assert_output --partial "Removed anonymous account ''@localhost"
+    assert_output --partial "Kept the other accounts (remove any this instance doesn't need): petl@localhost"
+    "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
+    wait_for_mysql "$NAME-openmrs-db" root instance-root
+    # locally (the healthcheck's login, which the legacy openmrs@localhost would otherwise take) ...
+    run docker exec "$NAME-openmrs-db" sh -c 'mysql -h127.0.0.1 -uopenmrs -pinstance-pw -N -e "SELECT id FROM openmrs.marker" 2>/dev/null'
+    assert_output 1
+    # ... and from another container, as the openmrs container connects
+    run docker run --rm --network "${NAME}_default" "$MYSQL_IMAGE" \
+        sh -c 'mysql -hopenmrs-db -uopenmrs -pinstance-pw -N -e "SELECT id FROM openmrs.marker" 2>/dev/null'
+    assert_output 1
 }
 
 @test "MYSQL_ROOT_PASSWORD never appears in a docker command line" {
