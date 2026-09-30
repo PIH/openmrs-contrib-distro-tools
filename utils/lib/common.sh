@@ -22,8 +22,17 @@ usage() {
     exit 1
 }
 
-# <path> made absolute against the current directory. It needn't exist.
-abs_path() { case "$1" in /*) echo "$1" ;; *) echo "$PWD/${1#./}" ;; esac; }
+# <path> made absolute, with its parent directory resolved if it can be entered (a backup directory
+# itself often can't). It needn't exist.
+abs_path() {
+    local dir
+    case "$1" in /*) echo "$1"; return ;; esac
+    if dir=$(cd "$(dirname "$1")" 2>/dev/null && pwd); then
+        echo "$dir/$(basename "$1")"
+    else
+        echo "$PWD/${1#./}"
+    fi
+}
 
 # Refuses unless <source> is an existing named volume or, as an absolute path, directory: `docker
 # run -v` would otherwise quietly create an empty volume of that name.
@@ -42,7 +51,8 @@ refuse_if_in_use() { # <volume or dir> [why]
 }
 
 # Cleanup when the script exits: on_exit runs <command> however it ends, on_failure only if it
-# fails. <command> is a string, as for `trap`; the latest registered runs first.
+# fails. <command> is a string, as for `trap`; the latest registered runs first. Its output is
+# shown, and its failure ignored.
 _CLEANUPS=()
 on_exit() {
     _CLEANUPS=("$1" ${_CLEANUPS[@]+"${_CLEANUPS[@]}"})
@@ -52,7 +62,7 @@ on_failure() { on_exit "[ \"\$_EXIT_STATUS\" -eq 0 ] || { $1; }"; }
 _run_cleanups() {
     _EXIT_STATUS=$1
     local c
-    for c in "${_CLEANUPS[@]}"; do eval "$c" >/dev/null 2>&1 || true; done
+    for c in "${_CLEANUPS[@]}"; do eval "$c" || true; done
 }
 
 # Readies <absolute path> for a new output file: refuses an existing one, creates its parent
@@ -68,5 +78,5 @@ prepare_output_file() {
 prepare_output_dir() {
     [ ! -e "$1" ] || die "$1 already exists"
     mkdir -p "$1"
-    on_failure "docker run --rm -v $(printf %q "$1"):/t $ALPINE_IMAGE find /t -mindepth 1 -delete; rm -rf $(printf %q "$1")"
+    on_failure "docker run --rm -v $(printf %q "$1"):/t $ALPINE_IMAGE find /t -mindepth 1 -delete >/dev/null 2>&1; rm -rf $(printf %q "$1")"
 }

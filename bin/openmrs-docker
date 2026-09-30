@@ -1,422 +1,146 @@
 #!/bin/bash
+# Usage:
+#   openmrs-docker create <name>        Create a new instance (name: lowercase letters, digits, '-', '_')
+#   openmrs-docker list                 List existing instances
+#   openmrs-docker <name> <command> [options]
+#
+# Commands (for an existing instance):
+#   initialize              Pre-load a brand-new instance's data volumes (refuses to run if any data
+#                           volume already exists) -- see 'initialize' below
+#   start [--build] [--dev] Start the stack
+#   stop                    Stop the running stack
+#   restart                 Restart the running containers in place (no rebuild, no recreate)
+#   status                  Show the state of this instance's containers
+#   update [--build] [--dev]
+#                           Pull latest images and reconcile the stack (recreates only what changed)
+#   sync                    Refresh this instance's copied service fragments from the tool's current templates
+#   reset-openmrs-db-accounts
+#                           Set openmrs-db's MySQL accounts and OpenMRS's connection settings to the
+#                           passwords in env (restarts; utils/reset-mysql-accounts is the generic part)
+#   add-service <svc>       Attach a canonical service fragment (e.g. 'add-service reporting-db')
+#   remove-service <svc>    Detach a service fragment and remove its containers (its volumes are kept)
+#   run-service <svc> [cmd...]
+#                           Run a one-off container for an attached service via 'docker compose run'
+#   wait                    Block until OpenMRS finishes initializing (up to 60 minutes)
+#   fingerprint [--data-dir] [--exclude-distribution-artifacts] [--output=<file>]
+#                           Summarize the stopped instance's database (and openmrs-data) to diff against
+#                           its source -- see utils/fingerprint.sh
+#   build                   Build the distribution and Docker image from source
+#   pull                    Pull the images this instance would use, without starting anything
+#   logs [service]          Tail the container logs; defaults to every service
+#   destroy [--force]       Stop the stack, delete all volumes, and remove the instance directory
+#
+# Options:
+#   --build        Build the distribution from source first
+#   --dev          Expose debug ports and mount the locally-built distro over whatever's in the image
+#                  (combine with --build to build it first)
+#   --force        Skip the confirmation prompt
+#
+# initialize: by default, loads both data volumes from SEED_IMAGE_NAME. Each volume's source can
+# instead be set independently by env vars on the initialize invocation itself (not persisted to the
+# instance's env file), so a dump or backup can replace the seed image for one or both volumes -- see
+# utils/ for scripts to make these:
+#   RESTORE_MYSQL_DUMP_PATH    mysql/db-data from a .sql/.sql.gz dump, or a .7z/.zip archive of one
+#   RESTORE_MYSQL_DATA_PATH    mysql/db-data from a ready MySQL data directory (physical restore)
+#   RESTORE_MYSQL_PERCONA_PATH mysql/db-data from a Percona/xtrabackup backup: a .7z/.zip/.tar.gz/.tgz/.tar
+#                              archive or a directory, prepared first if it isn't already
+#   RESTORE_OPENMRS_DATA_PATH  openmrs-data from a directory, or a .tar.gz/.tgz/.tar/.7z/.zip archive of one
+#   ARCHIVE_PASSWORD           password for a protected .7z/.zip passed to any of the above
+#   INITIALIZE_DB_TIMEOUT      seconds to wait for the restored database to become healthy (default 3600)
+#
+# Environment variable overrides:
+#   OPENMRS_DOCKER_HOME   Where instance directories live (default: $HOME/openmrs)
+#   OPENMRS_HTTP_PORT     Port OpenMRS is exposed on (default: 8080)
+#
+# create requires OPENMRS_IMAGE_NAME (env var) when the 'openmrs' service is included (the default).
+# OPENMRS_PIH_CONFIG is optional: a distro that needs a PIH config profile fails at OpenMRS startup
+# without one, not at create. DISTRO_SOURCE_DIR is required only for build, --dev and --build, and can
+# be set later in the instance's env file. Every other create-time setting (ports, memory limits,
+# image tags, etc.) is taken from your shell if set there (or from a file you source first), instead
+# of its default. SERVICES=<comma-separated> (default: openmrs-db,openmrs) selects which canonical
+# service fragments the new instance gets.
 set -euo pipefail
 
 TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=../utils/lib/disk-space.sh
-. "$TOOL_DIR/utils/lib/disk-space.sh"
 OPENMRS_DOCKER_HOME="${OPENMRS_DOCKER_HOME:-$HOME/openmrs}"
 SERVICES_DIR="$TOOL_DIR/docker/services"
 MODES_DIR="$TOOL_DIR/docker/modes"
+# shellcheck source=../utils/lib/common.sh
+. "$TOOL_DIR/utils/lib/common.sh"
+# shellcheck source=../utils/lib/disk-space.sh
+. "$TOOL_DIR/utils/lib/disk-space.sh"
+# shellcheck source=../lib/openmrs-docker/env.sh
+. "$TOOL_DIR/lib/openmrs-docker/env.sh"
+# shellcheck source=../lib/openmrs-docker/compose.sh
+. "$TOOL_DIR/lib/openmrs-docker/compose.sh"
+# shellcheck source=../lib/openmrs-docker/instance.sh
+. "$TOOL_DIR/lib/openmrs-docker/instance.sh"
+# shellcheck source=../lib/openmrs-docker/stack.sh
+. "$TOOL_DIR/lib/openmrs-docker/stack.sh"
+# shellcheck source=../lib/openmrs-docker/initialize.sh
+. "$TOOL_DIR/lib/openmrs-docker/initialize.sh"
+# shellcheck source=../lib/openmrs-docker/db.sh
+. "$TOOL_DIR/lib/openmrs-docker/db.sh"
 
-usage() {
-    echo "Usage:"
-    echo "  $0 create <name>          Create a new instance (name: lowercase letters, digits, '-', '_')"
-    echo "  $0 list                   List existing instances"
-    echo "  $0 <name> <command> [options]"
-    echo ""
-    echo "Commands (for an existing instance):"
-    echo "  initialize              Pre-load a brand-new instance's data volumes (refuses to run if any data volume already exists) -- see 'initialize' below"
-    echo "  start                   Start the stack"
-    echo "  stop                    Stop the running stack"
-    echo "  restart                 Restart the running containers in place (no rebuild, no recreate)"
-    echo "  status                  Show the state of this instance's containers"
-    echo "  update                  Pull latest images and reconcile the stack (recreates only what changed)"
-    echo "  sync                    Refresh this instance's copied service fragments from the tool's current templates"
-    echo "  reset-openmrs-db-accounts  Set openmrs-db's MySQL accounts and OpenMRS's connection settings to the"
-    echo "                          passwords in env (restarts; utils/reset-mysql-accounts is the generic part)"
-    echo "  add-service <svc>       Attach a canonical service fragment (e.g. 'add-service reporting-db')"
-    echo "  remove-service <svc>    Detach a service fragment and remove its containers (its volumes are kept)"
-    echo "  run-service <svc> [cmd...]  Run a one-off container for an attached service via 'docker compose run' (e.g. after add-service)"
-    echo "  wait                    Block until OpenMRS finishes initializing (up to 60 minutes)"
-    echo "  fingerprint [--data-dir] [--exclude-distribution-artifacts] [--output=<file>]"
-    echo "                          Summarize the stopped instance's database (and openmrs-data) to diff against"
-    echo "                          its source -- see utils/fingerprint.sh"
-    echo "  build                   Build the distribution and Docker image from source"
-    echo "  pull                    Pull the images this instance would use, without starting anything"
-    echo "  logs [service]          Tail the container logs; defaults to every service"
-    echo "  destroy                 Stop the stack, delete all volumes, and remove the instance directory"
-    echo ""
-    echo "initialize: by default, loads both data volumes from SEED_IMAGE_NAME. Each volume's"
-    echo "source can instead be set independently via env vars (set on the initialize invocation"
-    echo "itself, not persisted to the instance's env file), so a dump/backup can replace the seed"
-    echo "image for one or both volumes -- see utils/ (below) for scripts to prepare these paths"
-    echo "from an archive or a percona/xtrabackup backup:"
-    echo "  RESTORE_MYSQL_DUMP_PATH    mysql/db-data from a .sql/.sql.gz dump, or a .7z/.zip archive of one"
-    echo "  RESTORE_MYSQL_DATA_PATH    mysql/db-data from a ready MySQL data directory (physical restore)"
-    echo "  RESTORE_MYSQL_PERCONA_PATH mysql/db-data from a Percona/xtrabackup backup: a .7z/.zip/.tar.gz/.tgz/.tar"
-    echo "                             archive or a directory, prepared first if it isn't already"
-    echo "  RESTORE_OPENMRS_DATA_PATH  openmrs-data from a directory, or a .tar.gz/.tgz/.tar/.7z/.zip archive"
-    echo "                             of one"
-    echo "  ARCHIVE_PASSWORD           password for a protected .7z/.zip passed to either of the above"
-    echo "  INITIALIZE_DB_TIMEOUT      seconds to wait for the restored database to become healthy (default 3600)"
-    echo ""
-    echo "Options:"
-    echo "  --build        Build the distribution from source before start/update"
-    echo "  --dev          Expose debug ports and mount the locally-built distro over"
-    echo "                 whatever's in the image (combine with --build to build it first)"
-    echo "  --force        Skip the confirmation prompt (destroy only)"
-    echo ""
-    echo "Environment variable overrides:"
-    echo "  OPENMRS_DOCKER_HOME   Where instance directories live (default: \$HOME/openmrs)"
-    echo "  OPENMRS_HTTP_PORT     Port OpenMRS is exposed on (default: 8080)"
-    echo ""
-    echo "create requires OPENMRS_IMAGE_NAME (env var) when the 'openmrs' service is included (the"
-    echo "default). OPENMRS_PIH_CONFIG is optional -- leave it unset for a distro that doesn't use a"
-    echo "PIH config profile; a distro that does need one will fail at OpenMRS startup if it's missing,"
-    echo "not at instance-creation time. DISTRO_SOURCE_DIR is required only for build/--dev/--build,"
-    echo "and can be set later by editing the instance's env file."
-    echo "Every other create-time setting (ports, memory limits, image tags, etc.) can be"
-    echo "overridden the same way create's own defaults are: set it in your shell (or source a"
-    echo "file that does) before running create, and that value is used instead of the built-in"
-    echo "default. SERVICES=<comma-separated> (default: openmrs-db,openmrs) selects which"
-    echo "canonical service fragments to copy into the new instance directory."
-    exit 1
-}
-
-# An instance name is also its Compose project name, which Compose lowercases (and strips of
-# anything else) -- while this script names volumes and labels from it verbatim.
-valid_name() { [[ "$1" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; }
-NAME_RULE="must be lowercase letters, digits, '-' and '_', starting with a letter or digit"
-
-# Prints NAME='value' for an instance's env file. bash sources that file and Docker Compose reads it,
-# and single-quoted values are literal to both, so `$`, `"`, backticks and backslashes are safe. A
-# single quote or newline can't be written in a form both read the same way, so it's refused: the
-# error exits the calling subshell (callers run this inside $(...), never in the main shell).
-declare -A ENV_LINES_WRITTEN
-env_line() { # <name> <value>
-    if [[ "$2" == *[$'\'\n\r']* ]]; then
-        echo "error: $1 contains a single quote or newline, which an instance's env file can't hold" >&2
-        exit 1
-    fi
-    ENV_LINES_WRITTEN[$1]=1
-    printf "%s='%s'\n" "$1" "$2"
-}
-
-# Emits the resolved lines of a service's docker/services/<svc>.env.defaults template, with each
-# ${VAR:-default} expanded against the calling shell's current environment -- so a value already
-# exported by the caller (or by an instance's env file already sourced into this shell, for
-# add-service) wins. Other comment lines pass through.
-render_service_env_defaults() {
-    local template="$SERVICES_DIR/$1.env.defaults" line resolved
-    [ -f "$template" ] || return 0
-    while IFS= read -r line || [ -n "$line" ]; do
-        # A runtime rule for write_container_env_files, not a line for the instance's env.
-        [[ "$line" == "# container-env:"* ]] && continue
-        if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
-            eval "resolved=${BASH_REMATCH[2]}"
-            env_line "${BASH_REMATCH[1]}" "$resolved"
-        else
-            printf '%s\n' "$line"
-        fi
-    done < "$template"
-}
-
-# A service whose container takes variables from the instance's env declares their name prefixes
-# in its docker/services/<svc>.env.defaults ("# container-env: PREFIX_ ..."); its fragment's env_file
-# is <svc>.env. For each such service attached to the instance, <svc>.env is generated here from env
-# on every command with only the matching lines, so the container doesn't get every secret in env.
-# Without the directive nothing from env is passed (the container gets only its fragment's
-# environment: entries), and a <svc>.env left from an earlier directive is removed.
-write_container_env_files() { # <instance dir>
-    local f svc prefix prefixes=()
-    for f in "$1"/*.yaml; do
-        [ -e "$f" ] || continue
-        svc=$(basename "$f" .yaml)
-        read -ra prefixes -d '' < <(sed -n 's/^# container-env://p' "$SERVICES_DIR/$svc.env.defaults" 2>/dev/null) || true
-        if [ ${#prefixes[@]} -eq 0 ]; then
-            rm -f "$1/$svc.env"
-            continue
-        fi
-        for prefix in "${prefixes[@]}"; do
-            [[ "$prefix" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] \
-                || { echo "error: bad container-env prefix '$prefix' in $SERVICES_DIR/$svc.env.defaults" >&2; exit 1; }
-        done
-        (
-            umask 077
-            echo "# Generated by openmrs-docker from env, on every command. Edit env, not this file."
-            grep -E "^($(IFS='|'; echo "${prefixes[*]}"))[A-Za-z0-9_]*=" "$1/env" || true
-        ) > "$1/$svc.env"
-        chmod 600 "$1/$svc.env"
+BUILD=false
+DEV=false
+FORCE=false
+# Takes the options in <allowed> from the arguments, and refuses any other.
+parse_options() { # <allowed> [arg...]
+    local allowed=" $1 " arg
+    shift
+    for arg in "$@"; do
+        [[ "$allowed" == *" $arg "* ]] || die "unknown option '$arg' for $COMMAND"
+        case "$arg" in
+            --build) BUILD=true ;;
+            --dev) DEV=true ;;
+            --force) FORCE=true ;;
+        esac
     done
 }
 
 [ $# -ge 1 ] || usage
+case "$1" in
+    create) [ $# -eq 2 ] || usage; cmd_create "$2"; exit ;;
+    list) cmd_list; exit ;;
+esac
 
-if [ "$1" = "create" ]; then
-    NAME="${2:-}"
-    [ -z "$NAME" ] && usage
-    valid_name "$NAME" || { echo "error: instance name '$NAME' $NAME_RULE (it's the Compose project name)" >&2; exit 1; }
-    INSTANCE_DIR="$OPENMRS_DOCKER_HOME/$NAME"
-    if [ -e "$INSTANCE_DIR" ]; then
-        echo "Instance directory already exists: $INSTANCE_DIR"
-        exit 1
-    fi
-    # Validate all requested service names have matching yaml files BEFORE creating anything.
-    # This prevents a half-created directory if any service name is invalid.
-    IFS=',' read -ra SERVICE_LIST <<< "${SERVICES:-openmrs-db,openmrs}"
-    for svc in "${SERVICE_LIST[@]}"; do
-        [ -f "$SERVICES_DIR/$svc.yaml" ] || { echo "No such service '$svc' (looked for $SERVICES_DIR/$svc.yaml)"; exit 1; }
-    done
-    NEEDS_OPENMRS=false
-    for svc in "${SERVICE_LIST[@]}"; do
-        [ "$svc" = "openmrs" ] && NEEDS_OPENMRS=true
-    done
-    if $NEEDS_OPENMRS && [ -z "${OPENMRS_IMAGE_NAME:-}" ]; then
-        echo "OPENMRS_IMAGE_NAME must be set to create an instance that includes the 'openmrs' service"
-        echo ""
-        usage
-    fi
-    # Every setting below is taken from the calling shell's environment if already
-    # set (e.g. `source myenv && openmrs-docker create ...`), falling back to these
-    # defaults otherwise. Rendered before anything is created, so a value env_line refuses leaves
-    # no half-created instance behind.
-    ENV_CONTENT=$(
-        echo "# instance"
-        env_line TZ "${TZ:-UTC}"
-        env_line SERVICE_NAME "$NAME"
-        env_line DISTRO_SOURCE_DIR "${DISTRO_SOURCE_DIR:-}"
-        echo "# seed"
-        env_line SEED_IMAGE_NAME "${SEED_IMAGE_NAME:-}"
-        env_line SEED_IMAGE_TAG "${SEED_IMAGE_TAG:-latest}"
-        # Per-service defaults, one block per SERVICES= entry -- see
-        # docker/services/<svc>.env.defaults, colocated with that service's
-        # compose fragment rather than enumerated here.
-        for svc in "${SERVICE_LIST[@]}"; do
-            render_service_env_defaults "$svc"
-        done
-        # Captures any OMRS_EXTRA_* var verbatim -- openmrs-core's startup-init.sh already treats
-        # this prefix as a wildcard extension point; openmrs.yaml's env_file passes these through.
-        for var in "${!OMRS_EXTRA_@}"; do
-            env_line "$var" "${!var}"
-        done
-        # Likewise any OPENMRS_DB_OPT_* server option (see openmrs-db.yaml) that
-        # openmrs-db.env.defaults doesn't already write.
-        for var in "${!OPENMRS_DB_OPT_@}"; do
-            [ -n "${ENV_LINES_WRITTEN[$var]:-}" ] || env_line "$var" "${!var}"
-        done
-    ) || exit 1
-    mkdir -p "$INSTANCE_DIR"
-    printf '%s\n' "$ENV_CONTENT" > "$INSTANCE_DIR/env"
-    # Copy validated service fragments
-    for svc in "${SERVICE_LIST[@]}"; do
-        cp "$SERVICES_DIR/$svc.yaml" "$INSTANCE_DIR/$svc.yaml"
-    done
-    write_container_env_files "$INSTANCE_DIR"
-    echo "Created instance '$NAME' at $INSTANCE_DIR"
-    exit 0
-fi
-
-if [ "$1" = "list" ]; then
-    # Only directories with an env file: openmrs-sdk servers share the default ~/openmrs.
-    for d in "$OPENMRS_DOCKER_HOME"/*/; do
-        [ -f "$d/env" ] && basename "$d"
-    done
-    exit 0
-fi
-
-NAME="$1"
-COMMAND="${2:-}"
-shift 2 2>/dev/null || true
-
+NAME=$1
+COMMAND=${2:-}
+shift 2 2>/dev/null || shift
 INSTANCE_DIR="$OPENMRS_DOCKER_HOME/$NAME"
 ENV_FILE="$INSTANCE_DIR/env"
-[ -f "$ENV_FILE" ] || { echo "No instance found at $INSTANCE_DIR (run '$0 create $NAME' first)"; exit 1; }
+[ -f "$ENV_FILE" ] || die "no instance found at $INSTANCE_DIR (run '$0 create $NAME' first)"
+[ -n "$COMMAND" ] || usage
+
+# Each command's arguments; any other is refused.
+case "$COMMAND" in
+    start|update) parse_options "--build --dev" "$@"; set -- ;;
+    destroy) parse_options --force "$@"; set -- ;;
+    add-service|remove-service) [ $# -eq 1 ] || die "usage: $0 $NAME $COMMAND <service>" ;;
+    run-service) [ $# -ge 1 ] || die "usage: $0 $NAME run-service <service> [command...]" ;;
+    logs) [ $# -le 1 ] && [[ "${1:-}" != -* ]] || die "usage: $0 $NAME logs [service]" ;;
+    fingerprint) ;;
+    initialize|stop|restart|status|sync|reset-openmrs-db-accounts|wait|build|pull) parse_options "" "$@"; set -- ;;
+    *) die "unknown command '$COMMAND' (run '$0' for usage)" ;;
+esac
 
 set -a
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 set +a
 write_container_env_files "$INSTANCE_DIR"
-
-[ -z "$COMMAND" ] && usage
-
-# add-service/remove-service take a required service name as their one positional argument;
-# logs takes the same positional argument, but optionally. Consumed here before the generic
-# flag-parsing loop below, which would otherwise reject it as an unknown option.
-SERVICE_ARG=""
-case "$COMMAND" in
-    add-service|remove-service|run-service)
-        SERVICE_ARG="${1:-}"
-        [ -z "$SERVICE_ARG" ] && { echo "$COMMAND requires a service name"; usage; }
-        shift
-        ;;
-    logs)
-        if [ -n "${1:-}" ] && [[ "$1" != --* ]]; then
-            SERVICE_ARG="$1"
-            shift
-        fi
-        ;;
-esac
-
-BUILD=false
-DEV=false
-FORCE=false
-# run-service forwards its remaining args verbatim as the one-off container's command
-# (e.g. ./execute-smoke-tests.sh liberia), and fingerprint takes its own -- skip flag validation for them.
-if [ "$COMMAND" != "run-service" ] && [ "$COMMAND" != fingerprint ]; then
-    for arg in "$@"; do
-        case "$arg" in
-            --build) BUILD=true ;;
-            --dev) DEV=true ;;
-            --force) FORCE=true ;;
-            *) echo "Unknown option: '$arg'"; echo ""; usage ;;
-        esac
-    done
-fi
-
 export SERVICE_NAME="${SERVICE_NAME:-$NAME}"
 # destroy still has to work on an instance created before names were checked.
 if ! valid_name "$SERVICE_NAME" && [ "$COMMAND" != destroy ]; then
-    echo "error: SERVICE_NAME '$SERVICE_NAME' in $ENV_FILE $NAME_RULE (it's the Compose project name)" >&2
-    exit 1
+    die "SERVICE_NAME '$SERVICE_NAME' in $ENV_FILE $NAME_RULE (it's the Compose project name)"
 fi
 
-# Commands that change the instance hold its lock until they exit, and refuse to run while another
-# command holds it: puppet runs `pull && start` on every apply, which mustn't happen part way
-# through e.g. an initialize. flock(1) releases the lock however its holder exits. Where flock isn't
-# installed (it's part of util-linux, so not on macOS), commands run unlocked.
-LOCK_FILE="$INSTANCE_DIR/.lock"
-lock_instance() { # hold | check (refuse if held, without holding it)
-    command -v flock >/dev/null || return 0
-    # Opened read-only (all flock needs), so a lock file another user created still works.
-    [ -e "$LOCK_FILE" ] || : >> "$LOCK_FILE"
-    exec 9<"$LOCK_FILE"
-    if ! flock -n 9; then
-        echo "error: $NAME is busy: $(cat "$LOCK_FILE" 2>/dev/null) -- run this again once that finishes." >&2
-        exit 1
-    fi
-    if [ "$1" = check ]; then
-        exec 9>&-
-    else
-        printf '%s (pid %s, started %s)\n' "$COMMAND" "$$" "$(date '+%Y-%m-%d %H:%M:%S')" 2>/dev/null > "$LOCK_FILE" || true
-    fi
-}
-# The lock's holder, if a command holds it.
-lock_holder() {
-    command -v flock >/dev/null && [ -f "$LOCK_FILE" ] || return 0
-    ( flock -n 8 ) 8<"$LOCK_FILE" || cat "$LOCK_FILE"
-}
 case "$COMMAND" in
     status|logs|wait) ;;
     run-service) lock_instance check ;;
     *) lock_instance hold ;;
 esac
-
-# Rebuilds COMPOSE_FILES from the instance directory's *current* set of copied
-# service fragments plus the dev mode overlay this invocation's flags select. Never includes any
-# of the restore-*-volume-from-*.yaml overlays — those are only ever used directly by
-# `initialize`; every other command must keep working without them. Called again after
-# remove-service deletes a fragment, so the removal is reflected immediately.
-compose_files() {
-    COMPOSE_FILES=(--env-file "$ENV_FILE")
-    for f in "$INSTANCE_DIR"/*.yaml; do
-        [ -e "$f" ] || continue
-        COMPOSE_FILES+=(-f "$f")
-    done
-    if $DEV; then
-        COMPOSE_FILES+=(-f "$MODES_DIR/dev.yaml")
-    fi
-}
-compose_files
-
-require_distro_source() {
-    if [ -z "${DISTRO_SOURCE_DIR:-}" ]; then
-        echo "DISTRO_SOURCE_DIR must be set in $ENV_FILE for this command"
-        exit 1
-    fi
-}
-
-build_image() {
-    require_distro_source
-    cd "$DISTRO_SOURCE_DIR" && mvn clean package -U
-    # Always build explicitly rather than relying on `docker compose up -d` to
-    # build automatically: when a service has both `image:` and `build:`,
-    # Compose prefers pulling the named tag from a registry over building
-    # locally, and only falls back to building if the pull fails. Relying on
-    # that fallback would silently use whatever's published under OPENMRS_IMAGE_NAME
-    # instead of this local build, whenever that tag exists in a reachable
-    # registry.
-    docker compose "${COMPOSE_FILES[@]}" build
-}
-
-start_stack() {
-    docker compose "${COMPOSE_FILES[@]}" up -d
-}
-
-# Advisory only — never blocks, never prompts, never modifies anything. See the
-# design doc's "Discoverability" section for why a blocking prompt was rejected.
-warn_on_drift() {
-    local drifted=()
-    local f canonical
-    for f in "$INSTANCE_DIR"/*.yaml; do
-        [ -e "$f" ] || continue
-        canonical="$SERVICES_DIR/$(basename "$f")"
-        [ -e "$canonical" ] || continue  # canonical service renamed/removed - not this check's concern
-        cmp -s "$f" "$canonical" || drifted+=("$(basename "$f")")
-    done
-    if [ ${#drifted[@]} -gt 0 ]; then
-        echo "Note: newer service definitions available for: ${drifted[*]}" >&2
-        echo "Run '$0 $NAME sync' to update before the next start/update." >&2
-    fi
-}
-
-# The variables the instance's fragments require (${VAR?}) that its env doesn't set. Their defaults
-# are only in docker/services/<svc>.env.defaults, so an env written before one was added lacks it.
-missing_required_env() {
-    local var
-    for var in $(grep -ho '\${[A-Za-z_][A-Za-z0-9_]*?' "$INSTANCE_DIR"/*.yaml 2>/dev/null | sed 's/^\${//; s/?$//' | sort -u); do
-        grep -q "^$var=" "$ENV_FILE" || echo "$var"
-    done
-}
-
-# Appends the already-rendered lines of a service's env defaults (render_service_env_defaults) to
-# the instance's env, skipping any name already present (e.g. shared with a service added earlier)
-# so this never produces a duplicate/conflicting line. Prints the names it added. add-service
-# (--all) appends every line, comments included. sync (--required) appends only variables the
-# fragments require, so a default deliberately deleted from env (e.g. an OPENMRS_DB_OPT_* server
-# option) isn't put back.
-append_missing_env_defaults() { # <rendered defaults> --all|--required
-    local line required=""
-    [ "$2" = --required ] && required=$(missing_required_env)
-    while IFS= read -r line; do
-        [ -n "$line" ] || continue
-        if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]]; then
-            grep -q "^${BASH_REMATCH[1]}=" "$ENV_FILE" && continue
-            [ "$2" = --required ] && ! grep -qx "${BASH_REMATCH[1]}" <<< "$required" && continue
-            echo "${BASH_REMATCH[1]}"
-        elif [ "$2" = --required ]; then
-            continue
-        fi
-        echo "$line" >> "$ENV_FILE"
-    done <<< "$1"
-}
-
-# Refreshes each copied fragment from its canonical file, and adds to env, with its default, any
-# variable the refreshed fragments require that env doesn't have yet.
-sync_services() {
-    local f svc canonical defaults rendered=() i=0 added
-    # Rendered first: a value env_line refuses stops here, before anything is changed.
-    for f in "$INSTANCE_DIR"/*.yaml; do
-        [ -e "$f" ] || continue
-        defaults=$(render_service_env_defaults "$(basename "$f" .yaml)") || exit 1
-        rendered+=("$defaults")
-    done
-    for f in "$INSTANCE_DIR"/*.yaml; do
-        [ -e "$f" ] || continue
-        svc=$(basename "$f" .yaml)
-        canonical="$SERVICES_DIR/$svc.yaml"
-        if [ -e "$canonical" ]; then
-            cp "$canonical" "$f"
-            echo "Synced $svc.yaml"
-            added=$(append_missing_env_defaults "${rendered[$i]}" --required)
-            [ -z "$added" ] || echo "Added to env: $(paste -sd' ' <<< "$added")"
-        else
-            echo "Skipped $svc.yaml (no canonical service found at $canonical)"
-        fi
-        i=$((i + 1))
-    done
-    write_container_env_files "$INSTANCE_DIR"
-}
 
 # Compose names a missing required variable itself; this adds how to fix it. sync and add-service
 # add them, and remove-service and destroy have to work regardless.
@@ -424,450 +148,9 @@ case "$COMMAND" in
     sync|add-service|remove-service|destroy) ;;
     *)
         MISSING=$(missing_required_env)
-        if [ -n "$MISSING" ]; then
-            echo "error: $ENV_FILE is missing $(paste -sd' ' <<< "$MISSING"), which this instance's services require." >&2
-            echo "Run '$0 $NAME sync' to add them with their defaults." >&2
-            exit 1
-        fi
+        [ -z "$MISSING" ] || die "$ENV_FILE is missing $(paste -sd' ' <<< "$MISSING"), which this instance's services require. Run '$0 $NAME sync' to add them with their defaults."
         ;;
 esac
 
-case "$COMMAND" in
-    start)
-        if $DEV || $BUILD; then require_distro_source; fi
-        warn_on_drift
-        if $BUILD; then build_image; fi
-        start_stack
-        ;;
-    update)
-        if $DEV || $BUILD; then require_distro_source; fi
-        warn_on_drift
-        if $BUILD; then build_image; fi
-        docker compose "${COMPOSE_FILES[@]}" pull
-        start_stack
-        ;;
-    initialize)
-        # initialize only runs against a brand-new instance -- check every volume Compose declares.
-        # Assigned first (not `for vol in $(...)` directly): set -e does not fire on a failed
-        # command substitution inside a for loop's word list, so a failure there would otherwise
-        # silently skip this, this command's only protection against clobbering existing data.
-        INIT_VOLUMES=$(docker compose "${COMPOSE_FILES[@]}" config --volumes)
-        for vol in $INIT_VOLUMES; do
-            if docker volume inspect "${SERVICE_NAME}_${vol}" >/dev/null 2>&1; then
-                echo "error: ${SERVICE_NAME}_${vol} already exists -- initialize only runs against a brand-new instance with no existing data. Run '$0 $NAME destroy' first if you really want to start over." >&2
-                exit 1
-            fi
-        done
-
-        # Each volume's source is chosen independently, so e.g. db-data can come from a
-        # RESTORE_MYSQL_DUMP_PATH dump while openmrs-data still comes from SEED_IMAGE_NAME.
-        # Percona/xtrabackup handling happens upstream of this command entirely (see utils/).
-        # RESTORE_MYSQL_DUMP_PATH and RESTORE_OPENMRS_DATA_PATH also take an archive directly,
-        # extracted by an init container into a volume (never onto the host) -- see
-        # restore-mysql-volume-from-dump-archive.yaml and restore-openmrs-data-volume-from-archive.yaml.
-        # For the restore overlays: the scripts they mount, and the images they run (images.sh).
-        export DISTRO_TOOLS_UTILS_DIR="$TOOL_DIR/utils" P7ZIP_IMAGE PERCONA_IMAGE
-        DB_SOURCES=0
-        DB_PHYSICAL_RESTORE=false
-        if [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ]; then
-            [ -f "$RESTORE_MYSQL_DUMP_PATH" ] || { echo "error: no such file: $RESTORE_MYSQL_DUMP_PATH" >&2; exit 1; }
-            # Convert relative to absolute path if needed
-            case "$RESTORE_MYSQL_DUMP_PATH" in
-                /*) ;;
-                *) RESTORE_MYSQL_DUMP_PATH="$(cd "$(dirname "$RESTORE_MYSQL_DUMP_PATH")" && pwd)/$(basename "$RESTORE_MYSQL_DUMP_PATH")" ;;
-            esac
-            case "$RESTORE_MYSQL_DUMP_PATH" in
-                *.7z|*.zip)
-                    export RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME="archive.${RESTORE_MYSQL_DUMP_PATH##*.}"
-                    COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-dump-archive.yaml")
-                    ;;
-                *.gz)
-                    export RESTORE_MYSQL_DUMP_FILENAME="dump.sql.gz"
-                    COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-dump.yaml")
-                    ;;
-                *)
-                    export RESTORE_MYSQL_DUMP_FILENAME="dump.sql"
-                    COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-dump.yaml")
-                    ;;
-            esac
-            export RESTORE_MYSQL_DUMP_PATH
-            DB_SOURCES=$((DB_SOURCES + 1))
-        fi
-        if [ -n "${RESTORE_MYSQL_DATA_PATH:-}" ]; then
-            [ -d "$RESTORE_MYSQL_DATA_PATH" ] || { echo "error: no such directory: $RESTORE_MYSQL_DATA_PATH" >&2; exit 1; }
-            # Absolute without cd-ing into it: a backup directory is often root-owned and unreadable.
-            case "$RESTORE_MYSQL_DATA_PATH" in /*) ;; *) RESTORE_MYSQL_DATA_PATH="$(pwd)/$RESTORE_MYSQL_DATA_PATH" ;; esac
-            export RESTORE_MYSQL_DATA_PATH
-            COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-data-dir.yaml")
-            DB_SOURCES=$((DB_SOURCES + 1))
-            DB_PHYSICAL_RESTORE=true
-        fi
-        if [ -n "${RESTORE_MYSQL_PERCONA_PATH:-}" ]; then
-            if [ -d "$RESTORE_MYSQL_PERCONA_PATH" ]; then
-                # Absolute without cd-ing into it: a backup directory is often root-owned and unreadable.
-                case "$RESTORE_MYSQL_PERCONA_PATH" in /*) ;; *) RESTORE_MYSQL_PERCONA_PATH="$(pwd)/$RESTORE_MYSQL_PERCONA_PATH" ;; esac
-                export RESTORE_MYSQL_PERCONA_NAME=backup
-            elif [ -f "$RESTORE_MYSQL_PERCONA_PATH" ]; then
-                case "$RESTORE_MYSQL_PERCONA_PATH" in
-                    *.7z) export RESTORE_MYSQL_PERCONA_NAME=archive.7z ;;
-                    *.zip) export RESTORE_MYSQL_PERCONA_NAME=archive.zip ;;
-                    *.tar.gz|*.tgz) export RESTORE_MYSQL_PERCONA_NAME=archive.tar.gz ;;
-                    *.tar) export RESTORE_MYSQL_PERCONA_NAME=archive.tar ;;
-                    *) echo "error: RESTORE_MYSQL_PERCONA_PATH must be a directory or a .7z/.zip/.tar.gz/.tgz/.tar archive: $RESTORE_MYSQL_PERCONA_PATH" >&2; exit 1 ;;
-                esac
-                RESTORE_MYSQL_PERCONA_PATH="$(cd "$(dirname "$RESTORE_MYSQL_PERCONA_PATH")" && pwd)/$(basename "$RESTORE_MYSQL_PERCONA_PATH")"
-            else
-                echo "error: no such file or directory: $RESTORE_MYSQL_PERCONA_PATH" >&2
-                exit 1
-            fi
-            export RESTORE_MYSQL_PERCONA_PATH
-            COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-percona.yaml")
-            DB_SOURCES=$((DB_SOURCES + 1))
-            DB_PHYSICAL_RESTORE=true
-        fi
-        if $DB_PHYSICAL_RESTORE; then
-            COMPOSE_FILES+=(-f "$MODES_DIR/reset-mysql-accounts.yaml")
-        fi
-        if [ "$DB_SOURCES" -eq 0 ] && [ -n "${SEED_IMAGE_NAME:-}" ]; then
-            COMPOSE_FILES+=(-f "$MODES_DIR/restore-mysql-volume-from-seed.yaml")
-            DB_SOURCES=$((DB_SOURCES + 1))
-        fi
-        [ "$DB_SOURCES" -eq 1 ] || { echo "error: set exactly one of RESTORE_MYSQL_DUMP_PATH, RESTORE_MYSQL_DATA_PATH, RESTORE_MYSQL_PERCONA_PATH, or SEED_IMAGE_NAME to initialize the mysql/db-data volume" >&2; exit 1; }
-
-        DATA_SOURCES=0
-        if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; then
-            if [ -d "$RESTORE_OPENMRS_DATA_PATH" ]; then
-                # Absolute without cd-ing into it: a data directory is often owned by another user.
-                case "$RESTORE_OPENMRS_DATA_PATH" in /*) ;; *) RESTORE_OPENMRS_DATA_PATH="$(pwd)/$RESTORE_OPENMRS_DATA_PATH" ;; esac
-                COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-backup.yaml")
-            elif [ -f "$RESTORE_OPENMRS_DATA_PATH" ]; then
-                case "$RESTORE_OPENMRS_DATA_PATH" in
-                    *.tar.gz|*.tgz) export RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME="archive.tar.gz" ;;
-                    *.tar) export RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME="archive.tar" ;;
-                    *.7z)  export RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME="archive.7z" ;;
-                    *.zip) export RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME="archive.zip" ;;
-                    *) echo "error: RESTORE_OPENMRS_DATA_PATH must be a directory or a .tar.gz/.tgz/.tar/.7z/.zip archive: $RESTORE_OPENMRS_DATA_PATH" >&2; exit 1 ;;
-                esac
-                RESTORE_OPENMRS_DATA_PATH="$(cd "$(dirname "$RESTORE_OPENMRS_DATA_PATH")" && pwd)/$(basename "$RESTORE_OPENMRS_DATA_PATH")"
-                COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-archive.yaml")
-            else
-                echo "error: no such file or directory: $RESTORE_OPENMRS_DATA_PATH" >&2
-                exit 1
-            fi
-            export RESTORE_OPENMRS_DATA_PATH
-            DATA_SOURCES=$((DATA_SOURCES + 1))
-        fi
-        if [ "$DATA_SOURCES" -eq 0 ] && [ -n "${SEED_IMAGE_NAME:-}" ]; then
-            COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-seed.yaml")
-            DATA_SOURCES=$((DATA_SOURCES + 1))
-        fi
-        # Refuses before any volume exists if Docker's volume filesystem clearly hasn't room
-        # (utils/lib/disk-space.sh). A seed image's size isn't known up front, so isn't counted.
-        RESTORE_KB=0
-        if [ -n "${RESTORE_MYSQL_DATA_PATH:-}" ]; then
-            RESTORE_KB=$(disk_space_size_of "$RESTORE_MYSQL_DATA_PATH")
-        elif [ -n "${RESTORE_MYSQL_PERCONA_PATH:-}" ]; then
-            # into percona-staging, then copied into db-data
-            if [ -d "$RESTORE_MYSQL_PERCONA_PATH" ]; then
-                RESTORE_KB=$(disk_space_size_of "$RESTORE_MYSQL_PERCONA_PATH")
-            else
-                RESTORE_KB=$(disk_space_contents_size "$RESTORE_MYSQL_PERCONA_PATH")
-            fi
-            RESTORE_KB=$((RESTORE_KB * 2))
-        elif [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ]; then
-            RESTORE_KB=$(disk_space_contents_size "$RESTORE_MYSQL_DUMP_PATH")
-            # extracted into a temporary volume first, then imported
-            case "$RESTORE_MYSQL_DUMP_PATH" in *.7z|*.zip) RESTORE_KB=$((RESTORE_KB * 2)) ;; esac
-        fi
-        if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; then
-            if [ -d "$RESTORE_OPENMRS_DATA_PATH" ]; then
-                RESTORE_KB=$((RESTORE_KB + $(disk_space_size_of "$RESTORE_OPENMRS_DATA_PATH")))
-            else
-                RESTORE_KB=$((RESTORE_KB + $(disk_space_contents_size "$RESTORE_OPENMRS_DATA_PATH")))
-            fi
-        fi
-        if [ "$RESTORE_KB" -gt 0 ]; then
-            RESTORE_WHAT="restoring into $NAME's volumes"
-            [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ] && RESTORE_WHAT+=" (a dump import usually needs more than the dump itself)"
-            disk_space_require "$RESTORE_WHAT" "$RESTORE_KB" "$(disk_space_free_on_docker_volumes)" "Docker's volumes"
-        fi
-
-        # Files restored from RESTORE_OPENMRS_DATA_PATH keep the owners they had on the source host
-        # (tar runs as root in the restore container), which the openmrs image's non-root runtime
-        # user can't write to. They're chowned to that user once restored, below. Resolved here,
-        # before any volume exists, so an image that can't be run fails before anything is created.
-        if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ] && [ -z "${OPENMRS_DATA_OWNER:-}" ]; then
-            OPENMRS_IMAGE="${OPENMRS_IMAGE_NAME:?OPENMRS_IMAGE_NAME must be set}:${OPENMRS_IMAGE_TAG:-latest}"
-            # shellcheck disable=SC2016
-            OPENMRS_DATA_OWNER=$(docker run --rm --entrypoint sh "$OPENMRS_IMAGE" -c 'echo "$(id -u):$(id -g)"') || {
-                echo "error: couldn't determine the runtime user of $OPENMRS_IMAGE -- set OPENMRS_DATA_OWNER=<uid>:<gid> to choose the owner of the restored openmrs-data explicitly" >&2
-                exit 1
-            }
-        fi
-        # Unlike db-data, openmrs-data is optional to restore/seed here: leaving both
-        # RESTORE_OPENMRS_DATA_PATH and SEED_IMAGE_NAME unset is a valid choice -- e.g. restoring
-        # a real db-data backup with no matching openmrs-data backup -- and just leaves that
-        # volume for OpenMRS's own first-boot module-initializer run to build up from scratch,
-        # same as a totally fresh install.
-
-        # Only openmrs-db (pulling in whichever restore/seed containers the above selected via
-        # depends_on) — openmrs itself never needs to run here. openmrs-db's own healthcheck is
-        # a genuine completion signal for the DB import: MySQL's entrypoint runs
-        # /docker-entrypoint-initdb.d/ against an internal socket-only instance and only starts
-        # accepting the TCP connections this healthcheck makes once that finishes — unlike
-        # OpenMRS's own curl healthcheck (see the `wait` command below), which flips to
-        # "healthy" as soon as Tomcat responds, long before OpenMRS actually finishes starting.
-        # db-init isn't declared in services/openmrs-db.yaml, only in
-        # restore-mysql-volume-from-seed.yaml, and nothing ever reads it again after this
-        # one-time import — removed by name directly since a plain `down` (no -v, to keep
-        # openmrs-data/db-data intact) won't catch it. Harmless no-op when this run didn't use it.
-        initialize_cleanup() {
-            docker compose "${COMPOSE_FILES[@]}" down
-            docker volume rm "${SERVICE_NAME}_db-init" "${SERVICE_NAME}_percona-staging" >/dev/null 2>&1 || true
-        }
-        # `|| { ...; }` (not letting these fail bare) so set -e doesn't abort mid-failure and skip
-        # the cleanup below -- a failed `up -d` (bad restore input, port conflict, pull failure)
-        # would otherwise leave the compose network, containers, and volumes behind.
-        if ! docker compose "${COMPOSE_FILES[@]}" up -d openmrs-db; then
-            # A failed restore/seed container's own output (e.g. 7z's "Wrong password") is the only
-            # clue to why, and `down` below deletes it along with the container.
-            docker compose "${COMPOSE_FILES[@]}" logs --tail=20 >&2 || true
-            initialize_cleanup
-            echo "error: initialize failed -- run '$0 $NAME destroy' before retrying." >&2
-            exit 1
-        fi
-        # fail-on-unhealthy left at its default (false): MySQL doesn't accept TCP connections
-        # until its dump import (or a large restored datadir's crash recovery) finishes, so it
-        # legitimately reports unhealthy for a while before succeeding.
-        # What the Percona restore and reset-mysql-accounts did, including the source's other
-        # accounts it kept.
-        if [ -n "${RESTORE_MYSQL_PERCONA_PATH:-}" ]; then
-            docker logs "${SERVICE_NAME}-restore-mysql-volume" 2>&1 || true
-        fi
-        if $DB_PHYSICAL_RESTORE; then
-            docker logs "${SERVICE_NAME}-reset-mysql-accounts" 2>&1 || true
-        fi
-        if ! "$TOOL_DIR/utils/wait-for-healthy.sh" --container="${SERVICE_NAME}-openmrs-db" \
-                --timeout="${INITIALIZE_DB_TIMEOUT:-3600}"; then
-            initialize_cleanup
-            echo "error: initialize failed -- run '$0 $NAME destroy' before retrying." >&2
-            exit 1
-        fi
-        initialize_cleanup
-        # The volumes are filled from here on; a failure still leaves the instance half-initialized.
-        trap 'echo "error: initialize failed -- run '"'$0 $NAME destroy'"' before retrying." >&2' ERR
-
-        # A restored openmrs-runtime.properties holds the source server's connection settings.
-        # openmrs-core 2.6+'s startup-init.sh only merges OMRS_EXTRA_* properties into an existing
-        # runtime properties file, so those stale connection.* values would win over this
-        # instance's env. Set it aside (not deleted, so any custom properties it held can still be
-        # carried over by hand, e.g. as OMRS_EXTRA_* env vars) and let OpenMRS write a fresh one.
-        if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; then
-            docker run --rm -v "${SERVICE_NAME}_openmrs-data:/data" alpine:3.21 sh -c \
-                'if [ -f /data/openmrs-runtime.properties ]; then mv /data/openmrs-runtime.properties /data/openmrs-runtime.properties.restored && echo "Moved restored openmrs-runtime.properties aside to openmrs-runtime.properties.restored in openmrs-data -- OpenMRS will write a fresh one from this instance'"'"'s env on first start."; fi'
-            docker run --rm -e OWNER="$OPENMRS_DATA_OWNER" -v "${SERVICE_NAME}_openmrs-data:/data" alpine:3.21 \
-                sh -c 'chown -R "$OWNER" /data'
-            echo "Changed the owner of the restored openmrs-data to $OPENMRS_DATA_OWNER."
-        fi
-
-        # db-data already has a real schema but openmrs-data now has no runtime properties (none
-        # restored, or set aside above) -- without this, OpenMRS assumes a fresh install and tries
-        # to CREATE TABLE everything from scratch against a database that already has it (see
-        # openmrs.yaml). Respects an explicit OPENMRS_CREATE_TABLES already in the env file.
-        if { [ "$DATA_SOURCES" -eq 0 ] || [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; } && ! grep -q '^OPENMRS_CREATE_TABLES=' "$ENV_FILE"; then
-            printf '%s\n' "$(env_line OPENMRS_CREATE_TABLES false)" >> "$ENV_FILE"
-        fi
-        trap - ERR
-        echo "Initialized $NAME."
-        ;;
-    reset-openmrs-db-accounts)
-        # Sets the MySQL accounts and OpenMRS's own connection settings to the passwords now in env
-        # (e.g. after rotating them). MySQL only takes MYSQL_ROOT_PASSWORD / MYSQL_PASSWORD when it
-        # first sets up an empty data directory, and openmrs-core 2.6+ only applies
-        # OMRS_CONFIG_CONNECTION_* on its first install, so changing them in env alone changes
-        # neither. Both volumes are changed with the instance stopped.
-        [ -f "$INSTANCE_DIR/openmrs-db.yaml" ] || { echo "error: $NAME has no openmrs-db service" >&2; exit 1; }
-        docker volume inspect "${SERVICE_NAME}_db-data" >/dev/null 2>&1 \
-            || { echo "error: ${SERVICE_NAME}_db-data doesn't exist -- nothing to reset" >&2; exit 1; }
-        docker compose "${COMPOSE_FILES[@]}" down --remove-orphans
-        MYSQL_ROOT_PASSWORD="$OPENMRS_DB_ROOT_PASSWORD" MYSQL_PASSWORD="$OPENMRS_DB_PASSWORD" \
-            "$TOOL_DIR/utils/reset-mysql-accounts.sh" --volume="${SERVICE_NAME}_db-data" \
-            --image="$OPENMRS_DB_IMAGE_NAME:$OPENMRS_DB_IMAGE_TAG" --user="$OPENMRS_DB_USER"
-        if docker volume inspect "${SERVICE_NAME}_openmrs-data" >/dev/null 2>&1; then
-            # connection.username / connection.password in the runtime properties file, written in
-            # the properties format (a backslash doubled); the file's owner and mode are kept (cat >).
-            # shellcheck disable=SC2016
-            OPENMRS_DB_USER="$OPENMRS_DB_USER" OPENMRS_DB_PASSWORD="$OPENMRS_DB_PASSWORD" docker run --rm \
-                -e OPENMRS_DB_USER -e OPENMRS_DB_PASSWORD -v "${SERVICE_NAME}_openmrs-data:/data" alpine:3.21 sh -c '
-                    f=/data/openmrs-runtime.properties
-                    [ -f "$f" ] || { echo "No openmrs-runtime.properties in openmrs-data yet: OpenMRS writes it from env on its first start."; exit 0; }
-                    cp -p "$f" "$f.bak"
-                    esc() { printf "%s" "$1" | sed "s/\\\\/\\\\\\\\/g"; }
-                    { grep -v "^[[:space:]]*connection\.\(username\|password\)[[:space:]]*[=:]" "$f.bak" || true
-                      printf "connection.username=%s\nconnection.password=%s\n" "$(esc "$OPENMRS_DB_USER")" "$(esc "$OPENMRS_DB_PASSWORD")"
-                    } > /tmp/new && cat /tmp/new > "$f"
-                    echo "Set connection.username and connection.password in openmrs-runtime.properties (the previous file is openmrs-runtime.properties.bak)."'
-        fi
-        start_stack
-        ;;
-    sync)
-        sync_services
-        ;;
-    add-service)
-        dest="$INSTANCE_DIR/$SERVICE_ARG.yaml"
-        [ -e "$dest" ] && { echo "error: $SERVICE_ARG already present on $NAME" >&2; exit 1; }
-        [ -e "$SERVICES_DIR/$SERVICE_ARG.yaml" ] || { echo "error: no such service '$SERVICE_ARG'" >&2; exit 1; }
-        # Rendered first: a value env_line refuses stops here, before anything is changed.
-        defaults=$(render_service_env_defaults "$SERVICE_ARG") || exit 1
-        cp "$ENV_FILE" "$INSTANCE_DIR/.env.before-add-service"
-        cp "$SERVICES_DIR/$SERVICE_ARG.yaml" "$dest"
-        # Append this service's default env vars too (see append_missing_env_defaults).
-        append_missing_env_defaults "$defaults" --all >/dev/null
-        write_container_env_files "$INSTANCE_DIR"
-        compose_files
-        # e.g. a mediator added without the openhim fragment it depends on: every later command would fail.
-        if ! docker compose "${COMPOSE_FILES[@]}" --profile '*' config -q; then
-            rm "$dest"
-            mv "$INSTANCE_DIR/.env.before-add-service" "$ENV_FILE"
-            write_container_env_files "$INSTANCE_DIR"
-            echo "error: adding $SERVICE_ARG leaves $NAME's services invalid (above) -- nothing changed." >&2
-            exit 1
-        fi
-        rm "$INSTANCE_DIR/.env.before-add-service"
-        if grep -q '^\s*profiles:' "$dest"; then
-            echo "Added $SERVICE_ARG (profiled -- 'start' won't bring it up). Run '$0 $NAME run-service $SERVICE_ARG [cmd...]' to invoke it."
-        else
-            echo "Added $SERVICE_ARG. Run '$0 $NAME start' to bring it up."
-        fi
-        ;;
-    remove-service)
-        target="$INSTANCE_DIR/$SERVICE_ARG.yaml"
-        [ -e "$target" ] || { echo "error: $SERVICE_ARG not present on $NAME" >&2; exit 1; }
-        mv "$target" "$INSTANCE_DIR/.$SERVICE_ARG.yaml.removed"
-        compose_files
-        # All profiles, so a profiled service's containers (e.g. a running smoke test) count as kept.
-        if ! KEPT_SERVICES=$(docker compose "${COMPOSE_FILES[@]}" --profile '*' config --services); then
-            mv "$INSTANCE_DIR/.$SERVICE_ARG.yaml.removed" "$target"
-            echo "error: removing $SERVICE_ARG leaves $NAME's services invalid (above) -- nothing changed." >&2
-            exit 1
-        fi
-        KEPT_VOLUMES=$(docker compose "${COMPOSE_FILES[@]}" --profile '*' config --volumes)
-        rm "$INSTANCE_DIR/.$SERVICE_ARG.yaml.removed"
-        rm -f "$INSTANCE_DIR/$SERVICE_ARG.env"
-        # Only the containers of services no fragment declares any more: `up --remove-orphans` would
-        # also start everything else.
-        docker ps -a --filter "label=com.docker.compose.project=$SERVICE_NAME" \
-                --format '{{.ID}} {{.Label "com.docker.compose.service"}}' | while read -r id svc; do
-            grep -qxF "$svc" <<< "$KEPT_SERVICES" || docker rm -f "$id" >/dev/null
-        done
-        LEFT_VOLUMES=$(docker volume ls --filter "label=com.docker.compose.project=$SERVICE_NAME" \
-                --format '{{.Name}} {{.Label "com.docker.compose.volume"}}' | while read -r vol key; do
-            grep -qxF "$key" <<< "$KEPT_VOLUMES" || echo "$vol"
-        done)
-        echo "Removed $SERVICE_ARG."
-        [ -z "$LEFT_VOLUMES" ] || echo "Its volumes are left in place (docker volume rm them if they're no longer needed): $(paste -sd' ' <<< "$LEFT_VOLUMES")"
-        ;;
-    run-service)
-        [ -e "$INSTANCE_DIR/$SERVICE_ARG.yaml" ] || { echo "error: $SERVICE_ARG not present on $NAME (run 'add-service $SERVICE_ARG' first)" >&2; exit 1; }
-        docker compose "${COMPOSE_FILES[@]}" run --rm "$SERVICE_ARG" "$@"
-        ;;
-    wait)
-        OPENMRS_CONTAINER="${SERVICE_NAME}-openmrs"
-        docker logs -f "$OPENMRS_CONTAINER" 2>&1 &
-        LOGS_PID=$!
-        # fail-on-unhealthy=true here (unlike initialize's openmrs-db wait): OpenMRS's own curl
-        # healthcheck flips to unhealthy only after genuinely failing to come up, not as a
-        # normal side effect of a still-in-progress import the way MySQL's does.
-        if "$TOOL_DIR/utils/wait-for-healthy.sh" --container="$OPENMRS_CONTAINER" --timeout=3600 --fail-on-unhealthy=true; then
-            kill $LOGS_PID 2>/dev/null || true
-            echo "OpenMRS is ready."
-            exit 0
-        else
-            kill $LOGS_PID 2>/dev/null || true
-            echo "OpenMRS did not become ready -- see log output above, or '$0 $NAME logs openmrs'."
-            exit 1
-        fi
-        ;;
-    fingerprint)
-        # The instance's own image and server options (as openmrs-db.yaml turns OPENMRS_DB_OPT_* into
-        # flags), so [server] and anything they affect read as they do on the running instance.
-        FP_ARGS=(--db-volume="${SERVICE_NAME}_db-data" --image="$OPENMRS_DB_IMAGE_NAME:$OPENMRS_DB_IMAGE_TAG" --database=openmrs)
-        for var in "${!OPENMRS_DB_OPT_@}"; do
-            opt="${var#OPENMRS_DB_OPT_}"
-            opt="${opt//_/-}"
-            if [ -n "${!var}" ]; then FP_ARGS+=(--server-opt="--$opt=${!var}"); else FP_ARGS+=(--server-opt="--$opt"); fi
-        done
-        for arg in "$@"; do
-            case "$arg" in
-                --data-dir) FP_ARGS+=(--data-dir="${SERVICE_NAME}_openmrs-data") ;;
-                --exclude-distribution-artifacts|--output=*) FP_ARGS+=("$arg") ;;
-                *) echo "Unknown option: '$arg'"; echo ""; usage ;;
-            esac
-        done
-        [ -f "$INSTANCE_DIR/openmrs-db.yaml" ] || { echo "error: $NAME has no openmrs-db service" >&2; exit 1; }
-        docker volume inspect "${SERVICE_NAME}_db-data" >/dev/null 2>&1 \
-            || { echo "error: ${SERVICE_NAME}_db-data doesn't exist -- nothing to fingerprint" >&2; exit 1; }
-        "$TOOL_DIR/utils/fingerprint.sh" "${FP_ARGS[@]}"
-        ;;
-    build)
-        build_image
-        ;;
-    pull)
-        docker compose "${COMPOSE_FILES[@]}" pull
-        ;;
-    stop)    docker compose "${COMPOSE_FILES[@]}" down --remove-orphans ;;
-    restart) docker compose "${COMPOSE_FILES[@]}" restart ;;
-    status)
-        docker compose "${COMPOSE_FILES[@]}" ps
-        HOLDER=$(lock_holder)
-        [ -z "$HOLDER" ] || echo "Busy: $HOLDER"
-        ;;
-    logs)
-        if [ -n "$SERVICE_ARG" ]; then
-            docker compose "${COMPOSE_FILES[@]}" logs -f "$SERVICE_ARG"
-        else
-            docker compose "${COMPOSE_FILES[@]}" logs -f
-        fi
-        ;;
-    destroy)
-        # Compose's own project name, for an instance created before names were checked.
-        PROJECT="${SERVICE_NAME,,}"
-        if ! $FORCE; then
-            echo "This will stop the stack, delete all volumes, and remove $INSTANCE_DIR."
-            read -r -p "Are you sure? [y/N] " confirm
-            [[ "$confirm" =~ ^[Yy]$ ]] || exit 0
-        fi
-        # Tolerate failure: an instance whose fragments can't be interpolated (e.g. a required
-        # variable left unset in the env file) must still be destroyable -- otherwise a bad
-        # fragment permanently traps the instance directory, since destroy aborts before ever
-        # reaching the volume and directory cleanup below.
-        if ! docker compose "${COMPOSE_FILES[@]}" down -v --remove-orphans; then
-            echo "warning: 'docker compose down' failed -- falling back to removing this" >&2
-            echo "instance's containers and volumes by compose project label instead." >&2
-            # Compose labels everything it creates with the project name, so this reaches
-            # the same containers/volumes `down -v` would have, without needing any of the
-            # fragments to interpolate successfully.
-            docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" \
-                | xargs -r docker rm -f >/dev/null 2>&1 || true
-            docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT" \
-                | xargs -r docker volume rm >/dev/null 2>&1 || true
-        fi
-        # restore-mysql-volume-from-seed.yaml's db-init volume isn't declared in
-        # services/openmrs-db.yaml, so an instance that ever ran `initialize` from a seed image
-        # would leave it behind here. Removed by name directly rather than relying on -v to
-        # catch it, since this destroy invocation has no way to tell whether the instance was
-        # ever initialized from a seed in the past.
-        docker volume rm "${PROJECT}_db-init" "${PROJECT}_percona-staging" >/dev/null 2>&1 || true
-        if ! rm -rf "$INSTANCE_DIR" 2>/dev/null; then
-            # A one-off service (e.g. openmrs-smoke-tests via run-service) may have written
-            # root-owned files into a bind-mounted host directory under the instance dir --
-            # reclaim ownership via a throwaway root container and retry, rather than
-            # requiring sudo or leaving the directory behind. Only attempted as a fallback,
-            # so the common case (nothing root-owned) never depends on pulling alpine.
-            docker run --rm -v "$INSTANCE_DIR:/target" alpine:3.21 chown -R "$(id -u):$(id -g)" /target
-            rm -rf "$INSTANCE_DIR"
-        fi
-        echo "Removed instance directory $INSTANCE_DIR"
-        ;;
-    *) echo "Unknown command: '$COMMAND'"; echo ""; usage ;;
-esac
+compose_files
+"cmd_${COMMAND//-/_}" "$@"

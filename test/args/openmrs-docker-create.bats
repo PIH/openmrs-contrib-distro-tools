@@ -188,7 +188,7 @@ teardown() {
     NAME="$(instance)"
     # A copy of the tool, so its service defaults can be edited.
     local tool="$BATS_TEST_TMPDIR/tool" dir
-    mkdir -p "$tool" && cp -r "$REPO_ROOT/bin" "$REPO_ROOT/docker" "$REPO_ROOT/utils" "$tool/"
+    mkdir -p "$tool" && cp -r "$REPO_ROOT/bin" "$REPO_ROOT/lib" "$REPO_ROOT/docker" "$REPO_ROOT/utils" "$tool/"
     sed -i "s/^# container-env:.*/# container-env:\tOPENMRS_DB_OPT_ \t /" "$tool/docker/services/openmrs-db.env.defaults"
     SERVICES=openmrs-db "$tool/bin/openmrs-docker" create "$NAME" >/dev/null
     dir="$OPENMRS_DOCKER_HOME/$NAME"
@@ -245,8 +245,26 @@ teardown() {
     SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
     run "$BIN/openmrs-docker" "$NAME" fingerprint --bogus
     assert_failure
-    assert_output --partial "Unknown option: '--bogus'"
+    assert_output --partial "unknown option '--bogus'"
     run "$BIN/openmrs-docker" "$NAME" fingerprint
     assert_failure
     assert_output --partial "${NAME}_db-data doesn't exist"
+}
+
+@test "a command refuses options it doesn't take, and an unknown command is named" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    run "$BIN/openmrs-docker" "$NAME" stop --force
+    assert_failure
+    assert_output --partial "unknown option '--force' for stop"
+    run "$BIN/openmrs-docker" "$NAME" destroy --dev
+    assert_failure
+    assert_output --partial "unknown option '--dev' for destroy"
+    run "$BIN/openmrs-docker" "$NAME" add-service
+    assert_failure
+    assert_output --partial "add-service <service>"
+    run "$BIN/openmrs-docker" "$NAME" frobnicate
+    assert_failure
+    assert_output --partial "unknown command 'frobnicate'"
+    assert [ -d "$OPENMRS_DOCKER_HOME/$NAME" ]
 }

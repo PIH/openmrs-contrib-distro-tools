@@ -61,7 +61,7 @@ if $ARCHIVE; then
     prepare_output_file "$OUTPUT"
     BACKUP="backup-percona-$(date +%Y%m%d%H%M%S)-$$"   # the temporary volume
     docker volume create "$BACKUP" >/dev/null
-    on_exit 'docker volume rm -f "$BACKUP"'
+    on_exit 'docker volume rm -f "$BACKUP" >/dev/null 2>&1'
 else
     prepare_output_dir "$OUTPUT"
     BACKUP=$OUTPUT

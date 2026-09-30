@@ -177,7 +177,7 @@ env_file() { echo "$OPENMRS_DOCKER_HOME/$NAME/env"; }
     create_instance "$NAME"
     run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data"
     assert_success
-    assert_output --partial 'Moved restored openmrs-runtime.properties aside'
+    assert_output --partial 'Moved openmrs-runtime.properties aside'
     run docker run --rm -v "${NAME}_openmrs-data:/v" alpine:3.21 cat /v/openmrs-runtime.properties.restored
     assert_output 'connection.url=jdbc:mysql://x/openmrs'
 }
