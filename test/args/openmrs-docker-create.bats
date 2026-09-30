@@ -130,3 +130,33 @@ teardown() {
     "$BIN/openmrs-docker" "$NAME" status >/dev/null
     [ ! -e "$dir/openhim.env" ]
 }
+
+@test "a required variable missing from env stops commands with a hint, and sync adds only required ones" {
+    NAME="$(instance)"
+    local dir
+    SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    dir="$OPENMRS_DOCKER_HOME/$NAME"
+    # a required variable, and a server option deliberately dropped (not required by the fragment)
+    sed -i '/^OPENMRS_DB_MEMORY_LIMIT=/d; /^OPENMRS_DB_OPT_net_read_timeout=/d; /^# Server options/d' "$dir/env"
+    run docker compose --env-file "$dir/env" -f "$dir/openmrs-db.yaml" config -q
+    assert_failure
+    assert_output --partial "required variable OPENMRS_DB_MEMORY_LIMIT is missing a value"
+    run "$BIN/openmrs-docker" "$NAME" status
+    assert_failure
+    assert_output --partial "is missing OPENMRS_DB_MEMORY_LIMIT"
+    assert_output --partial "$NAME sync"
+    run "$BIN/openmrs-docker" "$NAME" sync
+    assert_success
+    assert_output --partial "Added to env: OPENMRS_DB_MEMORY_LIMIT"
+    run grep -c "^OPENMRS_DB_MEMORY_LIMIT='2g'$" "$dir/env"
+    assert_output 1
+    run grep -c "^OPENMRS_DB_OPT_net_read_timeout=" "$dir/env"
+    assert_output 0
+    # nothing more to add, and no comment lines re-added
+    run "$BIN/openmrs-docker" "$NAME" sync
+    refute_output --partial "Added to env"
+    run grep -c '^# Server options' "$dir/env"
+    assert_output 0
+    run "$BIN/openmrs-docker" "$NAME" status
+    assert_success
+}

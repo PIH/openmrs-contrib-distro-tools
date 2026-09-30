@@ -19,14 +19,14 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 services:
   mongo-db:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-mongo-db
-    image: mongo:${OPENHIM_MONGO_IMAGE_TAG:-4.0}
+    image: mongo:${OPENHIM_MONGO_IMAGE_TAG?}
     volumes:
       - mongo-data:/data/db
     restart: unless-stopped
 
   openhim-core:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-core
-    image: jembi/openhim-core:${OPENHIM_CORE_IMAGE_TAG:-latest}
+    image: jembi/openhim-core:${OPENHIM_CORE_IMAGE_TAG?}
     restart: unless-stopped
     # PID 1 is otherwise Node, which never reaps the ssl_client helper that BusyBox wget spawns
     # for the HTTPS healthcheck below. Each zombie pins a seccomp filter's BPF JIT memory, and
@@ -42,11 +42,11 @@ services:
       authentication_jwt_secretOrPublicKey: secret
       authentication_jwt_algorithms: HS256
       authentication_jwt_issuer: openhim
-      openhimConsoleBaseUrl: http://localhost:${OPENHIM_CONSOLE_HOST_PORT:-9000}
+      openhimConsoleBaseUrl: http://localhost:${OPENHIM_CONSOLE_HOST_PORT?}
     ports:
-      - "${OPENHIM_ADMIN_API_HOST_PORT:-8081}:8080"
-      - "${OPENHIM_ROUTER_HTTPS_HOST_PORT:-5000}:5000"
-      - "${OPENHIM_ROUTER_HTTP_HOST_PORT:-5001}:5001"
+      - "${OPENHIM_ADMIN_API_HOST_PORT?}:8080"
+      - "${OPENHIM_ROUTER_HTTPS_HOST_PORT?}:5000"
+      - "${OPENHIM_ROUTER_HTTP_HOST_PORT?}:5001"
     healthcheck:
       test: "wget --no-check-certificate -qO- https://openhim-core:8080/heartbeat || exit 1"
       interval: 30s
@@ -61,7 +61,7 @@ services:
       openhim-core:
         condition: service_healthy
     environment:
-      OPENHIM_PASSWORD: ${OPENHIM_PASSWORD:-openhim-password}
+      OPENHIM_PASSWORD: ${OPENHIM_PASSWORD?}
     entrypoint: ["/bin/sh", "-c"]
     # $$-escaped throughout: Compose interpolates any unescaped $var in a compose
     # file itself (against its own host-side variable context) before this string
@@ -91,12 +91,12 @@ services:
 
   openhim-console:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-console
-    image: jembi/openhim-console:${OPENHIM_CONSOLE_IMAGE_TAG:-latest}
+    image: jembi/openhim-console:${OPENHIM_CONSOLE_IMAGE_TAG?}
     restart: unless-stopped
     environment:
-      OPENHIM_MEDIATOR_API_PORT: ${OPENHIM_ADMIN_API_HOST_PORT:-8081}
+      OPENHIM_MEDIATOR_API_PORT: ${OPENHIM_ADMIN_API_HOST_PORT?}
     ports:
-      - "${OPENHIM_CONSOLE_HOST_PORT:-9000}:80"
+      - "${OPENHIM_CONSOLE_HOST_PORT?}:80"
     healthcheck:
       test: "wget -qO- http://openhim-console || exit 1"
       interval: 30s

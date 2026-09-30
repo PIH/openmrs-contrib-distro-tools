@@ -616,6 +616,11 @@ openmrs-docker <name> sync
 openmrs-docker <name> start/update
 ```
 
+`sync` also adds to the instance's `env` any variable the refreshed fragments require that `env`
+doesn't have, with its default from `.env.defaults`, and prints the names it added. It never
+changes a variable already in `env`, and doesn't re-add optional ones you deleted (e.g. an
+`OPENMRS_DB_OPT_*` server option).
+
 Compose recreates only the containers whose merged config actually changed.
 
 ### Troubleshooting in Windows
@@ -890,7 +895,11 @@ instance without recreating it. Each mediator is its own fragment file; more tha
 attached to the same OpenHIM instance at once. A service's default env vars live in a sibling
 `<service>.env.defaults` file next to its `docker/services/<service>.yaml`; `create` and
 `add-service` both pick these up automatically for whichever services you select, so attaching a
-service via either command writes its required settings into the instance's `env` file for you. Its
+service via either command writes its required settings into the instance's `env` file for you.
+`.env.defaults` is the only place those defaults are defined: the fragment requires the variables it
+uses (`${VAR?}`), so one missing from `env` stops the command with an error naming it, rather than
+falling back to a second default or a blank. `openmrs-docker <name> sync` adds any that are
+missing. Its
 `# container-env:` line, if any, says which of those variables go into the container itself (see
 "`env` file reference").
 

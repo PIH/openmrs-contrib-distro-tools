@@ -11,8 +11,8 @@ services:
       WEBAPP_URL: http://openmrs:8080/openmrs
       WEBAPP_NAME: openmrs
       DATABASE_URL: jdbc:mysql://openmrs-db:3306/openmrs
-      DATABASE_USERNAME: ${OPENMRS_DB_USER:-openmrs}
-      DATABASE_PASSWORD: ${OPENMRS_DB_PASSWORD:-openmrs}
+      DATABASE_USERNAME: ${OPENMRS_DB_USER?}
+      DATABASE_PASSWORD: ${OPENMRS_DB_PASSWORD?}
       ADMIN_USER_PASSWORD: ${SMOKE_TESTS_ADMIN_PASSWORD:-Admin123}
       MAVEN_GOALS: verify
       TZ: ${TZ:-UTC}
