@@ -19,7 +19,7 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 services:
   openhim-advapacs-mediator:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-advapacs-mediator
-    image: ${ADVAPACS_MEDIATOR_IMAGE_NAME:-partnersinhealth/openhim-advapacs-mediator}:${ADVAPACS_MEDIATOR_IMAGE_TAG:-latest}
+    image: ${ADVAPACS_MEDIATOR_IMAGE_NAME?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}:${ADVAPACS_MEDIATOR_IMAGE_TAG?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
     restart: unless-stopped
     depends_on:
       openhim-core:
@@ -45,11 +45,11 @@ services:
       OPENMRS_USERNAME: ${OPENMRS_USERNAME}
       OPENMRS_PASSWORD: ${OPENMRS_PASSWORD}
       # Mediator-specific, namespaced at the instance-env-file layer but passed through to the plain name this mediator's
-      LOG_LEVEL: ${ADVAPACS_MEDIATOR_LOG_LEVEL:-info}
+      LOG_LEVEL: ${ADVAPACS_MEDIATOR_LOG_LEVEL?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
       MEDIATOR_INBOUND_SECRET: ${ADVAPACS_MEDIATOR_INBOUND_SECRET}
-      ORDER_INGESTION_MODE: ${ADVAPACS_MEDIATOR_ORDER_INGESTION_MODE:-poll}
-      ORDER_POLL_INTERVAL_MS: ${ADVAPACS_MEDIATOR_ORDER_POLL_INTERVAL_MS:-60000}
-      OPENHIM_INBOUND_CLIENT_ID: ${ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_ID:-openmrs}
+      ORDER_INGESTION_MODE: ${ADVAPACS_MEDIATOR_ORDER_INGESTION_MODE?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+      ORDER_POLL_INTERVAL_MS: ${ADVAPACS_MEDIATOR_ORDER_POLL_INTERVAL_MS?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+      OPENHIM_INBOUND_CLIENT_ID: ${ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_ID?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
       OPENHIM_INBOUND_CLIENT_PASSWORD: ${ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD}
       # AdvaPACS-specific business config, already unique to this
       # integration -- no namespacing needed.

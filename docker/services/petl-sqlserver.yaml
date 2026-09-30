@@ -3,17 +3,17 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 services:
   petl-sqlserver:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-petl-sqlserver
-    image: mcr.microsoft.com/mssql/server:${PETL_SQLSERVER_IMAGE_TAG:-2019-CU13-ubuntu-20.04}
+    image: mcr.microsoft.com/mssql/server:${PETL_SQLSERVER_IMAGE_TAG?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
     environment:
       ACCEPT_EULA: "Y"
-      SA_PASSWORD: ${PETL_SQLSERVER_PASSWORD:-9%4qP7b2H!%J}
+      SA_PASSWORD: ${PETL_SQLSERVER_PASSWORD?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
       # Read by the healthcheck's sqlcmd below (via -U with no -P, sqlcmd falls back to this env
       # var) rather than passing the password as a -P argument, which would show up in this
       # container's own process list/`docker inspect`'s healthcheck config.
-      SQLCMDPASSWORD: ${PETL_SQLSERVER_PASSWORD:-9%4qP7b2H!%J}
+      SQLCMDPASSWORD: ${PETL_SQLSERVER_PASSWORD?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
       TZ: ${TZ:-UTC}
     ports:
-      - ${PETL_SQLSERVER_PORT:-1433}:1433
+      - ${PETL_SQLSERVER_PORT?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}:1433
     volumes:
       - petl-sqlserver-data:/var/opt/mssql
     healthcheck:
@@ -35,13 +35,13 @@ services:
   # (sqlcmd is already bundled in it) purely as a client, never runs sqlservr itself.
   petl-sqlserver-init:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-petl-sqlserver-init
-    image: mcr.microsoft.com/mssql/server:${PETL_SQLSERVER_IMAGE_TAG:-2019-CU13-ubuntu-20.04}
+    image: mcr.microsoft.com/mssql/server:${PETL_SQLSERVER_IMAGE_TAG?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
     depends_on:
       petl-sqlserver:
         condition: service_healthy
     environment:
-      SQLCMDPASSWORD: ${PETL_SQLSERVER_PASSWORD:-9%4qP7b2H!%J}
-      DATABASE_NAME: ${PETL_SQLSERVER_DATABASE:-openmrs_reporting}
+      SQLCMDPASSWORD: ${PETL_SQLSERVER_PASSWORD?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+      DATABASE_NAME: ${PETL_SQLSERVER_DATABASE?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
     entrypoint: ["/bin/bash", "-c"]
     command:
       - >

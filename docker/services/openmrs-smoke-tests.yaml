@@ -11,8 +11,8 @@ services:
       WEBAPP_URL: http://openmrs:8080/openmrs
       WEBAPP_NAME: openmrs
       DATABASE_URL: jdbc:mysql://openmrs-db:3306/openmrs
-      DATABASE_USERNAME: ${OPENMRS_DB_USER:-openmrs}
-      DATABASE_PASSWORD: ${OPENMRS_DB_PASSWORD:-openmrs}
+      DATABASE_USERNAME: ${OPENMRS_DB_USER?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+      DATABASE_PASSWORD: ${OPENMRS_DB_PASSWORD?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
       ADMIN_USER_PASSWORD: ${SMOKE_TESTS_ADMIN_PASSWORD:-Admin123}
       MAVEN_GOALS: verify
       TZ: ${TZ:-UTC}

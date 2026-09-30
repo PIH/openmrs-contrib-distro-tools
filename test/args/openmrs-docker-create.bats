@@ -130,3 +130,27 @@ teardown() {
     "$BIN/openmrs-docker" "$NAME" status >/dev/null
     [ ! -e "$dir/openhim.env" ]
 }
+
+@test "a variable missing from env fails compose with a hint, and sync adds its default once" {
+    NAME="$(instance)"
+    local dir
+    SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    dir="$OPENMRS_DOCKER_HOME/$NAME"
+    sed -i '/^OPENMRS_DB_MEMORY_LIMIT=/d; /^# Server options/d' "$dir/env"
+    run docker compose --env-file "$dir/env" -f "$dir/openmrs-db.yaml" config -q
+    assert_failure
+    assert_output --partial "OPENMRS_DB_MEMORY_LIMIT"
+    assert_output --partial "openmrs-docker <instance> sync"
+    run "$BIN/openmrs-docker" "$NAME" sync
+    assert_success
+    assert_output --partial "Added to env: OPENMRS_DB_MEMORY_LIMIT"
+    run grep -c "^OPENMRS_DB_MEMORY_LIMIT='2g'$" "$dir/env"
+    assert_output 1
+    # nothing more to add, and no comment lines re-added
+    run "$BIN/openmrs-docker" "$NAME" sync
+    refute_output --partial "Added to env"
+    run grep -c '^# Server options' "$dir/env"
+    assert_output 0
+    run docker compose --env-file "$dir/env" -f "$dir/openmrs-db.yaml" config -q
+    assert_success
+}

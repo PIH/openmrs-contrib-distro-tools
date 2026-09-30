@@ -129,3 +129,15 @@ assert_valid() {
     assert_output --partial 'OPENMRS_DB_OPT_max_allowed_packet: 1G'
     refute_output --partial 'log_bin:'
 }
+
+@test "fragments take their defaults only from .env.defaults: each required variable has one, none repeats it" {
+    local defaults required repeated missing
+    defaults=$(sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$REPO_ROOT"/docker/services/*.env.defaults | sort -u)
+    required=$(grep -ho '\${[A-Za-z_][A-Za-z0-9_]*?' "$REPO_ROOT"/docker/services/*.yaml "$REPO_ROOT"/docker/modes/*.yaml \
+        | sed 's/^\${//; s/?$//' | sort -u)
+    repeated=$(grep -ho '\${[A-Za-z_][A-Za-z0-9_]*:-' "$REPO_ROOT"/docker/services/*.yaml "$REPO_ROOT"/docker/modes/*.yaml \
+        | sed 's/^\${//; s/:-$//' | sort -u | comm -12 - <(echo "$defaults"))
+    missing=$(comm -23 <(echo "$required") <(echo "$defaults"))
+    [ -z "$repeated" ] || fail "yaml default repeats .env.defaults (use \${VAR?...}): $repeated"
+    [ -z "$missing" ] || fail "\${VAR?...} with no .env.defaults entry: $missing"
+}

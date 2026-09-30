@@ -3,7 +3,7 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 services:
   openmrs:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openmrs
-    image: ${OPENMRS_IMAGE_NAME:?OPENMRS_IMAGE_NAME must be set}:${OPENMRS_IMAGE_TAG:-latest}
+    image: ${OPENMRS_IMAGE_NAME:?OPENMRS_IMAGE_NAME must be set}:${OPENMRS_IMAGE_TAG?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
     build:
       # Soft default rather than a required (:?) guard: Compose interpolates this on
       # every invocation (stop/logs/wait/destroy/etc.), not just when actually
@@ -15,7 +15,7 @@ services:
         condition: service_healthy
         restart: true
     ports:
-      - ${OPENMRS_HTTP_PORT:-8080}:8080
+      - ${OPENMRS_HTTP_PORT?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}:8080
     # Only the lines of the instance's env matching the "# container-env:" prefixes in
     # openmrs.env.defaults (OMRS_*), which openmrs-docker copies into openmrs.env on every command --
     # not every secret in env. Resolves relative to this file's own directory, not CWD.
@@ -28,11 +28,11 @@ services:
       OMRS_CONFIG_CREATE_TABLES: "${OPENMRS_CREATE_TABLES:-true}"
       OMRS_CONFIG_CONNECTION_SERVER: openmrs-db
       OMRS_CONFIG_CONNECTION_DATABASE: openmrs
-      OMRS_CONFIG_CONNECTION_USERNAME: ${OPENMRS_DB_USER:-openmrs}
-      OMRS_CONFIG_CONNECTION_PASSWORD: ${OPENMRS_DB_PASSWORD:-openmrs}
-      OMRS_EXTRA_pih_config: ${OPENMRS_PIH_CONFIG:-}
-      OMRS_JAVA_MEMORY_OPTS: ${OPENMRS_JAVA_MEMORY_OPTS:--Xms512m -Xmx2g -XX:NewSize=128m}
-      OMRS_EXTRA_activitylog__enabled: ${OPENMRS_ACTIVITYLOG_ENABLED:-true}
+      OMRS_CONFIG_CONNECTION_USERNAME: ${OPENMRS_DB_USER?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+      OMRS_CONFIG_CONNECTION_PASSWORD: ${OPENMRS_DB_PASSWORD?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+      OMRS_EXTRA_pih_config: ${OPENMRS_PIH_CONFIG?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+      OMRS_JAVA_MEMORY_OPTS: ${OPENMRS_JAVA_MEMORY_OPTS?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+      OMRS_EXTRA_activitylog__enabled: ${OPENMRS_ACTIVITYLOG_ENABLED?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
       TZ: ${TZ:-UTC}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/openmrs/health/started"]
@@ -46,7 +46,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${OPENMRS_MEMORY_LIMIT:-4g}
+          memory: ${OPENMRS_MEMORY_LIMIT?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
 
 volumes:
   openmrs-data:

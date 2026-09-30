@@ -302,18 +302,51 @@ warn_on_drift() {
     fi
 }
 
+# Appends the already-rendered lines of a service's env defaults (render_service_env_defaults) to
+# the instance's env, skipping any name already present (e.g. shared with a service added earlier)
+# so this never produces a duplicate/conflicting line. Prints the names it added. With
+# --with-comments (add-service, which runs once per service), the defaults' comment lines are
+# appended too; sync, which runs again and again, adds variables only.
+append_missing_env_defaults() { # <rendered defaults> [--with-comments]
+    local line
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]]; then
+            grep -q "^${BASH_REMATCH[1]}=" "$ENV_FILE" && continue
+            echo "${BASH_REMATCH[1]}"
+        elif [ "${2:-}" != --with-comments ]; then
+            continue
+        fi
+        echo "$line" >> "$ENV_FILE"
+    done <<< "$1"
+}
+
+# Refreshes each copied fragment from its canonical file, and adds to env any variable the
+# fragments need that env doesn't have yet (the fragments require every variable in their
+# .env.defaults, and an env written before a variable was added to those defaults lacks it).
 sync_services() {
-    local f canonical
+    local f svc canonical defaults rendered=() i=0 added
+    # Rendered first: a value env_line refuses stops here, before anything is changed.
     for f in "$INSTANCE_DIR"/*.yaml; do
         [ -e "$f" ] || continue
-        canonical="$SERVICES_DIR/$(basename "$f")"
+        defaults=$(render_service_env_defaults "$(basename "$f" .yaml)") || exit 1
+        rendered+=("$defaults")
+    done
+    for f in "$INSTANCE_DIR"/*.yaml; do
+        [ -e "$f" ] || continue
+        svc=$(basename "$f" .yaml)
+        canonical="$SERVICES_DIR/$svc.yaml"
         if [ -e "$canonical" ]; then
             cp "$canonical" "$f"
-            echo "Synced $(basename "$f")"
+            echo "Synced $svc.yaml"
+            added=$(append_missing_env_defaults "${rendered[$i]}")
+            [ -z "$added" ] || echo "Added to env: $(paste -sd' ' <<< "$added")"
         else
-            echo "Skipped $(basename "$f") (no canonical service found at $canonical)"
+            echo "Skipped $svc.yaml (no canonical service found at $canonical)"
         fi
+        i=$((i + 1))
     done
+    write_container_env_files "$INSTANCE_DIR"
 }
 
 case "$COMMAND" in
@@ -512,16 +545,8 @@ case "$COMMAND" in
         else
             echo "Added $SERVICE_ARG. Run '$0 $NAME start' to bring it up."
         fi
-        # Append this service's default env vars too -- skipping any name already
-        # present in the env file (e.g. shared with a service added earlier, or a
-        # re-run of add-service) so this never produces a duplicate/conflicting line.
-        while IFS= read -r line; do
-            [ -n "$line" ] || continue
-            if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]]; then
-                grep -q "^${BASH_REMATCH[1]}=" "$ENV_FILE" && continue
-            fi
-            echo "$line" >> "$ENV_FILE"
-        done <<< "$defaults"
+        # Append this service's default env vars too (see append_missing_env_defaults).
+        append_missing_env_defaults "$defaults" --with-comments >/dev/null
         write_container_env_files "$INSTANCE_DIR"
         ;;
     remove-service)
