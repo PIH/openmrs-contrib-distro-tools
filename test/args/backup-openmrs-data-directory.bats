@@ -13,10 +13,10 @@ teardown() { common_teardown; }
 @test "requires --volume and --output" {
     run "$UTILS/backup-openmrs-data-directory.sh" --output=out.tar.gz
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
     run "$UTILS/backup-openmrs-data-directory.sh" --volume="$BATS_TEST_TMPDIR/data"
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
 }
 
 @test "rejects an unknown argument" {

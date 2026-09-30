@@ -1,60 +1,51 @@
 #!/bin/bash
-# General-purpose: writes a summary of a MySQL server's databases (and optionally an OpenMRS data
-# directory) to compare before and after a backup and restore: take one of the source, one of the
-# restored copy, and `diff` them. Usage:
-#   utils/fingerprint.sh (--container=<name> | --host=<host> [--port=3306] [--client-image=mysql:5.6]
-#       | --db-volume=<db data volume or host dir> [--image=mysql:5.6] [--server-opt=<flag>...])
-#       [--database=openmrs] [--data-dir=<volume or dir> [--exclude-distribution-artifacts]]
-#       [--output=<file>]
+# Summarizes a MySQL/MariaDB server's databases (and optionally an OpenMRS data directory), to
+# compare a source with its restored copy: fingerprint both and `diff` them. No row contents,
+# passwords or other secrets are written.
 #
-# --container reads a running MySQL/MariaDB container (`docker exec`). --host connects over TCP with
-# host networking, e.g. --host=127.0.0.1 for a MySQL installed on a legacy host, using the client
-# from --client-image. Both log in as root with MYSQL_ROOT_PASSWORD (env var, a secret; passed to
-# `docker` by name only and read as MYSQL_PWD, so it's on no command line). --db-volume reads a *stopped* instance's
-# data directory: it starts --image's server on it with --skip-grant-tables --skip-networking (no
-# password needed, nothing can connect), and stops it cleanly afterwards. It refuses while a
-# container is using the volume. Use the image the instance runs, and give each of its server options
-# (e.g. --server-opt=--character-set-server=utf8), or [server] shows the image's defaults instead:
-# `openmrs-docker <name> fingerprint` does both for an instance.
+# Usage: openmrs-utils fingerprint (--container=<name> | --host=<host> [--port=3306]
+#            [--client-image=mysql:5.6] | --db-volume=<volume or dir> [--image=mysql:5.6]
+#            [--server-opt=<flag>...]) [--database=openmrs]
+#            [--data-dir=<volume or dir> [--exclude-distribution-artifacts]] [--output=<file>]
+#   --db-volume   a stopped server's data directory, read by starting --image on it with grants
+#                 and networking off. Give the instance's image and server options, or [server]
+#                 shows the image's defaults: `openmrs-docker <name> fingerprint` does both.
+#   --database    the OpenMRS database, for [recent]
+#   --data-dir    also summarizes this OpenMRS data directory; --exclude-distribution-artifacts
+#                 leaves out what the image supplies, as backup-openmrs-data-directory does
+#   MYSQL_ROOT_PASSWORD  root's password, for --container and --host (default: openmrs)
 #
 # Sections, each sorted, one fact per line, so a diff shows only what changed:
-#   [server]    version (and vendor), character set and collation, lower_case_table_names, sql_mode, time_zone,
-#               how many time zones are loaded
-#   [databases] each non-system database and its number of tables
-#   [rows]      every table's exact row count (COUNT(*), so this can take minutes on a large obs)
-#   [objects]   routines, triggers and views, by name
-#   [recent]    the highest id and date_created on --database's encounter, obs, patient, person and
-#               users tables -- a backup taken before the last writes shows here
-#   [accounts]  user@host
-#   [data-dir]  with --data-dir: files and bytes per top-level folder (top-level files together).
-#               --exclude-distribution-artifacts leaves out the contents of modules/, owa/,
-#               configuration/ and frontend/ and .openmrs-lib-cache, like backup-openmrs-data-directory
-#               (the image supplies them, so they differ legitimately).
-# No row contents, passwords or other secrets are written.
+#   [server]     version, character set and collation, lower_case_table_names, sql_mode,
+#                time_zone, and how many time zones are loaded
+#   [databases]  each non-system database and its number of tables
+#   [rows]       every table's exact row count (COUNT(*), so minutes on a large obs)
+#   [objects]    routines, triggers and views, by name
+#   [recent]     the highest id and date_created in --database's encounter, obs, patient, person
+#                and users: a backup taken before the last writes shows here
+#   [accounts]   user@host
+#   [data-dir]   files and bytes per top-level folder (top-level files together)
 #
 # Expected differences between a source and its restore: [accounts] (initialize resets them after
-# a physical restore; a logical one has only the instance's), databases a physical restore brought
-# along, [server] settings if the two servers are configured differently, and, once OpenMRS has
-# started, Liquibase/scheduler tables -- so fingerprint a restore before its first start.
+# a physical restore), databases a physical restore brought along, [server] if the servers are
+# configured differently, and once OpenMRS has started, its Liquibase and scheduler tables -- so
+# fingerprint a restore before its first start.
 set -euo pipefail
+# shellcheck source=lib/common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+# shellcheck source=lib/mysql.sh
+. "$UTILS_DIR/lib/mysql.sh"
 
-CONTAINER=
-DB_HOST=
-DB_PORT=3306
-CLIENT_IMAGE=mysql:5.6
 DB_VOLUME=
 IMAGE=mysql:5.6
+SERVER_OPTS=()
 DATABASE=openmrs
 DATA_DIR=
 EXCLUDE_DISTRIBUTION_ARTIFACTS=false
 OUTPUT=
-SERVER_OPTS=()
 for arg in "$@"; do
     case "$arg" in
-        --container=*) CONTAINER="${arg#*=}" ;;
-        --host=*) DB_HOST="${arg#*=}" ;;
-        --port=*) DB_PORT="${arg#*=}" ;;
-        --client-image=*) CLIENT_IMAGE="${arg#*=}" ;;
+        --client-image=*) DB_CLIENT_IMAGE="${arg#*=}" ;;
         --db-volume=*) DB_VOLUME="${arg#*=}" ;;
         --image=*) IMAGE="${arg#*=}" ;;
         --server-opt=*) SERVER_OPTS+=("${arg#*=}") ;;
@@ -62,43 +53,28 @@ for arg in "$@"; do
         --data-dir=*) DATA_DIR="${arg#*=}" ;;
         --exclude-distribution-artifacts) EXCLUDE_DISTRIBUTION_ARTIFACTS=true ;;
         --output=*) OUTPUT="${arg#*=}" ;;
-        *) echo "unknown argument: $arg" >&2; exit 1 ;;
+        *) mysql_source_arg "$arg" || die "unknown argument: $arg" ;;
     esac
 done
-usage() {
-    echo "usage: $0 (--container=<name> | --host=<host> [--port=3306] | --db-volume=<volume or dir> [--image=mysql:5.6] [--server-opt=<flag>...]) [--database=openmrs] [--data-dir=<volume or dir> [--exclude-distribution-artifacts]] [--output=<file>]" >&2
-    exit 1
-}
-SOURCES=0
-for v in "$CONTAINER" "$DB_HOST" "$DB_VOLUME"; do [ -n "$v" ] && SOURCES=$((SOURCES + 1)); done
-[ "$SOURCES" -eq 1 ] || usage
 
-# sql <query>: tab-separated rows, no header.
-if [ -n "$CONTAINER" ]; then
-    CLIENT=mysql
-    docker exec "$CONTAINER" sh -c 'command -v mysql' >/dev/null 2>&1 || CLIENT=mariadb
-    MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-openmrs}"; export MYSQL_PWD
-    sql() { docker exec -i -e MYSQL_PWD "$CONTAINER" "$CLIENT" -uroot -N -B <<< "$1"; }
-elif [ -n "$DB_HOST" ]; then
-    MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-openmrs}"; export MYSQL_PWD
-    sql() { docker run -i --rm --network host -e MYSQL_PWD "$CLIENT_IMAGE" mysql "-h$DB_HOST" "-P$DB_PORT" -uroot -N -B <<< "$1"; }
+if [ -z "$DB_VOLUME" ]; then
+    mysql_source_given || usage
+    mysql_connect "${MYSQL_ROOT_PASSWORD:-openmrs}"
 else
-    if [ -n "$(docker ps -q --filter "volume=$DB_VOLUME")" ]; then
-        echo "error: a running container is using $DB_VOLUME -- stop it first (two servers on one data directory corrupt it)" >&2
-        exit 1
-    fi
-    TMP_DB="fingerprint-$(date +%Y%m%d%H%M%S)-$$"
-    trap 'docker stop -t 60 "$TMP_DB" >/dev/null 2>&1; docker rm -f "$TMP_DB" >/dev/null 2>&1 || true' EXIT
+    [ -z "$DB_CONTAINER$DB_HOST" ] || usage
+    refuse_if_in_use "$DB_VOLUME" "two servers on one data directory corrupt it"
+    DB_CONTAINER="fingerprint-$(date +%Y%m%d%H%M%S)-$$"
+    on_exit 'docker stop -t 60 "$DB_CONTAINER"; docker rm -f "$DB_CONTAINER"'
     # The image's entrypoint leaves an existing data directory alone and passes the flags on.
-    docker run -d --name "$TMP_DB" -v "$DB_VOLUME:/var/lib/mysql" "$IMAGE" ${SERVER_OPTS[@]+"${SERVER_OPTS[@]}"} --skip-grant-tables --skip-networking >/dev/null
-    CLIENT=mysql
-    docker exec "$TMP_DB" sh -c 'command -v mysql' >/dev/null 2>&1 || CLIENT=mariadb
+    docker run -d --name "$DB_CONTAINER" -v "$DB_VOLUME:/var/lib/mysql" "$IMAGE" \
+        ${SERVER_OPTS[@]+"${SERVER_OPTS[@]}"} --skip-grant-tables --skip-networking >/dev/null
     # A large data directory can spend a long time in crash recovery first.
-    until docker exec "$TMP_DB" "$CLIENT" -uroot -e 'SELECT 1' >/dev/null 2>&1; do
-        [ "$(docker inspect -f '{{.State.Running}}' "$TMP_DB")" = true ] || { docker logs --tail 20 "$TMP_DB" >&2; echo "error: MySQL didn't start on $DB_VOLUME" >&2; exit 1; }
+    until docker exec "$DB_CONTAINER" sh -c 'mysqladmin -uroot ping || mariadb-admin -uroot ping' >/dev/null 2>&1; do
+        [ "$(docker inspect -f '{{.State.Running}}' "$DB_CONTAINER")" = true ] ||
+            { docker logs --tail 20 "$DB_CONTAINER" >&2; die "MySQL didn't start on $DB_VOLUME"; }
         sleep 1
     done
-    sql() { docker exec -i "$TMP_DB" "$CLIENT" -uroot -N -B <<< "$1"; }
+    mysql_connect ""
 fi
 
 SYSTEM_DBS="'mysql', 'information_schema', 'performance_schema', 'sys'"
@@ -157,7 +133,7 @@ fingerprint() {
         local leave_out=""
         $EXCLUDE_DISTRIBUTION_ARTIFACTS && leave_out="modules owa configuration frontend .openmrs-lib-cache"
         # busybox: file count and bytes per top-level folder; files at the top level together.
-        docker run --rm -e LEAVE_OUT="$leave_out" -v "$DATA_DIR:/d:ro" alpine:3.21 sh -c '
+        docker run --rm -e LEAVE_OUT="$leave_out" -v "$DATA_DIR:/d:ro" "$ALPINE_IMAGE" sh -c '
             summarize() { find "$1" -type f $2 -exec stat -c %s {} + 2>/dev/null | awk -v n="$3" "{ c++; b += \$1 } END { printf \"%s files=%d bytes=%.0f\n\", n, c, b }"; }
             for e in /d/* /d/.[!.]*; do
                 [ -e "$e" ] || continue
@@ -171,7 +147,7 @@ fingerprint() {
 
 if [ -n "$OUTPUT" ]; then
     fingerprint > "$OUTPUT"
-    echo "Wrote $OUTPUT." >&2
+    note "Wrote $OUTPUT."
 else
     fingerprint
 fi

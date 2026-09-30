@@ -9,7 +9,7 @@ teardown() { common_teardown; }
 @test "requires --path" {
     run "$UTILS/extract-archive.sh"
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
 }
 
 @test "prints a non-archive path unchanged, so callers can pass either" {

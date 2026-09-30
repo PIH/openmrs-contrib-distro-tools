@@ -1,50 +1,37 @@
 #!/bin/bash
-# General-purpose: strips DEFINER=`user`@`host` clauses from a mysqldump SQL file (plain .sql or
-# gzip-compressed .sql.gz), producing a modified copy -- the original is never touched. A
-# routine/trigger/view created with a DEFINER account that doesn't exist on the restore target
-# can fail at execution time (not creation time), often surfacing well after the restore looked
-# successful; removing the clause leaves MySQL to default the definer to whichever user performs
-# the restore instead. Feed the result to `initialize`'s RESTORE_MYSQL_DUMP_PATH in place of the
-# original. For a new backup, backup-mysqldump.sh --strip-definers does the same while dumping
-# (and works for .7z output). mysqldump itself has no flag to omit DEFINER, hence the text rewrite.
-# Usage:
-#   utils/strip-mysqldump-definers.sh --path=<dump.sql|dump.sql.gz> --output=<path>
+# Copies a mysqldump file without its DEFINER=`user`@`host` clauses, so its routines, triggers and
+# views work on a server without those accounts (they'd fail when run, not when restored). For a
+# new dump, backup-mysqldump --strip-definers does this as it dumps.
 #
-# --output's extension controls the output format independently of the input's: a plain .sql in,
-# a gzip-compressed .sql.gz out (or vice versa) both work.
+# Usage: openmrs-utils strip-mysqldump-definers --path=<dump.sql | dump.sql.gz> --output=<file>
+#   --output  ending in .gz for a gzipped copy, otherwise plain SQL (from either kind of input)
 set -euo pipefail
+# shellcheck source=lib/common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+# shellcheck source=lib/mysql.sh
+. "$UTILS_DIR/lib/mysql.sh"
 
 SRC=
-OUTPUT_PATH=
+OUTPUT=
 for arg in "$@"; do
     case "$arg" in
         --path=*) SRC="${arg#*=}" ;;
-        --output=*) OUTPUT_PATH="${arg#*=}" ;;
-        *) echo "unknown argument: $arg" >&2; exit 1 ;;
+        --output=*) OUTPUT="${arg#*=}" ;;
+        *) die "unknown argument: $arg" ;;
     esac
 done
-usage() { echo "usage: $0 --path=<dump.sql|dump.sql.gz> --output=<path>" >&2; exit 1; }
-[ -z "$SRC" ] && usage
-[ -z "$OUTPUT_PATH" ] && usage
-[ -f "$SRC" ] || { echo "error: no such file: $SRC" >&2; exit 1; }
-
-case "$OUTPUT_PATH" in
-    /*) ;;
-    *) OUTPUT_PATH="$(pwd)/$OUTPUT_PATH" ;;
-esac
-[ -e "$OUTPUT_PATH" ] && { echo "error: $OUTPUT_PATH already exists" >&2; exit 1; }
-mkdir -p "$(dirname "$OUTPUT_PATH")"
-# A failure part way (e.g. a truncated .gz) would leave a partial copy that looks usable.
-trap 'rm -f "$OUTPUT_PATH"' ERR
+[ -n "$SRC" ] && [ -n "$OUTPUT" ] || usage
+[ -f "$SRC" ] || die "no such file: $SRC"
+OUTPUT=$(abs_path "$OUTPUT")
+prepare_output_file "$OUTPUT"
 
 case "$SRC" in
-    *.gz) READ_CMD=(zcat "$SRC") ;;
-    *)    READ_CMD=(cat "$SRC") ;;
+    *.gz) READ=(zcat "$SRC") ;;
+    *) READ=(cat "$SRC") ;;
 esac
-
-echo "Stripping DEFINER clauses from $SRC into $OUTPUT_PATH..." >&2
-case "$OUTPUT_PATH" in
-    *.gz) "${READ_CMD[@]}" | sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g' | gzip > "$OUTPUT_PATH" ;;
-    *)    "${READ_CMD[@]}" | sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g' > "$OUTPUT_PATH" ;;
+note "Stripping DEFINER clauses from $SRC into $OUTPUT..."
+case "$OUTPUT" in
+    *.gz) "${READ[@]}" | strip_definers | gzip > "$OUTPUT" ;;
+    *) "${READ[@]}" | strip_definers > "$OUTPUT" ;;
 esac
-echo "Wrote $OUTPUT_PATH." >&2
+note "Wrote $OUTPUT."

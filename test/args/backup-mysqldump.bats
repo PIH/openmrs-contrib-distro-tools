@@ -9,10 +9,10 @@ teardown() { common_teardown; }
 @test "requires --container (or --host) and --output" {
     run "$UTILS/backup-mysqldump.sh" --output=out.sql
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
     run "$UTILS/backup-mysqldump.sh" --container=db
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
 }
 
 @test "rejects an unknown argument" {

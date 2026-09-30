@@ -52,5 +52,5 @@ teardown() {
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
     run "$BIN/openmrs-docker" "$NAME" fingerprint
     assert_failure
-    assert_output --partial "a running container is using ${NAME}_db-data"
+    assert_output --partial "${NAME}_db-data is in use by a running container"
 }

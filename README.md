@@ -513,6 +513,10 @@ so `ARCHIVE_PASSWORD` is on 7z's command line inside its container while the dum
 <script-name> [args...]` (a thin passthrough to the script of that name under `utils/` -- see
 "Install" above), or the script directly by its full path -- the two are equivalent. Run any script
 with no arguments for its exact usage; run `openmrs-utils` with no arguments to list them all.
+Progress and errors go to stderr, so stdout carries only a result a caller may capture (e.g.
+`extract-archive`'s path). A backup refuses an output that already exists, and removes what it
+started writing if it fails. The scripts share helpers in `utils/lib/`; `common.sh` there sets out
+these conventions for anyone writing a new one.
 
 `extract-archive`, `backup-percona`, `convert-percona-backup` and `backup-openmrs-data-directory`
 check free disk space before writing anything, as `initialize` does (see "Disk space" below).

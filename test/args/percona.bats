@@ -10,13 +10,13 @@ teardown() { common_teardown; }
 @test "backup-percona requires --container, --volume and --output" {
     run "$UTILS/backup-percona.sh" --volume=v --output=out
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
     run "$UTILS/backup-percona.sh" --container=c --output=out
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
     run "$UTILS/backup-percona.sh" --container=c --volume=v
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
 }
 
 @test "backup-percona refuses an output directory that already exists" {
@@ -37,10 +37,10 @@ teardown() { common_teardown; }
 @test "convert-percona-backup requires --backup-dir and --output-dir" {
     run "$UTILS/convert-percona-backup.sh" --output-dir=out
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
     run "$UTILS/convert-percona-backup.sh" --backup-dir=in
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
 }
 
 @test "convert-percona-backup rejects a backup dir that doesn't exist" {

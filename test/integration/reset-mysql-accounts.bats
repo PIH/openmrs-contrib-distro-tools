@@ -76,7 +76,7 @@ in_volume() { # <volume> <sh command>
     docker run -d --name "$(res c)" -v "$vol:/var/lib/mysql" alpine:3.21 sleep 300 >/dev/null
     MYSQL_ROOT_PASSWORD=x MYSQL_PASSWORD=y run "$UTILS/reset-mysql-accounts.sh" --volume="$vol"
     assert_failure
-    assert_output --partial "a running container is using $vol"
+    assert_output --partial "$vol is in use by a running container"
     MYSQL_ROOT_PASSWORD=x run "$UTILS/reset-mysql-accounts.sh" --volume="$vol"
     assert_failure
     assert_output --partial "MYSQL_PASSWORD"

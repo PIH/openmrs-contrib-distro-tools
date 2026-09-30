@@ -1,124 +1,63 @@
 #!/bin/bash
-# General-purpose: dumps a MySQL database to a local SQL file, directly usable as
-# `openmrs-docker <name> initialize`'s RESTORE_MYSQL_DUMP_PATH. Usage:
-#   utils/backup-mysqldump.sh (--container=<name> | --host=<host> [--port=3306]) --output=<path>
-#       [--database=openmrs] [--user=root] [--strip-definers] [--client-image=mysql:5.6]
+# Dumps a MySQL/MariaDB database, with its routines and triggers, to a file usable as
+# `openmrs-docker <name> initialize`'s RESTORE_MYSQL_DUMP_PATH. The dump has no CREATE DATABASE or
+# USE, so it restores into a database of any name.
 #
-# --container dumps from inside a running MySQL container (`docker exec`). --host instead connects
-# over TCP -- e.g. --host=127.0.0.1 for a MySQL installed directly on the host -- using mysqldump
-# from --client-image, run with host networking, so nothing but docker is needed on the host.
-#
-# --output's extension picks the format: .sql (plain SQL), .gz (gzip-compressed SQL, e.g.
-# backup.sql.gz), or .7z (password-protected archive, matching PIH's existing backup convention --
-# ARCHIVE_PASSWORD env var, required). A .7z holds a single SQL file named after the archive itself
-# (backup.sql.7z and backup.7z both contain backup.sql); .gz.7z is rejected, since 7z already
-# compresses. For .7z the dump is streamed straight into the archive, never written to disk
-# unencrypted. A failed dump never leaves a partial file behind.
-#
-# MYSQL_PASSWORD (env var, not a named argument -- a secret) authenticates as --user; defaults to
-# "openmrs" if unset. Secrets are passed to `docker` as a bare `-e VARNAME` (inheriting the
-# already-set value from this script's own environment) rather than `-e VARNAME=value`, so they're
-# not in `docker`'s command line, and MYSQL_PASSWORD is on none (mysqldump reads MYSQL_PWD). The
-# exception is ARCHIVE_PASSWORD for a .7z: the dump streams into 7z on stdin, so 7z can't also read
-# the password there, and it's on 7z's command line inside its container while the dump runs
-# (visible to `ps` on the host). Writing the dump to disk first would avoid that, but would put it
-# there unencrypted.
+# Usage: openmrs-utils backup-mysqldump (--container=<name> | --host=<host> [--port=3306]
+#            [--client-image=mysql:5.6]) --output=<file> [--database=openmrs] [--user=root]
+#            [--strip-definers]
+#   --output          .sql, .gz (gzipped SQL), or .7z (encrypted, holding <name>.sql, and
+#                     streamed in, so the dump is never on disk unencrypted)
+#   --strip-definers  removes DEFINER= clauses as it dumps, so the routines and triggers work on a
+#                     server without the source's accounts (see strip-mysqldump-definers)
+#   MYSQL_PASSWORD    password for --user (default: openmrs)
+#   ARCHIVE_PASSWORD  password for a .7z (required for one; on 7z's command line while it runs)
 set -euo pipefail
+# shellcheck source=lib/common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+# shellcheck source=lib/mysql.sh
+. "$UTILS_DIR/lib/mysql.sh"
+# shellcheck source=lib/archive.sh
+. "$UTILS_DIR/lib/archive.sh"
 
-CONTAINER=
-DB_HOST=
-DB_PORT=3306
-CLIENT_IMAGE=mysql:5.6
-OUTPUT_PATH=
+OUTPUT=
 DATABASE=openmrs
-DB_USER=root
 STRIP_DEFINERS=false
 for arg in "$@"; do
     case "$arg" in
-        --container=*) CONTAINER="${arg#*=}" ;;
-        --host=*) DB_HOST="${arg#*=}" ;;
-        --port=*) DB_PORT="${arg#*=}" ;;
-        --client-image=*) CLIENT_IMAGE="${arg#*=}" ;;
-        --output=*) OUTPUT_PATH="${arg#*=}" ;;
+        --output=*) OUTPUT="${arg#*=}" ;;
         --database=*) DATABASE="${arg#*=}" ;;
         --user=*) DB_USER="${arg#*=}" ;;
+        --client-image=*) DB_CLIENT_IMAGE="${arg#*=}" ;;
         --strip-definers) STRIP_DEFINERS=true ;;
-        *) echo "unknown argument: $arg" >&2; exit 1 ;;
+        *) mysql_source_arg "$arg" || die "unknown argument: $arg" ;;
     esac
 done
-usage() { echo "usage: $0 (--container=<name> | --host=<host> [--port=3306]) --output=<path.sql|path.sql.gz|path.sql.7z> [--database=openmrs] [--user=root] [--strip-definers] [--client-image=mysql:5.6]" >&2; exit 1; }
-[ -z "$CONTAINER" ] && [ -z "$DB_HOST" ] && usage
-[ -n "$CONTAINER" ] && [ -n "$DB_HOST" ] && { echo "error: pass either --container or --host, not both" >&2; exit 1; }
-[ -z "$OUTPUT_PATH" ] && usage
-case "$OUTPUT_PATH" in
-    *.gz.7z) echo "error: --output must not end in .gz.7z (7z already compresses) -- use .sql.7z instead" >&2; exit 1 ;;
-    *.sql|*.gz|*.7z) ;;
-    *) echo "error: --output must end in .sql, .gz or .7z" >&2; exit 1 ;;
+mysql_source_given && [ -n "$OUTPUT" ] || usage
+case "$OUTPUT" in
+    *.gz.7z) die "--output must not end in .gz.7z (7z already compresses) -- use .sql.7z instead" ;;
+    *.sql|*.gz) ;;
+    *.7z) [ -n "${ARCHIVE_PASSWORD:-}" ] || die "ARCHIVE_PASSWORD must be set to produce a .7z output" ;;
+    *) die "--output must end in .sql, .gz or .7z" ;;
 esac
-case "$OUTPUT_PATH" in
-    *.7z) [ -z "${ARCHIVE_PASSWORD:-}" ] && { echo "error: ARCHIVE_PASSWORD must be set to produce a .7z output" >&2; exit 1; } ;;
-esac
+OUTPUT=$(abs_path "$OUTPUT")
+prepare_output_file "$OUTPUT"
+mysql_connect "${MYSQL_PASSWORD:-openmrs}"
 
-case "$OUTPUT_PATH" in
-    /*) ;;
-    *) OUTPUT_PATH="$(pwd)/$OUTPUT_PATH" ;;
-esac
-[ -e "$OUTPUT_PATH" ] && { echo "error: $OUTPUT_PATH already exists" >&2; exit 1; }
-mkdir -p "$(dirname "$OUTPUT_PATH")"
-# A failed dump/compress leaves nothing but a half-written file that looks like a valid backup --
-# clean it up on any error.
-trap 'rm -f "$OUTPUT_PATH"' ERR
-
-SOURCE="${CONTAINER:-$DB_HOST:$DB_PORT}"
-echo "Backing up $SOURCE's $DATABASE database to $OUTPUT_PATH..." >&2
-# A bare database name (rather than --databases) omits the CREATE DATABASE/USE statements, so the
-# dump contains only table data and can be restored into any already-selected database --
-# including one named differently from the source, and matching how MySQL's own docker-entrypoint
-# imports a RESTORE_MYSQL_DUMP_PATH dump into whatever MYSQL_DATABASE the target container
-# already has configured. --single-transaction takes a consistent InnoDB snapshot without locking
-# the tables. --flush-logs rotates the binlog at the start of the dump, so it marks a clean
-# boundary for later binlog purging. --routines/--triggers give a fuller backup than table data
-# alone.
-#
-# By default the dump is a faithful, unmodified copy -- notably, --routines/--triggers keep their
-# original DEFINER=`user`@`host` clauses, which fail at execution time if that account doesn't
-# exist on the restore target. --strip-definers removes them as the dump streams through (the same
-# rewrite as utils/strip-mysqldump-definers.sh), so an encrypted .7z backup needs no separate,
-# unencrypted pass to fix that before a restore.
-MYSQLDUMP_ARGS=("-u$DB_USER" --single-transaction --flush-logs --routines --triggers "$DATABASE")
-if [ -n "$CONTAINER" ]; then
-    DUMP_CMD=(docker exec -e MYSQL_PWD "$CONTAINER" mysqldump "${MYSQLDUMP_ARGS[@]}")
-else
-    DUMP_CMD=(docker run --rm --network host -e MYSQL_PWD "$CLIENT_IMAGE" \
-        mysqldump "-h$DB_HOST" "-P$DB_PORT" "${MYSQLDUMP_ARGS[@]}")
-fi
-dump_stream() {
-    if $STRIP_DEFINERS; then
-        MYSQL_PWD="${MYSQL_PASSWORD:-openmrs}" "${DUMP_CMD[@]}" | sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g'
-    else
-        MYSQL_PWD="${MYSQL_PASSWORD:-openmrs}" "${DUMP_CMD[@]}"
-    fi
+# --single-transaction: a consistent snapshot, without locking tables. --flush-logs: starts a new
+# binlog, a clean point for purging the older ones.
+dump() {
+    mysql_dump --single-transaction --flush-logs --routines --triggers "$DATABASE" |
+        if $STRIP_DEFINERS; then strip_definers; else cat; fi
 }
 
-case "$OUTPUT_PATH" in
+note "Backing up $MYSQL_SOURCE's $DATABASE database to $OUTPUT..."
+case "$OUTPUT" in
     *.7z)
-        DIR=$(dirname "$OUTPUT_PATH")
-        INNER_NAME=$(basename "$OUTPUT_PATH" .7z)
-        case "$INNER_NAME" in
-            *.sql) ;;
-            *) INNER_NAME="$INNER_NAME.sql" ;;
-        esac
-        dump_stream | ARCHIVE_PW="$ARCHIVE_PASSWORD" docker run -i --rm \
-            -e ARCHIVE_PW -e OUT_NAME="$(basename "$OUTPUT_PATH")" -e INNER_NAME="$INNER_NAME" -e OWNER="$(id -u):$(id -g)" \
-            -v "$DIR:/out" \
-            partnersinhealth/p7zip \
-            sh -c '7z a -si"$INNER_NAME" -p"$ARCHIVE_PW" -mx5 -t7z "/out/$OUT_NAME" && chown "$OWNER" "/out/$OUT_NAME"' >&2
+        NAME=$(basename "$OUTPUT" .7z)
+        dump | archive_7z_from_stdin "$OUTPUT" "${NAME%.sql}.sql"
         ;;
-    *.gz)
-        dump_stream | gzip > "$OUTPUT_PATH"
-        ;;
-    *)
-        dump_stream > "$OUTPUT_PATH"
-        ;;
+    *.gz) dump | gzip > "$OUTPUT" ;;
+    *) dump > "$OUTPUT" ;;
 esac
-echo "Backed up $SOURCE's $DATABASE database to $OUTPUT_PATH." >&2
+note "Backed up $MYSQL_SOURCE's $DATABASE database to $OUTPUT."

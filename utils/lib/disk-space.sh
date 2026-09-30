@@ -8,11 +8,14 @@
 # Sizes are in KiB. Every size is measured in a container, so it works the same for a named volume
 # or a host directory, including files the host user can't read.
 
+# shellcheck source=archive.sh
+. "$(dirname "${BASH_SOURCE[0]}")/archive.sh"
+
 # Size of a directory or named volume (absolute host path or volume name), minus any of the given
 # subpaths within it.
 disk_space_size_of() { # <dir or volume> [subpath to leave out...]
     local src=$1; shift
-    docker run --rm -v "$src:/s:ro" alpine:3.21 sh -c '
+    docker run --rm -v "$src:/s:ro" "$ALPINE_IMAGE" sh -c '
         total=$(du -sk /s | cut -f1)
         for sub in "$@"; do [ -e "/s/$sub" ] && total=$((total - $(du -sk "/s/$sub" | cut -f1))); done
         echo "$total"' sh "$@"
@@ -36,12 +39,7 @@ disk_space_gzip_size() { # <file.gz>
 # What a .7z/.zip holds, uncompressed, from its listing (ARCHIVE_PASSWORD, if set, for a protected
 # one, whose file list may itself be encrypted).
 disk_space_7z_size() { # <archive>
-    local dir
-    dir=$(cd "$(dirname "$1")" && pwd)
-    ARCHIVE_PW="${ARCHIVE_PASSWORD:-}" docker run --rm -e ARCHIVE_PW -e ARCHIVE_SRC="$(basename "$1")" \
-        -v "$dir:/archive:ro" partnersinhealth/p7zip \
-        sh -c 'printf "%s\n" "$ARCHIVE_PW" | 7z l -slt "/archive/$ARCHIVE_SRC"' \
-        | awk -F' = ' '$1 == "Size" { total += $2 } END { print int((total + 1023) / 1024) }'
+    archive_7z_list "$1" | awk -F' = ' '$1 == "Size" { total += $2 } END { print int((total + 1023) / 1024) }'
 }
 
 # What an archive (.7z, .zip, .tar.gz, .tgz, .tar) or plain file holds, uncompressed.
@@ -63,7 +61,7 @@ disk_space_free_at() { # <path>
 # Free space where Docker keeps named volumes: an anonymous volume is created on the same
 # filesystem (the local driver's directory), and removed with the container.
 disk_space_free_on_docker_volumes() {
-    docker run --rm -v /v alpine:3.21 df -Pk /v | awk 'NR == 2 { print $4 }'
+    docker run --rm -v /v "$ALPINE_IMAGE" df -Pk /v | awk 'NR == 2 { print $4 }'
 }
 
 disk_space_human() { # <KiB>
