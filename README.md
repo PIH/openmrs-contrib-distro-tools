@@ -1107,8 +1107,18 @@ openmrs-docker <name> start
 openmrs-docker <name> run-service petl
 ```
 
-Note that `PETL_SQLSERVER_PASSWORD` has a default committed to this repo, which exists only so the
-fragment works out of the box for local development — override it for anything else.
+`PETL_SQLSERVER_PASSWORD` has no default: `create` and `add-service` refuse without it. SQL Server
+needs it to be at least 8 characters, with three of upper case, lower case, digits and symbols.
+
+- **petl and petl-sqlserver together:** petl writes to `petl-sqlserver`, on 1433 inside the instance.
+  `PETL_SQLSERVER_PUBLISHED_PORT` (default 1433) is where it's reachable on this machine from outside
+  Docker, e.g. for reporting tools, like `OPENMRS_DB_PORT` for `openmrs-db`.
+- **petl alone:** petl writes to a SQL Server elsewhere: set `PETL_SQLSERVER_HOST` and
+  `PETL_SQLSERVER_PORT` to it (defaults: `petl-sqlserver`, 1433), and the user and password.
+
+Before, `PETL_SQLSERVER_PORT` was also petl-sqlserver's published port, so moving that port broke
+petl. On an instance from then, `sync` sets `PETL_SQLSERVER_PUBLISHED_PORT` from it; then remove
+`PETL_SQLSERVER_PORT` from env, or set it to 1433.
 
 ## Code layout
 

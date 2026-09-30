@@ -3,12 +3,8 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 services:
   petl:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-petl
-    # Soft placeholder default rather than a `:?` guard: Compose interpolates every
-    # fragment in the merged project on EVERY command (status, stop, destroy, ...), not
-    # just when the `petl` profile is actually invoked. A hard `:?` here made an instance
-    # with petl attached but PETL_IMAGE_NAME unset fail every command including destroy,
-    # permanently trapping the instance directory. With a placeholder, only
-    # `run-service petl` fails -- with an obvious "no such image" error.
+    # Compose interpolates every fragment on every command, so PETL_IMAGE_NAME may be empty
+    # (its default) until petl is run: only `run-service petl` then fails, on the image name.
     image: ${PETL_IMAGE_NAME?}:${PETL_IMAGE_TAG?}
     profiles: ["petl"]
     depends_on:

@@ -13,7 +13,7 @@ services:
       SQLCMDPASSWORD: ${PETL_SQLSERVER_PASSWORD?}
       TZ: ${TZ:-UTC}
     ports:
-      - ${PETL_SQLSERVER_PORT?}:1433
+      - ${PETL_SQLSERVER_PUBLISHED_PORT?}:1433
     volumes:
       - petl-sqlserver-data:/var/opt/mssql
     healthcheck:
