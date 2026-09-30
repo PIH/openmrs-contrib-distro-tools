@@ -2,7 +2,10 @@
 # Runs this project's test suite. Usage:
 #   test/run [static|args|integration|all|<test file or dir>] [extra bats args...]
 #
-# Needs only docker, git and jq: bats itself is fetched at a pinned version into test/.deps on first run.
+# Needs docker, git, jq, curl and perl: bats and GNU parallel are fetched at pinned versions into
+# test/.deps on first run. Tests run TEST_JOBS at a time (default: the number of CPUs, up to 8;
+# TEST_JOBS=1 runs them one at a time). Every test names its Docker resources after its own
+# suite-wide number, so they don't collide.
 set -euo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,4 +40,24 @@ case "$LAYER" in
         ;;
 esac
 
-exec "$DEPS_DIR/bats-core/bin/bats" --timing "$@" "${TARGETS[@]}"
+# bats runs tests in parallel through GNU parallel, a single perl script.
+PARALLEL_VERSION=20240922
+PARALLEL_SHA256=63210715e8b7c5e129e098f333cd7cdd5fc7a2f325e8e0fb9ed6edba9f1acbc4
+if [ ! -x "$DEPS_DIR/parallel/parallel" ] || [ "$(cat "$DEPS_DIR/parallel/VERSION" 2>/dev/null)" != "$PARALLEL_VERSION" ]; then
+    rm -rf "$DEPS_DIR/parallel" && mkdir -p "$DEPS_DIR/parallel"
+    curl -fsSL -o "$DEPS_DIR/parallel/parallel.tar.bz2" "https://ftp.gnu.org/gnu/parallel/parallel-$PARALLEL_VERSION.tar.bz2"
+    echo "$PARALLEL_SHA256  $DEPS_DIR/parallel/parallel.tar.bz2" | { sha256sum -c --quiet - 2>/dev/null || shasum -a 256 -c --quiet -; }
+    tar xjf "$DEPS_DIR/parallel/parallel.tar.bz2" -C "$DEPS_DIR/parallel" --strip-components=2 "parallel-$PARALLEL_VERSION/src/parallel"
+    rm "$DEPS_DIR/parallel/parallel.tar.bz2"
+    echo "$PARALLEL_VERSION" > "$DEPS_DIR/parallel/VERSION"
+fi
+export PATH="$DEPS_DIR/parallel:$PATH" PARALLEL=--will-cite
+
+if [ -z "${TEST_JOBS:-}" ]; then
+    TEST_JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
+    [ "$TEST_JOBS" -le 8 ] || TEST_JOBS=8
+fi
+JOBS_ARGS=()
+[ "$TEST_JOBS" -gt 1 ] && JOBS_ARGS=(--jobs "$TEST_JOBS")
+
+exec "$DEPS_DIR/bats-core/bin/bats" --timing "${JOBS_ARGS[@]}" "$@" "${TARGETS[@]}"

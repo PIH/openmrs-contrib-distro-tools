@@ -5,7 +5,7 @@
 load ../helpers
 
 setup_file() {
-    export SRC_DB="$RUN_PREFIX-f-dumpsrc"
+    export SRC_DB="$(file_res src)"
     start_source_db "$SRC_DB"
     # A trigger whose DEFINER account won't exist on any restore target: it restores, but fails the
     # moment it fires -- exactly what strip-mysqldump-definers exists to fix.
