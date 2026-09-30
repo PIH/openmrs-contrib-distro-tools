@@ -66,3 +66,10 @@ teardown() { common_teardown; }
     assert_output --partial 'no such file'
     assert [ ! -e out.sql ]
 }
+
+@test "a failure part way leaves no output file behind" {
+    gzip -c dump.sql | head -c 60 > truncated.sql.gz
+    run "$UTILS/strip-mysqldump-definers.sh" --path=truncated.sql.gz --output=out.sql
+    assert_failure
+    assert [ ! -e out.sql ]
+}

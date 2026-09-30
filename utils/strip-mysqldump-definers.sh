@@ -34,6 +34,8 @@ case "$OUTPUT_PATH" in
 esac
 [ -e "$OUTPUT_PATH" ] && { echo "error: $OUTPUT_PATH already exists" >&2; exit 1; }
 mkdir -p "$(dirname "$OUTPUT_PATH")"
+# A failure part way (e.g. a truncated .gz) would leave a partial copy that looks usable.
+trap 'rm -f "$OUTPUT_PATH"' ERR
 
 case "$SRC" in
     *.gz) READ_CMD=(zcat "$SRC") ;;

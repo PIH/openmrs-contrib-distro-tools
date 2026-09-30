@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # reset-mysql-accounts sets a stopped data directory's accounts to new passwords; openmrs-docker
-# reset-db-accounts uses it, and also updates OpenMRS's connection settings, to rotate passwords.
+# reset-openmrs-db-accounts uses it, and also updates OpenMRS's connection settings, to rotate passwords.
 
 load ../helpers
 
@@ -14,7 +14,7 @@ in_volume() { # <volume> <sh command>
     docker run --rm -v "$1:/data" alpine:3.21 sh -c "$2"
 }
 
-@test "reset-db-accounts sets the MySQL accounts and OpenMRS's connection settings to the passwords now in env" {
+@test "reset-openmrs-db-accounts sets the MySQL accounts and OpenMRS's connection settings to the passwords now in env" {
     NAME="$(instance)"
     local dir env
     SERVICES=openmrs-db create_instance "$NAME"
@@ -32,7 +32,7 @@ in_volume() { # <volume> <sh command>
     sed -i "s/^OPENMRS_DB_PASSWORD=.*/OPENMRS_DB_PASSWORD='n3w\\\\pw'/; s/^OPENMRS_DB_ROOT_PASSWORD=.*/OPENMRS_DB_ROOT_PASSWORD='n3w-root'/" "$dir/env"
     run grep '^OPENMRS_DB_PASSWORD=' "$dir/env"
     assert_output "OPENMRS_DB_PASSWORD='n3w\\pw'"
-    run "$BIN/openmrs-docker" "$NAME" reset-db-accounts
+    run "$BIN/openmrs-docker" "$NAME" reset-openmrs-db-accounts
     assert_success
     assert_output --partial "Set the password of root@localhost"
     assert_output --partial "Set connection.username and connection.password"

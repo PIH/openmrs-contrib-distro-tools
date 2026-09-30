@@ -2,7 +2,13 @@
 set -euo pipefail
 
 COMMAND="${1:-}"
-SERVER_ID="${SERVER_ID:-${2:-}}"
+[ $# -gt 0 ] && shift
+# The server id is positional unless it's set as SERVER_ID, which wins; flags follow either way.
+if [ -n "${1:-}" ] && [[ "$1" != --* ]]; then
+    SERVER_ID="${SERVER_ID:-$1}"
+    shift
+fi
+SERVER_ID="${SERVER_ID:-}"
 
 DISTRO_SOURCE_DIR="${DISTRO_SOURCE_DIR:-$(pwd)}"
 
@@ -57,7 +63,7 @@ usage() {
 }
 
 RESET_DB=false
-for arg in "${@:3}"; do
+for arg in "$@"; do
     case "$arg" in
         --reset-db) RESET_DB=true ;;
         *) echo "Unknown argument: '$arg'"; echo ""; usage ;;

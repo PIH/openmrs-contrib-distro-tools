@@ -185,7 +185,7 @@ env_file() { echo "$OPENMRS_DOCKER_HOME/$NAME/env"; }
 @test "initialize sets OPENMRS_CREATE_TABLES=false after restoring openmrs-data" {
     assert_initializes_to "$BATS_TEST_TMPDIR/data" "$FIXTURE_TREE"
     run grep '^OPENMRS_CREATE_TABLES=' "$(env_file)"
-    assert_output 'OPENMRS_CREATE_TABLES=false'
+    assert_output "OPENMRS_CREATE_TABLES='false'"
 }
 
 @test "initialize sets OPENMRS_CREATE_TABLES=false when openmrs-data is neither restored nor seeded" {
@@ -194,7 +194,7 @@ env_file() { echo "$OPENMRS_DOCKER_HOME/$NAME/env"; }
     run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
     assert_success
     run grep '^OPENMRS_CREATE_TABLES=' "$(env_file)"
-    assert_output 'OPENMRS_CREATE_TABLES=false'
+    assert_output "OPENMRS_CREATE_TABLES='false'"
 }
 
 @test "initialize keeps an OPENMRS_CREATE_TABLES already in the env file" {
@@ -253,4 +253,24 @@ not_owned_by() { # <volume> <uid> <gid>
     assert_failure
     assert_output --partial 'set OPENMRS_DATA_OWNER'
     assert_equal "$(docker volume ls -q --filter "name=^${NAME}_")" ""
+}
+
+@test "initialize restores openmrs-data from a directory the operator can't enter" {
+    chmod 000 "$BATS_TEST_TMPDIR/data"
+    NAME="$(instance)"
+    create_instance "$NAME"
+    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data"
+    chmod 755 "$BATS_TEST_TMPDIR/data"
+    assert_success
+    run tree_of_volume "${NAME}_openmrs-data"
+    assert_output "${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.properties.restored}"
+}
+
+@test "initialize failing after the restore says to destroy before retrying" {
+    NAME="$(instance)"
+    create_instance "$NAME"
+    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data" \
+        OPENMRS_DATA_OWNER=no-such-user:no-such-group
+    assert_failure
+    assert_output --partial "run '$BIN/openmrs-docker $NAME destroy' before retrying"
 }

@@ -186,7 +186,8 @@ For example, you can specify a different port for the Tomcat HTTP server by sett
 set the `DISTRO_SOURCE_DIR` environment variable to the path of the distribution you want to use for local builds.
 
 Once you have the appropriate environment variables determined, you pass them to the `openmrs-docker create` command along
-with the name of the instance you want to create (this can be any name you like):
+with the name of the instance you want to create. The name is also the instance's Docker Compose project name, so it
+must be lowercase letters, digits, `-` and `_`, starting with a letter or digit:
 
 ```bash
 OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr \
@@ -594,9 +595,10 @@ check free disk space before writing anything, as `initialize` does (see "Disk s
   `--user@*` password, creates `root@'%'` and `--user@'%'` (all privileges on `--database`) if
   missing, removes anonymous accounts, and lists the other accounts it kept. Refuses while a
   container is using the volume. Used by `initialize` after a physical restore and by
-  `openmrs-docker <name> reset-db-accounts`.
+  `openmrs-docker <name> reset-openmrs-db-accounts`.
 - **`wait-for-healthy --container=<name> [--timeout=<seconds>] [--fail-on-unhealthy=true|false]`**
-  -- polls until a container reports healthy; fails fast on exited/dead/restarting, or times out.
+  -- polls until a container reports healthy; fails fast on exited/dead/restarting or a container with no
+  healthcheck, or times out.
 
 ### Starting a server
 
@@ -643,7 +645,7 @@ MySQL only takes them when it first sets up an empty data directory, and OpenMRS
 the connection settings its runtime properties file got on its first start. After editing `env`, run:
 
 ```bash
-openmrs-docker <name> reset-db-accounts
+openmrs-docker <name> reset-openmrs-db-accounts
 ```
 
 It stops the instance, sets the MySQL accounts to the passwords in `env` (with
@@ -971,7 +973,10 @@ Findings only surface in the Security tab on **public** repos — that's a free 
 under `docker/services/` get copied into a new instance — pass it to `create` to include the
 standard OpenHIM install (`openhim`, i.e. mongo + openhim-core + openhim-console) and one or more
 mediators alongside OpenMRS, or `add-service`/`remove-service` them onto an already-created
-instance without recreating it. Each mediator is its own fragment file; more than one can be
+instance without recreating it. `add-service` refuses a fragment whose services don't resolve with the
+instance's others (e.g. a mediator without `openhim`), and changes nothing. `remove-service` removes only
+the containers of the fragment it removes, and doesn't start or stop anything else; the fragment's
+volumes are kept, and it names them. Each mediator is its own fragment file; more than one can be
 attached to the same OpenHIM instance at once. A service's default env vars live in a sibling
 `<service>.env.defaults` file next to its `docker/services/<service>.yaml`; `create` and
 `add-service` both pick these up automatically for whichever services you select, so attaching a

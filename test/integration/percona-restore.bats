@@ -7,9 +7,6 @@
 load ../helpers
 
 setup_file() {
-    # The .7z test checks that no temporary backup-percona-* volume is left, which another test's
-    # .7z backup running at the same time would break.
-    export BATS_NO_PARALLELIZE_WITHIN_FILE=true
     export SRC_DB="$(file_res src)"
     start_source_db "$SRC_DB"
 }
@@ -39,10 +36,15 @@ in_7z() { # <archive> <password> <7z args...>
 }
 
 @test "backup-percona --output=<.7z> writes the legacy layout, and initialize restores it" {
+    record_docker_argv
     ARCHIVE_PASSWORD=pw run percona_backup backup.7z
     assert_success
-    run docker volume ls -q --filter name=backup-percona-
-    assert_output ''
+    # its temporary volume is gone (named from the recorded command line: other test files make their own)
+    local tmp_volume
+    tmp_volume=$(sed -n 's/^volume create \(backup-percona-[^ ]*\)$/\1/p' "$DOCKER_ARGV_LOG")
+    [ -n "$tmp_volume" ]
+    run docker volume inspect "$tmp_volume"
+    assert_failure
     # prepared, with the backup's files at the top level
     run in_7z backup.7z pw l -ba -slt
     assert_line 'Path = xtrabackup_checkpoints'

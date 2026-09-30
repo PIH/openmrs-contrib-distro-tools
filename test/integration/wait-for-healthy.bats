@@ -48,3 +48,12 @@ start() { # <health command> [docker run args...]
     assert_failure
     assert_output --partial 'no such container'
 }
+
+@test "fails at once for a container with no healthcheck" {
+    docker run -d --name "$(res c)" alpine:3.21 sleep 300 >/dev/null
+    SECONDS=0
+    run "$UTILS/wait-for-healthy.sh" --container="$(res c)" --timeout=120
+    assert_failure
+    assert_output --partial 'has no healthcheck'
+    assert [ "$SECONDS" -lt 30 ]
+}
