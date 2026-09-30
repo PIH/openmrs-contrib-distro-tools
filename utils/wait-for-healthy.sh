@@ -1,15 +1,14 @@
 #!/bin/bash
-# General-purpose: polls any container until it reports healthy. Usage:
-#   utils/wait-for-healthy.sh --container=<name> [--timeout=<seconds>] [--fail-on-unhealthy=true|false]
+# Waits until a container's healthcheck reports healthy. Fails at once if the container stops or
+# restarts (a crash-looping `restart: unless-stopped` container never settles on "exited").
 #
-# Fails fast if the container is exited, dead, or restarting (a container declared
-# `restart: unless-stopped` crash-loops rather than settling on exited/dead, so `restarting` has
-# to be checked too, or this would poll the full timeout against a container that's never coming
-# back), or times out after --timeout (default 600s). If --fail-on-unhealthy is true (default
-# false), a Health.Status of "unhealthy" is also treated as an immediate failure rather than
-# kept polling through -- useful for a container whose healthcheck can legitimately report
-# unhealthy while a long-running first-boot operation is still in progress.
+# Usage: openmrs-utils wait-for-healthy --container=<name> [--timeout=600]
+#            [--fail-on-unhealthy=false]
+#   --timeout                 seconds to wait
+#   --fail-on-unhealthy=true  fails at the first "unhealthy" instead of waiting on (leave it off
+#                             for a container that can report unhealthy during a long first start)
 set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 CONTAINER=
 TIMEOUT=600
@@ -19,43 +18,31 @@ for arg in "$@"; do
         --container=*) CONTAINER="${arg#*=}" ;;
         --timeout=*) TIMEOUT="${arg#*=}" ;;
         --fail-on-unhealthy=*) FAIL_ON_UNHEALTHY="${arg#*=}" ;;
-        *) echo "unknown argument: $arg" >&2; exit 1 ;;
+        *) die "unknown argument: $arg" ;;
     esac
 done
-[ -z "$CONTAINER" ] && { echo "usage: $0 --container=<name> [--timeout=<seconds>] [--fail-on-unhealthy=true|false]" >&2; exit 1; }
+[ -n "$CONTAINER" ] || usage
 case "$TIMEOUT" in
-    ''|*[!0-9]*|0) echo "error: --timeout must be a positive integer, got '$TIMEOUT'" >&2; exit 1 ;;
+    ''|*[!0-9]*|0) die "--timeout must be a positive integer, got '$TIMEOUT'" ;;
 esac
-docker inspect "$CONTAINER" >/dev/null 2>&1 || { echo "error: no such container: $CONTAINER" >&2; exit 1; }
-# Without one there's no status to wait for (Test is ["NONE"] when the image's was turned off).
+docker inspect "$CONTAINER" >/dev/null 2>&1 || die "no such container: $CONTAINER"
+# Test is ["NONE"] when the image's healthcheck was turned off.
 case "$(docker inspect --format '{{with .Config.Healthcheck}}{{index .Test 0}}{{end}}' "$CONTAINER")" in
-    ''|NONE) echo "error: $CONTAINER has no healthcheck to wait for" >&2; exit 1 ;;
+    ''|NONE) die "$CONTAINER has no healthcheck to wait for" ;;
 esac
 
-# Polled every second against a deadline, so the time docker inspect itself takes doesn't stretch
-# the timeout. The container's own healthcheck interval decides how soon it can report healthy.
-INTERVAL=1
+# Against a deadline, so the time `docker inspect` takes doesn't stretch the timeout.
 DEADLINE=$(( $(date +%s) + TIMEOUT ))
-echo "Waiting for $CONTAINER to become healthy (timeout: ${TIMEOUT}s)..." >&2
+note "Waiting for $CONTAINER to become healthy (timeout: ${TIMEOUT}s)..."
 while true; do
     case "$(docker inspect --format '{{.State.Status}}' "$CONTAINER" 2>/dev/null || true)" in
-        exited|dead|restarting)
-            echo "error: $CONTAINER exited unexpectedly -- check 'docker logs $CONTAINER'." >&2
-            exit 1
-            ;;
+        exited|dead|restarting) die "$CONTAINER exited unexpectedly -- check 'docker logs $CONTAINER'." ;;
     esac
     STATUS=$(docker inspect --format '{{.State.Health.Status}}' "$CONTAINER" 2>/dev/null || true)
-    if [ "$STATUS" = "healthy" ]; then
-        echo "$CONTAINER is healthy." >&2
-        exit 0
+    [ "$STATUS" != healthy ] || { note "$CONTAINER is healthy."; exit 0; }
+    if [ "$FAIL_ON_UNHEALTHY" = true ] && [ "$STATUS" = unhealthy ]; then
+        die "$CONTAINER reported unhealthy -- check 'docker logs $CONTAINER'."
     fi
-    if [ "$FAIL_ON_UNHEALTHY" = "true" ] && [ "$STATUS" = "unhealthy" ]; then
-        echo "error: $CONTAINER reported unhealthy -- check 'docker logs $CONTAINER'." >&2
-        exit 1
-    fi
-    if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-        echo "error: timed out after ${TIMEOUT}s waiting for $CONTAINER to become healthy" >&2
-        exit 1
-    fi
-    sleep "$INTERVAL"
+    [ "$(date +%s)" -lt "$DEADLINE" ] || die "timed out after ${TIMEOUT}s waiting for $CONTAINER to become healthy"
+    sleep 1
 done

@@ -1,18 +1,14 @@
 #!/bin/bash
-# General-purpose: converts an extracted percona/xtrabackup backup directory (already prepared,
-# i.e. --apply-log has already been run against it -- both utils/backup-percona.sh and PIH's
-# legacy nightly backup scripts produce backups in this state) into a ready-to-use MySQL data
-# directory. Usage:
-#   utils/convert-percona-backup.sh --backup-dir=<extracted backup dir> --output-dir=<dir>
+# Turns a prepared (--apply-log'd) XtraBackup backup directory, from backup-percona or a legacy
+# nightly backup, into a MySQL data directory (innobackupex --copy-back), usable as initialize's
+# RESTORE_MYSQL_DATA_PATH. Prints the data directory's path.
 #
-# --output-dir must not already exist. The result is directly usable as
-# `openmrs-docker <name> initialize`'s RESTORE_MYSQL_DATA_PATH, or as the datadir for any other
-# MySQL container. The output is written by a container running as root -- reclaim ownership
-# (e.g. `docker run --rm -v <output-dir>:/target alpine:3.21 chown -R $(id -u):$(id -g) /target`)
-# before trying to remove it as a normal user.
+# Usage: openmrs-utils convert-percona-backup --backup-dir=<dir> --output-dir=<new dir>
+#   The output is written as root: reclaim it (chown) before removing it as another user.
+#   SKIP_DISK_SPACE_CHECK=true  skips the free-space check
 set -euo pipefail
-# shellcheck source=lib/disk-space.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/disk-space.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+. "$UTILS_DIR/lib/disk-space.sh"
 
 BACKUP_DIR=
 OUTPUT_DIR=
@@ -20,30 +16,21 @@ for arg in "$@"; do
     case "$arg" in
         --backup-dir=*) BACKUP_DIR="${arg#*=}" ;;
         --output-dir=*) OUTPUT_DIR="${arg#*=}" ;;
-        *) echo "unknown argument: $arg" >&2; exit 1 ;;
+        *) die "unknown argument: $arg" ;;
     esac
 done
-[ -z "$BACKUP_DIR" ] && { echo "usage: $0 --backup-dir=<extracted backup dir> --output-dir=<dir>" >&2; exit 1; }
-[ -z "$OUTPUT_DIR" ] && { echo "usage: $0 --backup-dir=<extracted backup dir> --output-dir=<dir>" >&2; exit 1; }
-[ -d "$BACKUP_DIR" ] || { echo "error: no such directory: $BACKUP_DIR" >&2; exit 1; }
-[ -e "$OUTPUT_DIR" ] && { echo "error: $OUTPUT_DIR already exists" >&2; exit 1; }
-BACKUP_DIR_ABS=$(cd "$BACKUP_DIR" && pwd)
-disk_space_require "converting $BACKUP_DIR_ABS (a full copy)" "$(disk_space_size_of "$BACKUP_DIR_ABS")" \
+[ -n "$BACKUP_DIR" ] && [ -n "$OUTPUT_DIR" ] || usage
+[ -d "$BACKUP_DIR" ] || die "no such directory: $BACKUP_DIR"
+[ ! -e "$OUTPUT_DIR" ] || die "$OUTPUT_DIR already exists"
+BACKUP_DIR=$(cd "$BACKUP_DIR" && pwd)
+OUTPUT_DIR=$(abs_path "$OUTPUT_DIR")
+disk_space_require "converting $BACKUP_DIR (a full copy)" "$(disk_space_size_of "$BACKUP_DIR")" \
     "$(disk_space_free_at "$OUTPUT_DIR")" "the filesystem of $OUTPUT_DIR"
-mkdir -p "$OUTPUT_DIR"
+prepare_output_dir "$OUTPUT_DIR"
 
-OUTPUT_DIR_ABS=$(cd "$OUTPUT_DIR" && pwd)
-
-echo "Converting $BACKUP_DIR_ABS into a MySQL data directory at $OUTPUT_DIR_ABS..." >&2
-# --copy-back, not --move-back: /opt/backup is deliberately mounted read-only, and --move-back's
-# rename step can't unlink the source, so it falls back to copy + a failed delete -- succeeding
-# overall but emitting a spurious "Error: unlink ... failed" line per file.
-# Redirected to stderr like every other utils/ script's own output: this script's stdout is the
-# result path, captured via $(...) by callers (see the usage note above).
-docker run --rm \
-    -v "$BACKUP_DIR_ABS:/opt/backup:ro" \
-    -v "$OUTPUT_DIR_ABS:/var/lib/mysql" \
-    partnersinhealth/percona-0.1-4 \
+note "Converting $BACKUP_DIR into a MySQL data directory at $OUTPUT_DIR..."
+# --copy-back, not --move-back: the backup is mounted read-only, and --move-back would print a
+# spurious "Error: unlink ... failed" for every file.
+docker run --rm -v "$BACKUP_DIR:/opt/backup:ro" -v "$OUTPUT_DIR:/var/lib/mysql" "$PERCONA_IMAGE" \
     innobackupex --copy-back --datadir=/var/lib/mysql /opt/backup >&2
-
-echo "$OUTPUT_DIR_ABS"
+echo "$OUTPUT_DIR"

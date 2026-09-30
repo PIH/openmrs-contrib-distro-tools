@@ -1,24 +1,23 @@
 #!/bin/bash
-# General-purpose: removes openmrs-module-initializer's cached configuration_checksums from an
-# openmrs-data volume, so the next start reprocesses all configuration from scratch rather than
-# trusting checksums that may no longer reflect reality (e.g. after loading a different database
-# while keeping an existing openmrs-data). Usage:
-#   utils/clear-configuration-checksums.sh --volume=<openmrs-data volume name>
+# Removes openmrs-module-initializer's configuration_checksums from an openmrs-data volume, so the
+# next start reprocesses all configuration (e.g. after loading a different database under an
+# existing openmrs-data).
+#
+# Usage: openmrs-utils clear-configuration-checksums --volume=<openmrs-data volume>
 set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 VOLUME=
 for arg in "$@"; do
     case "$arg" in
         --volume=*) VOLUME="${arg#*=}" ;;
-        *) echo "unknown argument: $arg" >&2; exit 1 ;;
+        *) die "unknown argument: $arg" ;;
     esac
 done
-[ -z "$VOLUME" ] && { echo "usage: $0 --volume=<openmrs-data volume name>" >&2; exit 1; }
-docker volume inspect "$VOLUME" >/dev/null 2>&1 || { echo "error: no such volume: $VOLUME" >&2; exit 1; }
+[ -n "$VOLUME" ] || usage
+require_volume_or_dir "$VOLUME"
+refuse_if_in_use "$VOLUME"
 
-RUNNING=$(docker ps --filter "volume=$VOLUME" -q)
-[ -n "$RUNNING" ] && { echo "error: $VOLUME is in use by a running container -- stop it first." >&2; exit 1; }
-
-echo "Clearing configuration_checksums from $VOLUME..." >&2
-docker run --rm -v "$VOLUME:/data" alpine:3.21 rm -rf /data/configuration_checksums
-echo "Cleared configuration_checksums from $VOLUME. The next start will reprocess all configuration." >&2
+note "Clearing configuration_checksums from $VOLUME..."
+docker run --rm -v "$VOLUME:/data" "$ALPINE_IMAGE" rm -rf /data/configuration_checksums
+note "Cleared configuration_checksums from $VOLUME. The next start will reprocess all configuration."

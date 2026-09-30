@@ -37,10 +37,10 @@ teardown() { common_teardown; }
 @test "convert-percona-backup requires --backup-dir and --output-dir" {
     run "$UTILS/convert-percona-backup.sh" --output-dir=out
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
     run "$UTILS/convert-percona-backup.sh" --backup-dir=in
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
 }
 
 @test "convert-percona-backup rejects a backup dir that doesn't exist" {
