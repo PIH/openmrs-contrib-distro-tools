@@ -21,9 +21,9 @@ scripts() {
     assert_success
 }
 
-@test "sourced utils libraries pass shellcheck" {
+@test "sourced libraries pass shellcheck" {
     cd "$REPO_ROOT"
-    run run_shellcheck -x -S warning -s bash utils/lib/*.sh
+    run run_shellcheck -x -S warning -s bash utils/lib/*.sh lib/openmrs-docker/*.sh
     assert_success
 }
 

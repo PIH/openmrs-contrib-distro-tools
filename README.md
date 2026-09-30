@@ -356,7 +356,8 @@ When `openmrs-data` is restored from `RESTORE_OPENMRS_DATA_PATH`, `initialize` m
 `openmrs-runtime.properties` aside to `openmrs-runtime.properties.restored`. It holds the source
 server's connection settings, and openmrs-core 2.6+ only merges `OMRS_EXTRA_*` properties into an
 existing runtime properties file, so those stale `connection.*` values would otherwise win over this
-instance's. OpenMRS writes a fresh one from the instance's `env` on first start.
+instance's. OpenMRS writes a fresh one from the instance's `env` on first start. (This is
+`openmrs-utils runtime-properties --set-aside`.)
 
 #### Carrying over runtime properties from the restored server
 
@@ -1109,11 +1110,22 @@ openmrs-docker <name> run-service petl
 Note that `PETL_SQLSERVER_PASSWORD` has a default committed to this repo, which exists only so the
 fragment works out of the box for local development — override it for anything else.
 
+## Code layout
+
+- `bin/openmrs-docker` parses the command line, loads the instance, and calls the command's function
+  (`cmd_<command>`) in `lib/openmrs-docker/`: `env.sh` (the env file and per-container env files),
+  `compose.sh` (running Compose, the instance lock), `instance.sh` (create, list, sync, add/remove
+  a service, destroy), `stack.sh` (start, stop, logs, wait, ...), `initialize.sh` and `db.sh`.
+- `utils/` holds the standalone utilities, and `utils/lib/` the helpers they (and `openmrs-docker`)
+  share; `utils/lib/in-container/` holds scripts that run inside a container.
+- `docker/services/` holds the service fragments and their `.env.defaults`, and `docker/modes/` the
+  overlays `initialize` and `--dev` add.
+
 ## Testing this project
 
 The `test/` directory holds a [bats](https://github.com/bats-core/bats-core) test suite for this
 project's own scripts, run by `.github/workflows/test.yml` on every push and pull request that touches
-`bin/`, `utils/`, `docker/` or `test/`. Run it locally with:
+`bin/`, `lib/`, `utils/`, `docker/` or `test/`. Run it locally with:
 
 ```bash
 test/run                 # everything

@@ -6,6 +6,7 @@ on:
       - 'main'
     paths:
       - 'bin/**'
+      - 'lib/**'
       - 'utils/**'
       - 'docker/**'
       - 'test/**'
@@ -13,6 +14,7 @@ on:
   pull_request:
     paths:
       - 'bin/**'
+      - 'lib/**'
       - 'utils/**'
       - 'docker/**'
       - 'test/**'
