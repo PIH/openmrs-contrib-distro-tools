@@ -72,3 +72,11 @@ teardown() { common_teardown; }
     run docker volume inspect "$out"
     assert_failure
 }
+
+@test "a .tar.gz of files with long runs of zeros extracts (busybox tar's own gzip detection can't)" {
+    mkdir -p src/data && head -c 2097152 /dev/zero > src/data/zeros
+    tar czf data.tar.gz -C src data
+    run --separate-stderr "$UTILS/extract-archive.sh" --path=data.tar.gz --output-dir="$BATS_TEST_TMPDIR/out"
+    assert_success
+    assert_equal "$(stat -c %s out/data/zeros)" 2097152
+}

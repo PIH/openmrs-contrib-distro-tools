@@ -337,6 +337,7 @@ invocation only (these aren't persisted to the instance's env file the way `SEED
 | `SEED_IMAGE_NAME` / `SEED_IMAGE_TAG` | either, if not overridden | the nightly seed image (documented per-distro) |
 | `RESTORE_MYSQL_DUMP_PATH` | `mysql/db-data` | a `.sql`/`.sql.gz` dump, handed to MySQL's own first-boot import -- or a `.7z`/`.zip` archive holding one (e.g. from `backup-mysqldump`), extracted into a temporary volume without touching the host's disk (`ARCHIVE_PASSWORD` for a protected archive) |
 | `RESTORE_MYSQL_DATA_PATH` | `mysql/db-data` | a ready MySQL data directory, copied straight into the volume before MySQL ever starts (far faster for a large database) |
+| `RESTORE_MYSQL_PERCONA_PATH` | `mysql/db-data` | a Percona/xtrabackup backup: a `.7z`/`.zip`/`.tar.gz`/`.tgz`/`.tar` archive (e.g. a legacy nightly `percona.7z`, or `backup-percona --output=<name>.7z`; `ARCHIVE_PASSWORD` for a protected one) or a directory. Extracted, prepared if it isn't already, and copied into the volume, all in containers -- see below |
 | `RESTORE_OPENMRS_DATA_PATH` | `openmrs-data` | a directory, copied straight into the volume -- or a `.tar.gz`/`.tgz`/`.tar`/`.7z`/`.zip` archive of one (e.g. from `backup-openmrs-data-directory`), extracted straight into the volume without touching the host's disk (`ARCHIVE_PASSWORD` for a protected `.7z`/`.zip`) |
 
 `initialize` waits up to `INITIALIZE_DB_TIMEOUT` seconds (default 3600) for the restored database to
@@ -345,7 +346,7 @@ legitimately take a long time. Like the `RESTORE_*` variables, it's set on the `
 invocation itself.
 
 `mysql/db-data` requires exactly one source: `RESTORE_MYSQL_DUMP_PATH`, `RESTORE_MYSQL_DATA_PATH`,
-or `SEED_IMAGE_NAME`. `openmrs-data` is optional -- if neither `RESTORE_OPENMRS_DATA_PATH` nor
+`RESTORE_MYSQL_PERCONA_PATH`, or `SEED_IMAGE_NAME`. `openmrs-data` is optional -- if neither `RESTORE_OPENMRS_DATA_PATH` nor
 `SEED_IMAGE_NAME` is set, that volume is simply left for OpenMRS's own first-boot
 module-initializer run to build up from scratch, same as a totally fresh install (e.g. when
 restoring a real database backup with no matching `openmrs-data` backup to go with it).
@@ -437,9 +438,21 @@ If an openmrs-data archive has exactly one top-level directory (as `backup-openm
 produces), that directory's contents become `openmrs-data`; otherwise the archive's top level is used
 as is. A dump archive must hold exactly one dump file (`.sql` or `.sql.gz`).
 
-`RESTORE_MYSQL_DATA_PATH` is always a plain, ready-to-use MySQL data directory. Preparing one from a
-percona/xtrabackup backup (archived or not) is a separate step, using the standalone scripts in
-`utils/` (see below):
+`RESTORE_MYSQL_PERCONA_PATH` takes a Percona/xtrabackup backup as it is. In a temporary
+`percona-staging` volume, `initialize` extracts the archive (or copies the directory), unwrapping a
+single top-level folder, so both a flat legacy `percona.7z` and an archive holding one
+`<name>-percona/` folder work. It then runs `innobackupex --apply-log` if the backup isn't prepared
+yet (legacy nightly backups are), copies it into `db-data` with `--copy-back`, and removes the
+staging volume. Nothing is written to the host unencrypted, and it needs about twice the database's
+size on Docker's volumes. Anything without an `xtrabackup_checkpoints` file is refused:
+
+```bash
+ARCHIVE_PASSWORD=<password> RESTORE_MYSQL_PERCONA_PATH=/path/to/percona.7z openmrs-docker <name> initialize
+```
+
+`RESTORE_MYSQL_DATA_PATH` is a plain, ready-to-use MySQL data directory instead. To make one from a
+Percona backup by hand (e.g. to inspect it first), use the standalone scripts in `utils/` (see
+below):
 
 `openmrs-utils <script-name> [args...]` is on `PATH` (see "Install" above) and is a thin passthrough
 to `$DISTRO_TOOLS_HOME/utils/<script-name>.sh` -- so `openmrs-utils extract-archive --path=...` is
@@ -455,14 +468,15 @@ RESTORE_MYSQL_DATA_PATH="$DATADIR" openmrs-docker <name> initialize
 **Disk space:** before creating any volume, `initialize` estimates what the restore will write and
 stops if Docker's volume filesystem has less free than that plus 10%, rather than failing part way
 with half-filled volumes. The estimate is a data directory's size, a dump's uncompressed size
-(counted twice for a `.7z`/`.zip`, which is extracted into a temporary volume first), and an
+(counted twice for a `.7z`/`.zip`, which is extracted into a temporary volume first), a Percona
+backup's (counted twice: extracted, then copied in), and an
 openmrs-data directory's or archive's uncompressed size; a seed image isn't counted. A dump import
 usually needs more than the dump itself (MySQL builds the indexes too), so for dumps this catches
 "nowhere near enough" rather than a tight fit. `extract-archive`, `backup-percona`,
 `convert-percona-backup` and `backup-openmrs-data-directory` check their output's filesystem the
 same way. `SKIP_DISK_SPACE_CHECK=true` goes ahead anyway.
 
-**Accounts after `RESTORE_MYSQL_DATA_PATH`:** a physical backup is a copy of the source server's
+**Accounts after `RESTORE_MYSQL_DATA_PATH` or `RESTORE_MYSQL_PERCONA_PATH`:** a physical backup is a copy of the source server's
 entire data directory, *including its `mysql` system tables*, so it arrives with the source's
 accounts and passwords (the image only creates its own on an empty data directory). `initialize`
 sets them to this instance's before the database first starts, with `reset-mysql-accounts` (see
@@ -512,10 +526,17 @@ check free disk space before writing anything, as `initialize` does (see "Disk s
   dump (for a new one, use `backup-mysqldump --strip-definers`): strips `DEFINER=`user`@`host`` clauses from routines/triggers/
   views into a new copy (the original is untouched), so a definer account that doesn't exist on
   the restore target doesn't cause a restored routine/trigger to fail at execution time.
-- **`backup-percona --container=<name> --volume=<db data volume or host dir> --output=<dir>
-  [--databases=<list>]`** -- takes a prepared physical backup of a running MySQL container's data
-  volume (`MYSQL_ROOT_PASSWORD` env var; a bind-mounted host directory works too, not just a named
-  volume), ready for `convert-percona-backup`. `--databases` (optional, space-separated) limits the
+- **`backup-percona (--container=<name> | --host=<host> [--port=3306]) --volume=<db data volume or
+  host dir> --output=<dir | path.7z> [--databases=<list>]`** -- takes a prepared physical backup of
+  a running MySQL server's data directory, as root (`MYSQL_ROOT_PASSWORD` env var). `--container`
+  reaches a MySQL container through its network; `--host` connects over TCP with host networking,
+  for a MySQL installed on the host (e.g. `--host=127.0.0.1 --volume=/var/lib/mysql` on a legacy
+  server). `--volume` is the server's data directory, read directly. An `--output` ending in `.7z`
+  is a password-protected archive (`ARCHIVE_PASSWORD` env var, required) in the legacy nightly
+  `percona.7z` layout -- prepared, files at the top level, `-p` encryption -- for
+  `RESTORE_MYSQL_PERCONA_PATH` or the DW refresh; the backup is taken in a temporary Docker volume
+  and archived from there, so it's never on the host unencrypted. Any other `--output` is a
+  directory, ready for `convert-percona-backup` or `RESTORE_MYSQL_PERCONA_PATH`. `--databases` (optional, space-separated) limits the
   backup to specific databases, passed through to innobackupex's own `--databases` option with the
   `mysql` and `performance_schema` system databases added (innobackupex backs up only exactly what's
   listed, and a data directory restored without `mysql` has no usable accounts); omit it to back up

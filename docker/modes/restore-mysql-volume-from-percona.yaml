@@ -1,0 +1,79 @@
+# Overlay used by `openmrs-docker <name> initialize` when the mysql/db-data volume is restored from
+# a Percona/xtrabackup backup (RESTORE_MYSQL_PERCONA_PATH): an archive (.7z, .zip, .tar.gz, .tgz,
+# .tar) or a directory. Everything happens in containers and a temporary percona-staging volume, so
+# nothing unencrypted is written to the host:
+#   1. extract-percona-backup extracts the archive (or copies the directory) into percona-staging,
+#      unwrapping a single top-level folder -- so both a legacy "flat" percona.7z and an archive
+#      holding one <name>-percona/ folder work.
+#   2. restore-mysql-volume prepares it (innobackupex --apply-log) if it isn't already -- legacy
+#      nightly backups are -- then copies it into db-data (--copy-back) and gives it to mysql.
+# Always used together with reset-mysql-accounts.yaml. percona-staging is removed again by
+# initialize once it's done.
+#
+# ARCHIVE_PASSWORD (optional -- a secret) is passed through from initialize's own environment by
+# name only, so its value never appears in any command line.
+#
+# Set by initialize itself, not persisted to the instance's env file:
+#   RESTORE_MYSQL_PERCONA_PATH -- absolute path to the archive or directory on the host
+#   RESTORE_MYSQL_PERCONA_NAME -- "archive.<ext>" for an archive (its format), "backup" for a directory
+
+services:
+  extract-percona-backup:
+    image: partnersinhealth/p7zip
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-extract-percona-backup
+    environment:
+      - ARCHIVE_PASSWORD
+      - SOURCE_NAME=${RESTORE_MYSQL_PERCONA_NAME:?RESTORE_MYSQL_PERCONA_NAME must be set}
+    volumes:
+      - ${RESTORE_MYSQL_PERCONA_PATH:?RESTORE_MYSQL_PERCONA_PATH must be set}:/source/${RESTORE_MYSQL_PERCONA_NAME:?RESTORE_MYSQL_PERCONA_NAME must be set}:ro
+      - percona-staging:/staging
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        RAW=/staging/raw
+        mkdir "$$RAW"
+        case "$$SOURCE_NAME" in
+            *.7z|*.zip) 7z x -p"$${ARCHIVE_PASSWORD:-}" -o"$$RAW" -y "/source/$$SOURCE_NAME" >/dev/null ;;
+            # z given explicitly: busybox tar's own gzip detection fails on long runs of zeros,
+            # which InnoDB files are full of ("invalid tar header checksum").
+            *.tar.gz) tar xzf "/source/$$SOURCE_NAME" -C "$$RAW" ;;
+            *.tar) tar xf "/source/$$SOURCE_NAME" -C "$$RAW" ;;
+            *) cp -a "/source/$$SOURCE_NAME/." "$$RAW/" ;;
+        esac
+        ROOT="$$RAW"
+        TOP=$$(find "$$RAW" -mindepth 1 -maxdepth 1)
+        if [ "$$(echo "$$TOP" | wc -l)" -eq 1 ] && [ -d "$$TOP" ]; then ROOT="$$TOP"; fi
+        if [ ! -f "$$ROOT/xtrabackup_checkpoints" ]; then
+            echo "error: $$SOURCE_NAME isn't a Percona/xtrabackup backup (no xtrabackup_checkpoints)" >&2
+            exit 1
+        fi
+        mv "$$ROOT" /staging/backup
+
+  restore-mysql-volume:
+    image: partnersinhealth/percona-0.1-4
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-restore-mysql-volume
+    depends_on:
+      extract-percona-backup:
+        condition: service_completed_successfully
+    volumes:
+      - percona-staging:/staging
+      - db-data:/var/lib/mysql
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        # innobackupex's own output is long; it's shown only if a step fails.
+        run() { "$$@" > /tmp/innobackupex.log 2>&1 || { cat /tmp/innobackupex.log; exit 1; }; }
+        if grep -q "backup_type = full-backuped" /staging/backup/xtrabackup_checkpoints; then
+            echo "Preparing the backup (innobackupex --apply-log)"
+            run innobackupex --apply-log /staging/backup
+        fi
+        echo "Copying the backup into db-data (innobackupex --copy-back)"
+        run innobackupex --copy-back --datadir=/var/lib/mysql /staging/backup
+        chown -R 999:999 /var/lib/mysql
+
+volumes:
+  percona-staging:

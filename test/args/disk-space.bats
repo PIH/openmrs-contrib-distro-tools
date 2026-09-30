@@ -68,3 +68,13 @@ random_file() { # <path> <KiB>
     assert_success
     assert [ -f out.tar.gz ]
 }
+
+@test "initialize counts a Percona backup twice (extracted into a temporary volume, then copied in)" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db create_instance "$NAME"
+    random_file percona/ibdata1 1024
+    DISK_SPACE_FREE_KB=100 run_initialize "$NAME" RESTORE_MYSQL_PERCONA_PATH=percona
+    assert_failure
+    assert_output --partial "needs about 2.0M"
+    assert_no_leftovers
+}
