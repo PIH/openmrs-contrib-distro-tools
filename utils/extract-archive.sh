@@ -4,7 +4,10 @@
 #
 # If <path> is a recognized archive (.7z, .zip, .tar.gz, .tgz, .tar), extracts it into
 # --output-dir (default: a fresh directory from mktemp -d) and prints the path to its single
-# top-level entry. Otherwise prints <path> unchanged. ARCHIVE_PASSWORD (env var, optional,
+# top-level entry -- or, for an archive with more than one (a "flat" archive, e.g. a legacy
+# percona.7z with the backup's files at its top level), the directory it was extracted into.
+# Otherwise prints <path> unchanged. Refuses before extracting if the output's filesystem clearly
+# hasn't room for the archive's contents (utils/lib/disk-space.sh; SKIP_DISK_SPACE_CHECK=true). ARCHIVE_PASSWORD (env var, optional,
 # .7z/.zip only -- a secret) is used if set; extraction is attempted with an empty password if
 # it's unset, which succeeds for an unprotected archive and fails cleanly (not hangs) if the
 # archive actually needed one. Passed to the container as a bare `-e ARCHIVE_PW` (inheriting the
@@ -12,6 +15,8 @@
 # value itself never appears in `docker`'s argv -- and so never shows up in `ps` output, which
 # shows argv but not environment.
 set -euo pipefail
+# shellcheck source=lib/disk-space.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/disk-space.sh"
 
 SRC=
 OUTPUT_DIR=
@@ -24,6 +29,13 @@ for arg in "$@"; do
 done
 [ -z "$SRC" ] && { echo "usage: $0 --path=<path> [--output-dir=<dir>]" >&2; exit 1; }
 [ -e "$SRC" ] || { echo "error: no such file or directory: $SRC" >&2; exit 1; }
+
+case "$SRC" in
+    *.7z|*.zip|*.tar.gz|*.tgz|*.tar)
+        disk_space_require "extracting $SRC" "$(disk_space_contents_size "$SRC")" \
+            "$(disk_space_free_at "${OUTPUT_DIR:-${TMPDIR:-/tmp}}")" "the filesystem of ${OUTPUT_DIR:-${TMPDIR:-/tmp}}"
+        ;;
+esac
 
 case "$SRC" in
     *.7z|*.zip)
@@ -65,8 +77,10 @@ esac
 
 EXTRACTED=$(find "$OUTPUT_DIR" -mindepth 1 -maxdepth 1)
 [ -z "$EXTRACTED" ] && { echo "error: extraction of $SRC produced no files" >&2; exit 1; }
-# Exactly one entry: more than one would make the printed path multi-line and corrupt every
-# caller that captures this command's stdout as a single path.
-COUNT=$(echo "$EXTRACTED" | wc -l)
-[ "$COUNT" -eq 1 ] || { echo "error: extraction of $SRC produced $COUNT top-level entries, expected exactly 1" >&2; exit 1; }
-echo "$EXTRACTED"
+# Always a single path, since callers capture this command's stdout as one: the one top-level entry
+# (a dump file, or an archive's own folder), or else the directory holding them all.
+if [ "$(echo "$EXTRACTED" | wc -l)" -eq 1 ]; then
+    echo "$EXTRACTED"
+else
+    echo "$OUTPUT_DIR"
+fi

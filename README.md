@@ -452,6 +452,16 @@ DATADIR=$(openmrs-utils convert-percona-backup --backup-dir="$BACKUP_DIR" --outp
 RESTORE_MYSQL_DATA_PATH="$DATADIR" openmrs-docker <name> initialize
 ```
 
+**Disk space:** before creating any volume, `initialize` estimates what the restore will write and
+stops if Docker's volume filesystem has less free than that plus 10%, rather than failing part way
+with half-filled volumes. The estimate is a data directory's size, a dump's uncompressed size
+(counted twice for a `.7z`/`.zip`, which is extracted into a temporary volume first), and an
+openmrs-data directory's or archive's uncompressed size; a seed image isn't counted. A dump import
+usually needs more than the dump itself (MySQL builds the indexes too), so for dumps this catches
+"nowhere near enough" rather than a tight fit. `extract-archive`, `backup-percona`,
+`convert-percona-backup` and `backup-openmrs-data-directory` check their output's filesystem the
+same way. `SKIP_DISK_SPACE_CHECK=true` goes ahead anyway.
+
 **Accounts after `RESTORE_MYSQL_DATA_PATH`:** a physical backup is a copy of the source server's
 entire data directory, *including its `mysql` system tables*, so it arrives with the source's
 accounts and passwords (the image only creates its own on an empty data directory). `initialize`
@@ -473,9 +483,14 @@ environment variables instead, so they never show up in `ps` output. Run via `op
 "Install" above), or the script directly by its full path -- the two are equivalent. Run any script
 with no arguments for its exact usage; run `openmrs-utils` with no arguments to list them all.
 
+`extract-archive`, `backup-percona`, `convert-percona-backup` and `backup-openmrs-data-directory`
+check free disk space before writing anything, as `initialize` does (see "Disk space" below).
+
 - **`extract-archive --path=<path> [--output-dir=<dir>]`** -- extracts a `.7z`/`.zip`/`.tar.gz`/
   `.tgz`/`.tar` archive (optional `ARCHIVE_PASSWORD` env var, `.7z`/`.zip` only) and prints the path
-  to its single top-level entry; prints `<path>` unchanged for anything else.
+  to its single top-level entry, or, for a flat archive with several (e.g. a legacy `percona.7z`
+  holding the backup's files directly), the directory it extracted into; prints `<path>` unchanged
+  for anything else.
 - **`convert-percona-backup --backup-dir=<dir> --output-dir=<dir>`** -- converts an extracted,
   already-prepared (`--apply-log`'d) percona/xtrabackup backup directory into a ready-to-use MySQL
   data directory (`--copy-back`), suitable for `initialize`'s `RESTORE_MYSQL_DATA_PATH`.
