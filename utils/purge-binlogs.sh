@@ -26,6 +26,11 @@ summary() { sql 'SHOW BINARY LOGS' | awk '{ n++; b += $2 } END { printf "%d file
 
 note "Binary logs on $MYSQL_SOURCE before: $(summary)"
 sql 'FLUSH BINARY LOGS'
-# The newest file listed is the current one (SHOW MASTER STATUS is gone in MySQL 8.4).
-sql "PURGE BINARY LOGS TO '$(sql 'SHOW BINARY LOGS' | awk 'END { print $1 }')'"
+# The newest file listed is the current one (SHOW MASTER STATUS is gone in MySQL 8.4). MariaDB
+# keeps a binlog until InnoDB has checkpointed past it, which lags the FLUSH briefly.
+for _ in $(seq 30); do
+    sql "PURGE BINARY LOGS TO '$(sql 'SHOW BINARY LOGS' | awk 'END { print $1 }')'"
+    [ "$(sql 'SHOW BINARY LOGS' | wc -l)" -gt 1 ] || break
+    sleep 1
+done
 note "Binary logs on $MYSQL_SOURCE after:  $(summary)"
