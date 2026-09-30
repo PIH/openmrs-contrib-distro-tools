@@ -3,7 +3,7 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 services:
   openmrs-db:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openmrs-db
-    image: ${OPENMRS_DB_IMAGE_NAME?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}:${OPENMRS_DB_IMAGE_TAG?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+    image: ${OPENMRS_DB_IMAGE_NAME?}:${OPENMRS_DB_IMAGE_TAG?}
     # Every OPENMRS_DB_OPT_<option> variable becomes a --<option>=<value> server flag (`_` becomes
     # `-`, which MySQL and MariaDB treat the same in option names); an empty value gives a bare
     # --<option>, e.g. OPENMRS_DB_OPT_skip_name_resolve=. Anything not set is the server's own
@@ -29,16 +29,16 @@ services:
     env_file: openmrs-db.env
     environment:
       MYSQL_DATABASE: openmrs
-      MYSQL_USER: ${OPENMRS_DB_USER?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
-      MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
-      MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+      MYSQL_USER: ${OPENMRS_DB_USER?}
+      MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD?}
+      MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD?}
       TZ: ${TZ:-UTC}
     ports:
-      - ${OPENMRS_DB_PORT?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}:3306
+      - ${OPENMRS_DB_PORT?}:3306
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysql", "-h", "127.0.0.1", "-u${OPENMRS_DB_USER?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}", "-p${OPENMRS_DB_PASSWORD?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}", "openmrs", "-e", "SELECT 1"]
+      test: ["CMD", "mysql", "-h", "127.0.0.1", "-u${OPENMRS_DB_USER?}", "-p${OPENMRS_DB_PASSWORD?}", "openmrs", "-e", "SELECT 1"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -47,7 +47,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${OPENMRS_DB_MEMORY_LIMIT?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+          memory: ${OPENMRS_DB_MEMORY_LIMIT?}
 
 volumes:
   db-data:

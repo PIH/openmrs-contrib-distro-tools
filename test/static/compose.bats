@@ -138,6 +138,6 @@ assert_valid() {
     repeated=$(grep -ho '\${[A-Za-z_][A-Za-z0-9_]*:-' "$REPO_ROOT"/docker/services/*.yaml "$REPO_ROOT"/docker/modes/*.yaml \
         | sed 's/^\${//; s/:-$//' | sort -u | comm -12 - <(echo "$defaults"))
     missing=$(comm -23 <(echo "$required") <(echo "$defaults"))
-    [ -z "$repeated" ] || fail "yaml default repeats .env.defaults (use \${VAR?...}): $repeated"
-    [ -z "$missing" ] || fail "\${VAR?...} with no .env.defaults entry: $missing"
+    [ -z "$repeated" ] || fail "yaml default repeats .env.defaults (use \${VAR?}): $repeated"
+    [ -z "$missing" ] || fail "\${VAR?} with no .env.defaults entry: $missing"
 }

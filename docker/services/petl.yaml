@@ -9,21 +9,21 @@ services:
     # with petl attached but PETL_IMAGE_NAME unset fail every command including destroy,
     # permanently trapping the instance directory. With a placeholder, only
     # `run-service petl` fails -- with an obvious "no such image" error.
-    image: ${PETL_IMAGE_NAME?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}:${PETL_IMAGE_TAG?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+    image: ${PETL_IMAGE_NAME?}:${PETL_IMAGE_TAG?}
     profiles: ["petl"]
     depends_on:
       openmrs-db:
         condition: service_healthy
     environment:
-      PETL_FULL_REFRESH_JOBS: ${PETL_FULL_REFRESH_JOBS?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
-      PETL_MAX_RETRIES: ${PETL_MAX_RETRIES?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+      PETL_FULL_REFRESH_JOBS: ${PETL_FULL_REFRESH_JOBS?}
+      PETL_MAX_RETRIES: ${PETL_MAX_RETRIES?}
       PETL_MYSQL_HOST: openmrs-db
       PETL_MYSQL_PORT: 3306
-      PETL_MYSQL_USER: ${PETL_MYSQL_USER?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
-      PETL_MYSQL_PASSWORD: ${PETL_MYSQL_PASSWORD?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
-      PETL_MYSQL_ROOT_PASSWORD: ${PETL_MYSQL_ROOT_PASSWORD?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
-      PETL_SQLSERVER_HOST: ${PETL_SQLSERVER_HOST?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
-      PETL_SQLSERVER_PORT: ${PETL_SQLSERVER_PORT?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
-      PETL_SQLSERVER_USER: ${PETL_SQLSERVER_USER?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
-      PETL_SQLSERVER_PASSWORD: ${PETL_SQLSERVER_PASSWORD?not set in the instance's env; run 'openmrs-docker <instance> sync' to add the defaults}
+      PETL_MYSQL_USER: ${PETL_MYSQL_USER?}
+      PETL_MYSQL_PASSWORD: ${PETL_MYSQL_PASSWORD?}
+      PETL_MYSQL_ROOT_PASSWORD: ${PETL_MYSQL_ROOT_PASSWORD?}
+      PETL_SQLSERVER_HOST: ${PETL_SQLSERVER_HOST?}
+      PETL_SQLSERVER_PORT: ${PETL_SQLSERVER_PORT?}
+      PETL_SQLSERVER_USER: ${PETL_SQLSERVER_USER?}
+      PETL_SQLSERVER_PASSWORD: ${PETL_SQLSERVER_PASSWORD?}
       TZ: ${TZ:-UTC}
