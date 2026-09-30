@@ -5,6 +5,7 @@
 #
 # Usage: openmrs-utils clear-configuration-checksums --volume=<openmrs-data volume>
 set -euo pipefail
+# shellcheck source=lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 VOLUME=

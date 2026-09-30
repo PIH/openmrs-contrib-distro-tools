@@ -8,6 +8,7 @@
 #   --fail-on-unhealthy=true  fails at the first "unhealthy" instead of waiting on (leave it off
 #                             for a container that can report unhealthy during a long first start)
 set -euo pipefail
+# shellcheck source=lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 CONTAINER=

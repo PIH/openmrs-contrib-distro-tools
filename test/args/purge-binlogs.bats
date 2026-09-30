@@ -8,7 +8,7 @@ teardown() { common_teardown; }
 @test "requires --container or --host" {
     run "$UTILS/purge-binlogs.sh"
     assert_failure
-    assert_output --partial usage
+    assert_output --partial Usage:
 }
 
 @test "rejects --container and --host together" {

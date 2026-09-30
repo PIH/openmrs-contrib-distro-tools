@@ -12,18 +12,18 @@ run_shellcheck() {
 }
 
 scripts() {
-    (cd "$REPO_ROOT" && ls bin/* utils/*.sh docker/*.sh test/run)
+    (cd "$REPO_ROOT" && ls bin/* utils/*.sh utils/lib/in-container/*.sh docker/*.sh test/run)
 }
 
 @test "all shell scripts pass shellcheck" {
     cd "$REPO_ROOT"
-    run run_shellcheck -S warning $(scripts)
+    run run_shellcheck -x -S warning $(scripts)
     assert_success
 }
 
 @test "sourced utils libraries pass shellcheck" {
     cd "$REPO_ROOT"
-    run run_shellcheck -S warning -s bash utils/lib/*.sh
+    run run_shellcheck -x -S warning -s bash utils/lib/*.sh
     assert_success
 }
 

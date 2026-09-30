@@ -2,7 +2,7 @@
 # restore-mysql-volume-from-data-dir.yaml or restore-mysql-volume-from-percona.yaml, each of which
 # fills db-data in a restore-mysql-volume service). A physical backup's accounts are the source
 # server's -- the image only creates its own on an empty data directory -- so they're set to this
-# instance's before openmrs-db first starts (see utils/reset-mysql-accounts.sh).
+# instance's before openmrs-db first starts (see utils/lib/in-container/reset-mysql-accounts.sh).
 #
 # Set by initialize itself, not persisted to the instance's env file:
 #   DISTRO_TOOLS_UTILS_DIR -- this tool's utils/ directory
@@ -14,7 +14,7 @@ services:
     depends_on:
       restore-mysql-volume:
         condition: service_completed_successfully
-    entrypoint: ["bash", "/reset-mysql-accounts.sh", "--in-container"]
+    entrypoint: ["bash", "/reset-mysql-accounts.sh"]
     environment:
       MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD?}
       MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD?}
@@ -22,7 +22,7 @@ services:
       RESET_DB_NAME: openmrs
     volumes:
       - db-data:/var/lib/mysql
-      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/reset-mysql-accounts.sh:/reset-mysql-accounts.sh:ro
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/reset-mysql-accounts.sh:/reset-mysql-accounts.sh:ro
 
   openmrs-db:
     depends_on:

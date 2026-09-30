@@ -7,7 +7,9 @@
 #   The output is written as root: reclaim it (chown) before removing it as another user.
 #   SKIP_DISK_SPACE_CHECK=true  skips the free-space check
 set -euo pipefail
+# shellcheck source=lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+# shellcheck source=lib/disk-space.sh
 . "$UTILS_DIR/lib/disk-space.sh"
 
 BACKUP_DIR=

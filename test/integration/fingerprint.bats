@@ -104,7 +104,7 @@ without_accounts() { # <fingerprint file>
 @test "--db-volume refuses while a container is using the volume" {
     run "$UTILS/fingerprint.sh" --db-volume="$SRC_DB-data"
     assert_failure
-    assert_output --partial "a running container is using"
+    assert_output --partial "is in use by a running container"
 }
 
 @test "--data-dir summarizes each top-level folder, leaving out distribution artifacts when asked" {
