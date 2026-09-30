@@ -268,6 +268,37 @@ if ! valid_name "$SERVICE_NAME" && [ "$COMMAND" != destroy ]; then
     exit 1
 fi
 
+# Commands that change the instance hold its lock until they exit, and refuse to run while another
+# command holds it: puppet runs `pull && start` on every apply, which mustn't happen part way
+# through e.g. an initialize. flock(1) releases the lock however its holder exits. Where flock isn't
+# installed (it's part of util-linux, so not on macOS), commands run unlocked.
+LOCK_FILE="$INSTANCE_DIR/.lock"
+lock_instance() { # hold | check (refuse if held, without holding it)
+    command -v flock >/dev/null || return 0
+    # Opened read-only (all flock needs), so a lock file another user created still works.
+    [ -e "$LOCK_FILE" ] || : >> "$LOCK_FILE"
+    exec 9<"$LOCK_FILE"
+    if ! flock -n 9; then
+        echo "error: $NAME is busy: $(cat "$LOCK_FILE" 2>/dev/null) -- run this again once that finishes." >&2
+        exit 1
+    fi
+    if [ "$1" = check ]; then
+        exec 9>&-
+    else
+        printf '%s (pid %s, started %s)\n' "$COMMAND" "$$" "$(date '+%Y-%m-%d %H:%M:%S')" 2>/dev/null > "$LOCK_FILE" || true
+    fi
+}
+# The lock's holder, if a command holds it.
+lock_holder() {
+    command -v flock >/dev/null && [ -f "$LOCK_FILE" ] || return 0
+    ( flock -n 8 ) 8<"$LOCK_FILE" || cat "$LOCK_FILE"
+}
+case "$COMMAND" in
+    status|logs|wait) ;;
+    run-service) lock_instance check ;;
+    *) lock_instance hold ;;
+esac
+
 # Rebuilds COMPOSE_FILES from the instance directory's *current* set of copied
 # service fragments plus the dev mode overlay this invocation's flags select. Never includes any
 # of the restore-*-volume-from-*.yaml overlays — those are only ever used directly by
@@ -761,7 +792,11 @@ case "$COMMAND" in
         ;;
     stop)    docker compose "${COMPOSE_FILES[@]}" down --remove-orphans ;;
     restart) docker compose "${COMPOSE_FILES[@]}" restart ;;
-    status)  docker compose "${COMPOSE_FILES[@]}" ps ;;
+    status)
+        docker compose "${COMPOSE_FILES[@]}" ps
+        HOLDER=$(lock_holder)
+        [ -z "$HOLDER" ] || echo "Busy: $HOLDER"
+        ;;
     logs)
         if [ -n "$SERVICE_ARG" ]; then
             docker compose "${COMPOSE_FILES[@]}" logs -f "$SERVICE_ARG"

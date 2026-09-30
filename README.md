@@ -638,6 +638,23 @@ To wipe all data and start completely fresh next time:
 openmrs-docker <name> destroy
 ```
 
+### One command at a time
+
+Every command that changes an instance (`initialize`, `start`, `stop`, `restart`, `update`, `pull`,
+`build`, `sync`, `add-service`, `remove-service`, `reset-openmrs-db-accounts`, `destroy`) holds a lock on
+it until it exits, and refuses to run while another command holds it, naming that command:
+
+```
+error: <name> is busy: initialize (pid 12345, started 2026-09-30 11:39:19) -- run this again once that finishes.
+```
+
+So on a puppet-managed host, the `pull && start` puppet runs on every apply fails, and changes nothing,
+while an `initialize` or `reset-openmrs-db-accounts` is in progress. `run-service` refuses while the
+instance is busy, but doesn't hold the lock itself, so a long job doesn't block anything else.
+`status`, `logs` and `wait` never wait for it; `status` shows the holder. The lock is released however
+its holder exits, so there's nothing to clean up after a crash. It uses `flock(1)` (util-linux, on
+every Linux host); where `flock` isn't installed (e.g. macOS), commands run unlocked.
+
 ### Changing the database passwords
 
 Changing `OPENMRS_DB_PASSWORD` or `OPENMRS_DB_ROOT_PASSWORD` in `env` on its own changes nothing:
