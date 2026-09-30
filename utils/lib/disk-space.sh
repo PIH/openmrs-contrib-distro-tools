@@ -40,7 +40,7 @@ disk_space_7z_size() { # <archive>
     dir=$(cd "$(dirname "$1")" && pwd)
     ARCHIVE_PW="${ARCHIVE_PASSWORD:-}" docker run --rm -e ARCHIVE_PW -e ARCHIVE_SRC="$(basename "$1")" \
         -v "$dir:/archive:ro" partnersinhealth/p7zip \
-        sh -c '7z l -slt -p"$ARCHIVE_PW" "/archive/$ARCHIVE_SRC"' \
+        sh -c 'printf "%s\n" "$ARCHIVE_PW" | 7z l -slt "/archive/$ARCHIVE_SRC"' \
         | awk -F' = ' '$1 == "Size" { total += $2 } END { print int((total + 1023) / 1024) }'
 }
 

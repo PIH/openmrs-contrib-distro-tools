@@ -10,10 +10,8 @@
 # hasn't room for the archive's contents (utils/lib/disk-space.sh; SKIP_DISK_SPACE_CHECK=true). ARCHIVE_PASSWORD (env var, optional,
 # .7z/.zip only -- a secret) is used if set; extraction is attempted with an empty password if
 # it's unset, which succeeds for an unprotected archive and fails cleanly (not hangs) if the
-# archive actually needed one. Passed to the container as a bare `-e ARCHIVE_PW` (inheriting the
-# already-set value from this script's own environment) rather than `-e ARCHIVE_PW=value`, so the
-# value itself never appears in `docker`'s argv -- and so never shows up in `ps` output, which
-# shows argv but not environment.
+# archive actually needed one. It reaches the container as a bare `-e ARCHIVE_PW` and 7z on stdin, so
+# it's on no command line (`ps` shows command lines, including those inside containers).
 set -euo pipefail
 # shellcheck source=lib/disk-space.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/disk-space.sh"
@@ -44,18 +42,16 @@ case "$SRC" in
         # Absolute, or `docker run -v` would read a bare relative name as a named volume.
         OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
         DIR=$(cd "$(dirname "$SRC")" && pwd)
-        # Password (if any) and filename are passed as container environment variables rather
-        # than interpolated into the `sh -c` string, so neither can be re-parsed as shell
-        # syntax. `-p` is always given (even with an empty value) so 7z never falls back to an
-        # interactive password prompt, which would hang a non-interactive script -- an empty
-        # password succeeds against an unprotected archive and fails cleanly (not hangs)
-        # against a genuinely protected one with none given.
+        # Password and filename are passed as container environment variables rather than
+        # interpolated into the `sh -c` string, so neither can be re-parsed as shell syntax. 7z
+        # reads the password from stdin when it asks for one (so it's on no command line); an
+        # unprotected archive never asks, and a wrong or empty password fails cleanly.
         ARCHIVE_PW="${ARCHIVE_PASSWORD:-}" docker run --rm \
             -e ARCHIVE_PW -e ARCHIVE_SRC="$(basename "$SRC")" \
             -v "$DIR:/archive:ro" \
             -v "$OUTPUT_DIR:/out" \
             partnersinhealth/p7zip \
-            sh -c '7z x -p"$ARCHIVE_PW" -o/out -y "/archive/$ARCHIVE_SRC"' >&2
+            sh -c 'printf "%s\n" "$ARCHIVE_PW" | 7z x -o/out -y "/archive/$ARCHIVE_SRC"' >&2
         ;;
     *.tar.gz|*.tgz|*.tar)
         [ -z "$OUTPUT_DIR" ] && OUTPUT_DIR=$(mktemp -d)

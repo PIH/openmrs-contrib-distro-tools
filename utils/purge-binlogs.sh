@@ -12,7 +12,7 @@
 #
 # MYSQL_PASSWORD (env var) authenticates as --user; defaults to "openmrs" if unset. --user needs the
 # SUPER (or BINLOG_ADMIN) privilege, so root by default. The password is passed to `docker` as a
-# bare `-e MYSQL_PWD`, so it never appears in `docker`'s argv.
+# bare `-e MYSQL_PWD` and read from there by the client, so it's on no command line.
 set -euo pipefail
 
 CONTAINER=

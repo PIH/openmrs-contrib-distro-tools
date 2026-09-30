@@ -231,3 +231,20 @@ assert_not_in_docker_argv() { # <secret>
         fail "secret appeared in a docker command line: $(grep -F -- "$1" "$DOCKER_ARGV_LOG")"
     fi
 }
+
+# Runs <command...> and fails if <secret> appears in any process's command line while it runs. The
+# host's ps also lists processes inside containers, which record_docker_argv doesn't see. The secret
+# is read from a file, so the grep doing the checking can't match itself.
+assert_not_in_ps_while() { # <secret> <command...>
+    local secret_file="$BATS_TEST_TMPDIR/ps-secret" seen="$BATS_TEST_TMPDIR/ps-seen" pid
+    printf '%s\n' "$1" > "$secret_file"; shift
+    : > "$seen"
+    "$@" 3>&- &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        ps -eo args | grep -F -f "$secret_file" >> "$seen" || true
+        sleep 0.05
+    done
+    wait "$pid" || fail "command failed: $*"
+    [ ! -s "$seen" ] || fail "secret appeared in a command line: $(sort -u "$seen")"
+}

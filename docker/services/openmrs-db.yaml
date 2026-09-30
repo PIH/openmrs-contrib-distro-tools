@@ -38,7 +38,10 @@ services:
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysql", "-h", "127.0.0.1", "-u${OPENMRS_DB_USER?}", "-p${OPENMRS_DB_PASSWORD?}", "openmrs", "-e", "SELECT 1"]
+      # The password from the container's own environment, in MYSQL_PWD, so it's on no command line
+      # (the host's ps shows healthcheck processes). TCP, so it only passes once the real server runs.
+      # MariaDB 11+ images have only the mariadb client.
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" \"$$(command -v mysql || command -v mariadb)\" -h 127.0.0.1 -u \"$$MYSQL_USER\" openmrs -e 'SELECT 1'"]
       interval: 5s
       timeout: 5s
       retries: 20

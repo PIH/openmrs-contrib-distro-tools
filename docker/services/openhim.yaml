@@ -38,10 +38,9 @@ services:
       NODE_ENV: development
       api_authenticationTypes: '["token", "basic", "openid", "local"]'
       authentication_enableCustomTokenAuthentication: "true"
-      authentication_enableJWTAuthentication: "true"
-      authentication_jwt_secretOrPublicKey: secret
-      authentication_jwt_algorithms: HS256
-      authentication_jwt_issuer: openhim
+      # Off: nothing authenticates to OpenHIM with a JWT (the mediator's clients use Basic auth), and
+      # with it on, anyone who knew the shared secret could sign a token as any client.
+      authentication_enableJWTAuthentication: "false"
       openhimConsoleBaseUrl: http://localhost:${OPENHIM_CONSOLE_HOST_PORT?}
     ports:
       - "${OPENHIM_ADMIN_API_HOST_PORT?}:8080"
@@ -72,10 +71,16 @@ services:
         base="https://openhim-core:8080"
         email="root@openhim.org"
         default_password="openhim-password"
+        # Credentials and body go to curl in files written by the shell's own printf, so the
+        # password is on no command line (the host's ps shows those of processes in containers).
+        # A " or \ in it is escaped, for curl's config and for JSON alike.
+        esc() { printf '%s' "$$1" | sed 's/[\\"]/\\&/g'; }
+        auth() { printf 'user = "%s:%s"\n' "$$email" "$$(esc "$$1")" > /tmp/auth; }
         # Already matches -- either a prior run of this same job already changed
         # it, or OPENHIM_PASSWORD was left at its own default. Either way, nothing
         # to do.
-        code=$$(curl -sk -o /dev/null -w '%{http_code}' -u "$$email:$$OPENHIM_PASSWORD" "$$base/users")
+        auth "$$OPENHIM_PASSWORD"
+        code=$$(curl -sk -K /tmp/auth -o /dev/null -w '%{http_code}' "$$base/users")
         if [ "$$code" = "200" ]; then
           echo "OpenHIM admin password already matches OPENHIM_PASSWORD."
           exit 0
@@ -84,9 +89,11 @@ services:
         # firstname/surname/provider/groups are also hardcoded on this account by
         # openhim-core itself -- passed through unchanged here since a PUT only
         # updates the fields it's given.
-        curl -skf -u "$$email:$$default_password" -X PUT "$$base/users/$$email" \
-          -H 'Content-Type: application/json' \
-          -d "{\"firstname\":\"Super\",\"surname\":\"User\",\"email\":\"$$email\",\"provider\":\"local\",\"groups\":[\"admin\"],\"password\":\"$$OPENHIM_PASSWORD\"}"
+        auth "$$default_password"
+        printf '{"firstname":"Super","surname":"User","email":"%s","provider":"local","groups":["admin"],"password":"%s"}' \
+          "$$email" "$$(esc "$$OPENHIM_PASSWORD")" > /tmp/body
+        curl -skf -K /tmp/auth -X PUT "$$base/users/$$email" \
+          -H 'Content-Type: application/json' -d @/tmp/body
         echo "OpenHIM admin password set to OPENHIM_PASSWORD."
 
   openhim-console:

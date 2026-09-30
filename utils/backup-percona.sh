@@ -28,10 +28,9 @@
 # every database.
 #
 # MYSQL_ROOT_PASSWORD (env var, not a named argument -- a secret) authenticates as root; defaults
-# to "openmrs" if unset. Secrets are passed to `docker` as a bare `-e VARNAME` (inheriting the
-# already-set value from this script's own environment) rather than `-e VAR=value` or a
-# `--password=` command argument, so the values never appear in `docker`'s argv -- and so never
-# show up in `ps` output, which shows argv but not environment.
+# to "openmrs" if unset. Secrets are passed to `docker` as a bare `-e VARNAME`, and inside the
+# containers as MYSQL_PWD (innobackupex reads it) and on 7z's stdin, so they're on no command line
+# (`ps` shows command lines, including those inside containers).
 set -euo pipefail
 # shellcheck source=lib/disk-space.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/disk-space.sh"
@@ -125,13 +124,13 @@ echo "Backing up $SOURCE (physical/xtrabackup) to $OUTPUT..." >&2
 # into a conditional flag string) so a multi-database value with spaces stays one argument to
 # --databases -- embedding it inside a quoted expansion instead would have the shell re-split it
 # on those same spaces.
-MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-openmrs}" BACKUP_DATABASES="$DATABASES" docker run --rm \
+MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-openmrs}" BACKUP_DATABASES="$DATABASES" docker run --rm \
     "${NETWORK[@]}" \
-    -e MYSQL_ROOT_PASSWORD -e BACKUP_DATABASES -e CONNECT_HOST="$CONNECT_HOST" -e CONNECT_PORT="$CONNECT_PORT" \
+    -e MYSQL_PWD -e BACKUP_DATABASES -e CONNECT_HOST="$CONNECT_HOST" -e CONNECT_PORT="$CONNECT_PORT" \
     -v "$VOLUME:/var/lib/mysql:ro" \
     -v "$TARGET:/backup" \
     partnersinhealth/percona-0.1-4 \
-    sh -c 'set -- --user=root --password="$MYSQL_ROOT_PASSWORD" --host="$CONNECT_HOST" --port="$CONNECT_PORT"
+    sh -c 'set -- --user=root --host="$CONNECT_HOST" --port="$CONNECT_PORT"
            [ -n "$BACKUP_DATABASES" ] && set -- "$@" --databases="$BACKUP_DATABASES"
            innobackupex "$@" /backup' >&2
 
@@ -156,7 +155,7 @@ if $ARCHIVE; then
         -e ARCHIVE_PW -e OUT_NAME="$(basename "$OUTPUT")" -e OWNER="$(id -u):$(id -g)" \
         -v "$TARGET:/backup:ro" -v "$(dirname "$OUTPUT"):/out" -w /backup \
         partnersinhealth/p7zip \
-        sh -c '7z a -p"$ARCHIVE_PW" -mx5 -t7z "/out/$OUT_NAME" ./* >/dev/null && chown "$OWNER" "/out/$OUT_NAME"' >&2
+        sh -c 'printf "%s\n" "$ARCHIVE_PW" | 7z a -p -mx5 -t7z "/out/$OUT_NAME" ./* >/dev/null && chown "$OWNER" "/out/$OUT_NAME"' >&2
     echo "Backed up $SOURCE to $OUTPUT (for initialize's RESTORE_MYSQL_PERCONA_PATH)." >&2
 else
     # --apply-log leaves $OUTPUT itself root-owned with restrictive permissions (xtrabackup

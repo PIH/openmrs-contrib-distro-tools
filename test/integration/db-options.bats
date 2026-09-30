@@ -79,3 +79,16 @@ binlog_files() { # <instance>
     assert_failure
     assert_output --partial 'binary logging is off'
 }
+
+@test "the healthcheck logs in without the DB password on a command line" {
+    local name
+    name="$(instance)"
+    OPENMRS_DB_PASSWORD=s3cret-health-pw SERVICES=openmrs-db create_instance "$name"
+    start_db "$name"
+    run docker inspect -f '{{json .Config.Healthcheck}}' "$name-openmrs-db"
+    refute_output --partial s3cret-health-pw
+    # a few healthcheck runs (every 5s)
+    assert_not_in_ps_while s3cret-health-pw sleep 12
+    run docker inspect -f '{{.State.Health.Status}}' "$name-openmrs-db"
+    assert_output healthy
+}

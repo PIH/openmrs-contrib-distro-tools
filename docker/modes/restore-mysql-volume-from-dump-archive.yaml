@@ -9,8 +9,8 @@
 # dump.sql.gz to match, so MySQL's entrypoint decompresses (or doesn't) correctly.
 #
 # ARCHIVE_PASSWORD (optional -- a secret) is passed through from initialize's own environment by
-# name only, so its value never appears in any command line. `-p` is always given, even empty, so
-# 7z never falls back to an interactive prompt.
+# name only, and 7z reads it from stdin, so it's on no command line. An unprotected archive never
+# asks for it; a wrong or empty one fails cleanly.
 #
 # Set by initialize itself, not persisted to the instance's env file:
 #   RESTORE_MYSQL_DUMP_PATH             -- absolute path to the archive on the host
@@ -33,7 +33,7 @@ services:
         set -e
         STAGING=/target/.restore-staging
         mkdir "$$STAGING"
-        7z x -p"$${ARCHIVE_PASSWORD:-}" -o"$$STAGING" -y "/source/$$ARCHIVE_NAME" >/dev/null
+        printf '%s\n' "$${ARCHIVE_PASSWORD:-}" | 7z x -o"$$STAGING" -y "/source/$$ARCHIVE_NAME" >/dev/null
         FILES=$$(find "$$STAGING" -type f)
         if [ -z "$$FILES" ] || [ "$$(echo "$$FILES" | wc -l)" -ne 1 ]; then
             echo "error: $$ARCHIVE_NAME must contain exactly one dump file" >&2
