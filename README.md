@@ -465,6 +465,16 @@ DATADIR=$(openmrs-utils convert-percona-backup --backup-dir="$BACKUP_DIR" --outp
 RESTORE_MYSQL_DATA_PATH="$DATADIR" openmrs-docker <name> initialize
 ```
 
+**Checking a restore:** `openmrs-utils fingerprint` (see Utilities) of the source before the backup,
+and of the new instance's volumes after `initialize` and before its first start, then `diff`. Expect
+`[accounts]` to differ, and a physical restore to bring along other databases the source had:
+
+```bash
+openmrs-utils fingerprint --container=<source db container> --data-dir=<source data dir> --output=before.txt
+openmrs-utils fingerprint --db-volume=<name>_db-data --data-dir=<name>_openmrs-data --output=after.txt
+diff before.txt after.txt
+```
+
 **Disk space:** before creating any volume, `initialize` estimates what the restore will write and
 stops if Docker's volume filesystem has less free than that plus 10%, rather than failing part way
 with half-filled volumes. The estimate is a data directory's size, a dump's uncompressed size
@@ -505,6 +515,16 @@ check free disk space before writing anything, as `initialize` does (see "Disk s
   to its single top-level entry, or, for a flat archive with several (e.g. a legacy `percona.7z`
   holding the backup's files directly), the directory it extracted into; prints `<path>` unchanged
   for anything else.
+- **`fingerprint (--container=<name> | --host=<host> [--port=3306] | --db-volume=<volume or dir>
+  [--image=mysql:5.6]) [--database=openmrs] [--data-dir=<volume or dir>
+  [--exclude-distribution-artifacts]] [--output=<file>]`** -- writes a sorted summary to `diff`
+  before and after a restore: server settings, databases, every table's exact row count (`COUNT(*)`:
+  minutes on a large `obs`), routines/triggers/views, the highest id and `date_created` on
+  `encounter`/`obs`/`patient`/`person`/`users`, accounts (`user@host`), and with `--data-dir` the
+  files and bytes per top-level folder. No row contents or secrets. `--container`/`--host` log in as
+  root (`MYSQL_ROOT_PASSWORD`); `--db-volume` reads a *stopped* instance's `db-data` by starting its
+  image on it with grants disabled and no networking -- the way to check a restore after
+  `initialize`, before OpenMRS first starts (which changes Liquibase and scheduler tables).
 - **`convert-percona-backup --backup-dir=<dir> --output-dir=<dir>`** -- converts an extracted,
   already-prepared (`--apply-log`'d) percona/xtrabackup backup directory into a ready-to-use MySQL
   data directory (`--copy-back`), suitable for `initialize`'s `RESTORE_MYSQL_DATA_PATH`.
