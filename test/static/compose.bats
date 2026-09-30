@@ -8,7 +8,7 @@ load ../helpers
 setup_file() {
     export ALL_SERVICES
     ALL_SERVICES=$(cd "$REPO_ROOT/docker/services" && ls ./*.yaml | xargs -n1 basename | sed 's/\.yaml$//' | paste -sd, -)
-    export CONFIG_INSTANCE="$RUN_PREFIX-f-compose"
+    export CONFIG_INSTANCE="$(file_res config)"
     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }
 
@@ -89,7 +89,7 @@ assert_valid() {
 }
 
 @test "an OMRS_EXTRA_* variable set at create time reaches the openmrs service's resolved config" {
-    local name="$RUN_PREFIX-f-compose-extra" dir
+    local name="$(file_res extra)" dir
     OMRS_EXTRA_pihmalawi_warehouse_connection_url="jdbc:mysql://openmrs-db:3306/openmrs_warehouse" \
         SERVICES=openmrs-db,openmrs create_instance "$name"
     dir="$OPENMRS_DOCKER_HOME/$name"
@@ -100,7 +100,7 @@ assert_valid() {
 }
 
 @test "openmrs service sets pih_config under the image's own OMRS_EXTRA_ name, so it overrides the image default" {
-    local name="$RUN_PREFIX-f-compose-pihconfig" dir
+    local name="$(file_res pihconfig)" dir
     OPENMRS_PIH_CONFIG="haiti,haiti-test" SERVICES=openmrs-db,openmrs create_instance "$name"
     dir="$OPENMRS_DOCKER_HOME/$name"
     run docker compose --env-file "$dir/env" -f "$dir/openmrs-db.yaml" -f "$dir/openmrs.yaml" config

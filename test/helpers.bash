@@ -31,28 +31,34 @@ OPENMRS_DATA_OWNER="$(id -u):$(id -g)"
 export OPENMRS_DATA_OWNER
 
 # A name for a Docker resource owned by the current test, e.g. `res db` -> odt1234-t7-db.
-res() { echo "$RUN_PREFIX-t${BATS_TEST_NUMBER}-$1"; }
+res() { echo "$RUN_PREFIX-t${BATS_SUITE_TEST_NUMBER}-$1"; }
 
 # A name for an openmrs-docker instance owned by the current test.
-instance() { echo "$RUN_PREFIX-t${BATS_TEST_NUMBER}${1:+-$1}"; }
+instance() { echo "$RUN_PREFIX-t${BATS_SUITE_TEST_NUMBER}${1:+-$1}"; }
 
+# A name for a Docker resource or instance shared by the current file's tests (made in setup_file).
+# shellcheck disable=SC2120 # the test files call it with an argument
+file_res() { echo "$RUN_PREFIX-f-$(basename "$BATS_TEST_FILENAME" .bats)${1:+-$1}"; }
+
+# Resources are named <prefix>-<x> or, for Compose volumes and networks, <prefix>_<x>. Matching the
+# separator keeps test 1's prefix from also matching test 10's, when tests run in parallel.
 remove_resources() { # <name prefix>
     local ids
-    ids=$(docker ps -aq --filter "name=^$1")
+    ids=$(docker ps -aq --filter "name=^$1[-_]")
     [ -n "$ids" ] && docker rm -f $ids >/dev/null
-    ids=$(docker volume ls -q --filter "name=^$1")
+    ids=$(docker volume ls -q --filter "name=^$1[-_]")
     [ -n "$ids" ] && docker volume rm -f $ids >/dev/null
-    ids=$(docker network ls -q --filter "name=^$1")
+    ids=$(docker network ls -q --filter "name=^$1[-_]")
     [ -n "$ids" ] && docker network rm $ids >/dev/null
     return 0
 }
 
 # Fails if any container, volume or network under <prefix> still exists.
 assert_no_leftovers() { # [prefix, default: the current test's]
-    local prefix="${1:-$RUN_PREFIX-t${BATS_TEST_NUMBER}}" left
-    left=$( { docker ps -a --format '{{.Names}}' --filter "name=^$prefix";
-              docker volume ls -q --filter "name=^$prefix";
-              docker network ls --format '{{.Name}}' --filter "name=^$prefix"; } )
+    local prefix="${1:-$RUN_PREFIX-t${BATS_SUITE_TEST_NUMBER}}" left
+    left=$( { docker ps -a --format '{{.Names}}' --filter "name=^${prefix}[-_]";
+              docker volume ls -q --filter "name=^${prefix}[-_]";
+              docker network ls --format '{{.Name}}' --filter "name=^${prefix}[-_]"; } )
     [ -z "$left" ] || fail "leftover Docker resources: $left"
 }
 
@@ -64,12 +70,12 @@ reclaim() { # <dir>
 }
 
 common_teardown() {
-    remove_resources "$RUN_PREFIX-t${BATS_TEST_NUMBER}"
+    remove_resources "$RUN_PREFIX-t${BATS_SUITE_TEST_NUMBER}"
     reclaim "$BATS_TEST_TMPDIR"
 }
 
 common_teardown_file() {
-    remove_resources "$RUN_PREFIX-f"
+    remove_resources "$(file_res)"
     reclaim "$BATS_FILE_TMPDIR"
 }
 

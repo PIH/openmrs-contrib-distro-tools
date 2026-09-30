@@ -7,7 +7,7 @@
 load ../helpers
 
 setup_file() {
-    export SRC_DB="$RUN_PREFIX-f-perconasrc"
+    export SRC_DB="$(file_res src)"
     start_source_db "$SRC_DB"
 }
 teardown_file() { common_teardown_file; }
@@ -53,10 +53,10 @@ restore_physical() { # [backup-percona args...]
     NAME="$(instance)"
     OPENMRS_DB_PASSWORD=not-the-source-password create_instance "$NAME"
     SECONDS=0
-    run_initialize "$NAME" RESTORE_MYSQL_DATA_PATH="$datadir" INITIALIZE_DB_TIMEOUT=60
+    run_initialize "$NAME" RESTORE_MYSQL_DATA_PATH="$datadir" INITIALIZE_DB_TIMEOUT=20
     assert_failure
     assert_output --partial 'credentials'
-    assert [ "$SECONDS" -lt 150 ]
+    assert [ "$SECONDS" -lt 60 ]
 }
 
 @test "MYSQL_ROOT_PASSWORD never appears in a docker command line" {

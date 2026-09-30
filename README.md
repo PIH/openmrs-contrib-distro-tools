@@ -965,8 +965,10 @@ test/run integration     # backup -> restore -> verify round trips against real 
 test/run integration/dump.bats -f '7z'   # one file, filtered by test name
 ```
 
-It needs only Docker and git: `test/run` fetches pinned versions of bats into `test/.deps/` on first
-use, and falls back to the `koalaman/shellcheck-alpine` image if `shellcheck` isn't installed. Tests
-create everything under a unique name prefix (throwaway `OPENMRS_DOCKER_HOME`, random host ports, a
+It needs Docker, git, jq, curl and perl: `test/run` fetches pinned versions of bats and GNU parallel
+into `test/.deps/` on first use, and falls back to the `koalaman/shellcheck-alpine` image if
+`shellcheck` isn't installed. Tests run in parallel, `TEST_JOBS` at a time (default: the number of
+CPUs, up to 8; `TEST_JOBS=1` runs them one at a time); with 8 jobs the whole suite takes about a
+minute and a half. Tests create everything under a unique name prefix (throwaway `OPENMRS_DOCKER_HOME`, random host ports, a
 placeholder OpenMRS image -- `initialize` only ever starts the database) and remove it all afterwards,
 so they don't touch existing instances.

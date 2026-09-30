@@ -28,10 +28,12 @@ case "$TIMEOUT" in
 esac
 docker inspect "$CONTAINER" >/dev/null 2>&1 || { echo "error: no such container: $CONTAINER" >&2; exit 1; }
 
-INTERVAL=5
-ATTEMPTS=$(( (TIMEOUT + INTERVAL - 1) / INTERVAL ))
+# Polled every second against a deadline, so the time docker inspect itself takes doesn't stretch
+# the timeout. The container's own healthcheck interval decides how soon it can report healthy.
+INTERVAL=1
+DEADLINE=$(( $(date +%s) + TIMEOUT ))
 echo "Waiting for $CONTAINER to become healthy (timeout: ${TIMEOUT}s)..." >&2
-for i in $(seq 1 "$ATTEMPTS"); do
+while true; do
     case "$(docker inspect --format '{{.State.Status}}' "$CONTAINER" 2>/dev/null || true)" in
         exited|dead|restarting)
             echo "error: $CONTAINER exited unexpectedly -- check 'docker logs $CONTAINER'." >&2
@@ -47,7 +49,7 @@ for i in $(seq 1 "$ATTEMPTS"); do
         echo "error: $CONTAINER reported unhealthy -- check 'docker logs $CONTAINER'." >&2
         exit 1
     fi
-    if [ "$i" -eq "$ATTEMPTS" ]; then
+    if [ "$(date +%s)" -ge "$DEADLINE" ]; then
         echo "error: timed out after ${TIMEOUT}s waiting for $CONTAINER to become healthy" >&2
         exit 1
     fi
