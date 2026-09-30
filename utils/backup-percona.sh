@@ -21,6 +21,8 @@
 # `--password=` command argument, so the value itself never appears in `docker`'s argv -- and so
 # never shows up in `ps` output, which shows argv but not environment.
 set -euo pipefail
+# shellcheck source=lib/disk-space.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/disk-space.sh"
 
 CONTAINER=
 VOLUME=
@@ -45,6 +47,10 @@ case "$OUTPUT_DIR" in
     *) OUTPUT_DIR="$(pwd)/$OUTPUT_DIR" ;;
 esac
 [ -e "$OUTPUT_DIR" ] && { echo "error: $OUTPUT_DIR already exists" >&2; exit 1; }
+# The whole data directory, even with --databases: a limited backup is smaller, so this only errs
+# on the side of refusing (SKIP_DISK_SPACE_CHECK=true then).
+disk_space_require "a physical backup of $VOLUME" "$(disk_space_size_of "$VOLUME")" \
+    "$(disk_space_free_at "$OUTPUT_DIR")" "the filesystem of $OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 # A failed backup leaves a partial directory that looks like a real one -- remove it on any error.
 # Via a container, since innobackupex writes its contents as root.

@@ -21,6 +21,12 @@ scripts() {
     assert_success
 }
 
+@test "sourced utils libraries pass shellcheck" {
+    cd "$REPO_ROOT"
+    run run_shellcheck -S warning -s bash utils/lib/*.sh
+    assert_success
+}
+
 @test "test helpers pass shellcheck" {
     cd "$REPO_ROOT"
     run run_shellcheck -S warning -s bash test/helpers.bash

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../utils/lib/disk-space.sh
+. "$TOOL_DIR/utils/lib/disk-space.sh"
 OPENMRS_DOCKER_HOME="${OPENMRS_DOCKER_HOME:-$HOME/openmrs}"
 SERVICES_DIR="$TOOL_DIR/docker/services"
 MODES_DIR="$TOOL_DIR/docker/modes"
@@ -476,6 +478,29 @@ case "$COMMAND" in
             COMPOSE_FILES+=(-f "$MODES_DIR/restore-openmrs-data-volume-from-seed.yaml")
             DATA_SOURCES=$((DATA_SOURCES + 1))
         fi
+        # Refuses before any volume exists if Docker's volume filesystem clearly hasn't room
+        # (utils/lib/disk-space.sh). A seed image's size isn't known up front, so isn't counted.
+        RESTORE_KB=0
+        if [ -n "${RESTORE_MYSQL_DATA_PATH:-}" ]; then
+            RESTORE_KB=$(disk_space_size_of "$RESTORE_MYSQL_DATA_PATH")
+        elif [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ]; then
+            RESTORE_KB=$(disk_space_contents_size "$RESTORE_MYSQL_DUMP_PATH")
+            # extracted into a temporary volume first, then imported
+            case "$RESTORE_MYSQL_DUMP_PATH" in *.7z|*.zip) RESTORE_KB=$((RESTORE_KB * 2)) ;; esac
+        fi
+        if [ -n "${RESTORE_OPENMRS_DATA_PATH:-}" ]; then
+            if [ -d "$RESTORE_OPENMRS_DATA_PATH" ]; then
+                RESTORE_KB=$((RESTORE_KB + $(disk_space_size_of "$RESTORE_OPENMRS_DATA_PATH")))
+            else
+                RESTORE_KB=$((RESTORE_KB + $(disk_space_contents_size "$RESTORE_OPENMRS_DATA_PATH")))
+            fi
+        fi
+        if [ "$RESTORE_KB" -gt 0 ]; then
+            RESTORE_WHAT="restoring into $NAME's volumes"
+            [ -n "${RESTORE_MYSQL_DUMP_PATH:-}" ] && RESTORE_WHAT+=" (a dump import usually needs more than the dump itself)"
+            disk_space_require "$RESTORE_WHAT" "$RESTORE_KB" "$(disk_space_free_on_docker_volumes)" "Docker's volumes"
+        fi
+
         # Files restored from RESTORE_OPENMRS_DATA_PATH keep the owners they had on the source host
         # (tar runs as root in the restore container), which the openmrs image's non-root runtime
         # user can't write to. They're chowned to that user once restored, below. Resolved here,

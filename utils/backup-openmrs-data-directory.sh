@@ -36,6 +36,8 @@
 # build likewise stops OpenMRS before exporting. --allow-running overrides this, e.g. for a
 # production server that can't be taken down, at the cost of a possibly inconsistent copy.
 set -euo pipefail
+# shellcheck source=lib/disk-space.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/disk-space.sh"
 
 VOLUME=
 OUTPUT_PATH=
@@ -96,6 +98,15 @@ if $EXCLUDE_DISTRIBUTION_ARTIFACTS; then
     # Module classes OpenMRS unpacks from modules/ on startup and rebuilds when missing.
     EXCLUDES+=("$TOP_DIR/.openmrs-lib-cache")
 fi
+
+# Uncompressed: an openmrs-data directory is mostly already-compressed files (images, PDFs), and
+# erring high only means refusing where SKIP_DISK_SPACE_CHECK=true would have fit.
+LEAVE_OUT=()
+if $EXCLUDE_DISTRIBUTION_ARTIFACTS; then
+    LEAVE_OUT=(modules owa configuration frontend .openmrs-lib-cache)
+fi
+disk_space_require "backing up $VOLUME" "$(disk_space_size_of "$VOLUME" ${LEAVE_OUT[@]+"${LEAVE_OUT[@]}"})" \
+    "$(disk_space_free_at "$OUTPUT_PATH")" "the filesystem of $(dirname "$OUTPUT_PATH")"
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 

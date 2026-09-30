@@ -25,12 +25,37 @@ teardown() { common_teardown; }
     assert_output --partial 'no such file or directory'
 }
 
-@test "fails if an archive has more than one top-level entry" {
-    mkdir -p two/a two/b
-    tar czf two.tar.gz -C two a b
-    run "$UTILS/extract-archive.sh" --path=two.tar.gz --output-dir="$BATS_TEST_TMPDIR/out"
+@test "a flat archive (more than one top-level entry) extracts to, and prints, the output directory" {
+    mkdir -p flat/a && echo x > flat/f1 && echo y > flat/a/f2
+    tar czf flat.tar.gz -C flat f1 a
+    run --separate-stderr "$UTILS/extract-archive.sh" --path=flat.tar.gz --output-dir="$BATS_TEST_TMPDIR/out"
+    assert_success
+    assert_output "$BATS_TEST_TMPDIR/out"
+    assert_equal "$(cat out/f1)" x
+    assert_equal "$(cat out/a/f2)" y
+}
+
+@test "a flat .7z extracts to a new temporary directory when there's no --output-dir" {
+    mkdir -p flat && echo x > flat/f1 && echo y > flat/f2
+    docker run --rm -v "$BATS_TEST_TMPDIR/flat:/w" -w /w partnersinhealth/p7zip 7z a -ppw /w/flat.7z f1 f2 >/dev/null
+    ARCHIVE_PASSWORD=pw run --separate-stderr "$UTILS/extract-archive.sh" --path=flat/flat.7z
+    assert_success
+    assert [ -f "$output/f1" ]
+    assert [ -f "$output/f2" ]
+    reclaim "$output"; rm -rf "$output"
+}
+
+@test "refuses before extracting when the output's filesystem hasn't room for the contents" {
+    mkdir -p src/data && head -c 2097152 /dev/urandom > src/data/random
+    tar czf data.tar.gz -C src data
+    DISK_SPACE_FREE_KB=100 run "$UTILS/extract-archive.sh" --path=data.tar.gz --output-dir="$BATS_TEST_TMPDIR/out"
     assert_failure
-    assert_output --partial 'produced 2 top-level entries, expected exactly 1'
+    assert_output --partial "not enough disk space"
+    assert_output --partial "needs about 2.0M"
+    [ ! -e out ]
+    DISK_SPACE_FREE_KB=100 SKIP_DISK_SPACE_CHECK=true run --separate-stderr "$UTILS/extract-archive.sh" --path=data.tar.gz --output-dir="$BATS_TEST_TMPDIR/out"
+    assert_success
+    assert_output "$BATS_TEST_TMPDIR/out/data"
 }
 
 @test "extracts into a relative --output-dir, not a Docker volume of that name" {

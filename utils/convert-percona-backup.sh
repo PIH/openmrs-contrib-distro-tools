@@ -11,6 +11,8 @@
 # (e.g. `docker run --rm -v <output-dir>:/target alpine:3.21 chown -R $(id -u):$(id -g) /target`)
 # before trying to remove it as a normal user.
 set -euo pipefail
+# shellcheck source=lib/disk-space.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/disk-space.sh"
 
 BACKUP_DIR=
 OUTPUT_DIR=
@@ -25,9 +27,11 @@ done
 [ -z "$OUTPUT_DIR" ] && { echo "usage: $0 --backup-dir=<extracted backup dir> --output-dir=<dir>" >&2; exit 1; }
 [ -d "$BACKUP_DIR" ] || { echo "error: no such directory: $BACKUP_DIR" >&2; exit 1; }
 [ -e "$OUTPUT_DIR" ] && { echo "error: $OUTPUT_DIR already exists" >&2; exit 1; }
+BACKUP_DIR_ABS=$(cd "$BACKUP_DIR" && pwd)
+disk_space_require "converting $BACKUP_DIR_ABS (a full copy)" "$(disk_space_size_of "$BACKUP_DIR_ABS")" \
+    "$(disk_space_free_at "$OUTPUT_DIR")" "the filesystem of $OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 
-BACKUP_DIR_ABS=$(cd "$BACKUP_DIR" && pwd)
 OUTPUT_DIR_ABS=$(cd "$OUTPUT_DIR" && pwd)
 
 echo "Converting $BACKUP_DIR_ABS into a MySQL data directory at $OUTPUT_DIR_ABS..." >&2
