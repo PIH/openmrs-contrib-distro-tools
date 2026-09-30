@@ -172,6 +172,9 @@ assert_valid() {
     refute_output --regexp 'curl -[a-z]*k'
     run jq -r '.services["openhim-core"].environment.api_protocol' <<< "$config"
     assert_output http
+    # OpenHIM's own images on release tags, not latest
+    run jq -r '.services["openhim-core"].image, .services["openhim-console"].image' <<< "$config"
+    refute_output --partial ':latest'
     run jq -r '.services["openhim-core"].environment | .mongo_url, .mongo_atnaUrl' <<< "$config"
     assert_output $'mongodb://mongo-db/openhim\nmongodb://mongo-db/openhim'
     # the admin API (for the console, which runs in the admin's browser) and the router's HTTP port
