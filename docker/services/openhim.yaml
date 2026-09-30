@@ -46,10 +46,10 @@ services:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-core
     image: jembi/openhim-core:${OPENHIM_CORE_IMAGE_TAG?}
     restart: unless-stopped
-    # PID 1 is otherwise Node, which never reaps orphaned processes. An HTTPS healthcheck's
-    # BusyBox wget left an ssl_client zombie each run, and each pinned a seccomp filter's BPF JIT
-    # memory until the host could no longer start container processes (errno 524). The
-    # healthcheck is plain HTTP now, but this keeps anything else from doing the same.
+    # PID 1 is otherwise Node, which never reaps orphaned processes. 
+    # init: true runs tini as PID 1 to reap them; see
+    # https://docs.docker.com/reference/compose-file/services/#init and
+    # https://github.com/krallin/tini
     init: true
     environment:
       # Named openhim since TASKS-596 (openhim-development before). An instance from before starts
