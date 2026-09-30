@@ -3,7 +3,7 @@
 # directory) to compare before and after a backup and restore: take one of the source, one of the
 # restored copy, and `diff` them. Usage:
 #   utils/fingerprint.sh (--container=<name> | --host=<host> [--port=3306] [--client-image=mysql:5.6]
-#       | --db-volume=<db data volume or host dir> [--image=mysql:5.6])
+#       | --db-volume=<db data volume or host dir> [--image=mysql:5.6] [--server-opt=<flag>...])
 #       [--database=openmrs] [--data-dir=<volume or dir> [--exclude-distribution-artifacts]]
 #       [--output=<file>]
 #
@@ -13,7 +13,9 @@
 # `docker` by name only, so it never appears in argv). --db-volume reads a *stopped* instance's
 # data directory: it starts --image's server on it with --skip-grant-tables --skip-networking (no
 # password needed, nothing can connect), and stops it cleanly afterwards. It refuses while a
-# container is using the volume. Use the image the instance runs.
+# container is using the volume. Use the image the instance runs, and give each of its server options
+# (e.g. --server-opt=--character-set-server=utf8), or [server] shows the image's defaults instead:
+# `openmrs-docker <name> fingerprint` does both for an instance.
 #
 # Sections, each sorted, one fact per line, so a diff shows only what changed:
 #   [server]    version (and vendor), character set and collation, lower_case_table_names, sql_mode, time_zone,
@@ -46,6 +48,7 @@ DATABASE=openmrs
 DATA_DIR=
 EXCLUDE_DISTRIBUTION_ARTIFACTS=false
 OUTPUT=
+SERVER_OPTS=()
 for arg in "$@"; do
     case "$arg" in
         --container=*) CONTAINER="${arg#*=}" ;;
@@ -54,6 +57,7 @@ for arg in "$@"; do
         --client-image=*) CLIENT_IMAGE="${arg#*=}" ;;
         --db-volume=*) DB_VOLUME="${arg#*=}" ;;
         --image=*) IMAGE="${arg#*=}" ;;
+        --server-opt=*) SERVER_OPTS+=("${arg#*=}") ;;
         --database=*) DATABASE="${arg#*=}" ;;
         --data-dir=*) DATA_DIR="${arg#*=}" ;;
         --exclude-distribution-artifacts) EXCLUDE_DISTRIBUTION_ARTIFACTS=true ;;
@@ -62,7 +66,7 @@ for arg in "$@"; do
     esac
 done
 usage() {
-    echo "usage: $0 (--container=<name> | --host=<host> [--port=3306] | --db-volume=<volume or dir> [--image=mysql:5.6]) [--database=openmrs] [--data-dir=<volume or dir> [--exclude-distribution-artifacts]] [--output=<file>]" >&2
+    echo "usage: $0 (--container=<name> | --host=<host> [--port=3306] | --db-volume=<volume or dir> [--image=mysql:5.6] [--server-opt=<flag>...]) [--database=openmrs] [--data-dir=<volume or dir> [--exclude-distribution-artifacts]] [--output=<file>]" >&2
     exit 1
 }
 SOURCES=0
@@ -86,7 +90,7 @@ else
     TMP_DB="fingerprint-$(date +%Y%m%d%H%M%S)-$$"
     trap 'docker stop -t 60 "$TMP_DB" >/dev/null 2>&1; docker rm -f "$TMP_DB" >/dev/null 2>&1 || true' EXIT
     # The image's entrypoint leaves an existing data directory alone and passes the flags on.
-    docker run -d --name "$TMP_DB" -v "$DB_VOLUME:/var/lib/mysql" "$IMAGE" --skip-grant-tables --skip-networking >/dev/null
+    docker run -d --name "$TMP_DB" -v "$DB_VOLUME:/var/lib/mysql" "$IMAGE" ${SERVER_OPTS[@]+"${SERVER_OPTS[@]}"} --skip-grant-tables --skip-networking >/dev/null
     CLIENT=mysql
     docker exec "$TMP_DB" sh -c 'command -v mysql' >/dev/null 2>&1 || CLIENT=mariadb
     # A large data directory can spend a long time in crash recovery first.

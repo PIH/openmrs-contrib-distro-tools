@@ -467,12 +467,15 @@ RESTORE_MYSQL_DATA_PATH="$DATADIR" openmrs-docker <name> initialize
 ```
 
 **Checking a restore:** `openmrs-utils fingerprint` (see Utilities) of the source before the backup,
-and of the new instance's volumes after `initialize` and before its first start, then `diff`. Expect
-`[accounts]` to differ, and a physical restore to bring along other databases the source had:
+and `openmrs-docker <name> fingerprint` of the new instance after `initialize` and before its first
+start, then `diff`. The instance command reads its stopped volumes with the instance's own database
+image and `OPENMRS_DB_OPT_*` options, so `[server]` shows what the running instance will have. Expect
+`[accounts]` to differ, a physical restore to bring along other databases the source had, and
+`[server]` to differ only where the two servers are configured differently:
 
 ```bash
 openmrs-utils fingerprint --container=<source db container> --data-dir=<source data dir> --output=before.txt
-openmrs-utils fingerprint --db-volume=<name>_db-data --data-dir=<name>_openmrs-data --output=after.txt
+openmrs-docker <name> fingerprint --data-dir --exclude-distribution-artifacts --output=after.txt
 diff before.txt after.txt
 ```
 
@@ -517,15 +520,17 @@ check free disk space before writing anything, as `initialize` does (see "Disk s
   holding the backup's files directly), the directory it extracted into; prints `<path>` unchanged
   for anything else.
 - **`fingerprint (--container=<name> | --host=<host> [--port=3306] | --db-volume=<volume or dir>
-  [--image=mysql:5.6]) [--database=openmrs] [--data-dir=<volume or dir>
+  [--image=mysql:5.6] [--server-opt=<flag>...]) [--database=openmrs] [--data-dir=<volume or dir>
   [--exclude-distribution-artifacts]] [--output=<file>]`** -- writes a sorted summary to `diff`
   before and after a restore: server settings, databases, every table's exact row count (`COUNT(*)`:
   minutes on a large `obs`), routines/triggers/views, the highest id and `date_created` on
   `encounter`/`obs`/`patient`/`person`/`users`, accounts (`user@host`), and with `--data-dir` the
   files and bytes per top-level folder. No row contents or secrets. `--container`/`--host` log in as
   root (`MYSQL_ROOT_PASSWORD`); `--db-volume` reads a *stopped* instance's `db-data` by starting its
-  image on it with grants disabled and no networking -- the way to check a restore after
-  `initialize`, before OpenMRS first starts (which changes Liquibase and scheduler tables).
+  image on it with grants disabled and no networking, with any `--server-opt` flags -- the way to
+  check a restore after `initialize`, before OpenMRS first starts (which changes Liquibase and
+  scheduler tables). For an instance, `openmrs-docker <name> fingerprint` passes its image and
+  server options.
 - **`convert-percona-backup --backup-dir=<dir> --output-dir=<dir>`** -- converts an extracted,
   already-prepared (`--apply-log`'d) percona/xtrabackup backup directory into a ready-to-use MySQL
   data directory (`--copy-back`), suitable for `initialize`'s `RESTORE_MYSQL_DATA_PATH`.

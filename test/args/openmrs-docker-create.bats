@@ -239,3 +239,14 @@ teardown() {
     assert_failure
     assert_output --partial "has no openmrs-db service"
 }
+
+@test "fingerprint rejects an option it doesn't take, and an instance with no db-data yet" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    run "$BIN/openmrs-docker" "$NAME" fingerprint --bogus
+    assert_failure
+    assert_output --partial "Unknown option: '--bogus'"
+    run "$BIN/openmrs-docker" "$NAME" fingerprint
+    assert_failure
+    assert_output --partial "${NAME}_db-data doesn't exist"
+}

@@ -28,6 +28,9 @@ usage() {
     echo "  remove-service <svc>    Detach a service fragment and remove its containers (its volumes are kept)"
     echo "  run-service <svc> [cmd...]  Run a one-off container for an attached service via 'docker compose run' (e.g. after add-service)"
     echo "  wait                    Block until OpenMRS finishes initializing (up to 60 minutes)"
+    echo "  fingerprint [--data-dir] [--exclude-distribution-artifacts] [--output=<file>]"
+    echo "                          Summarize the stopped instance's database (and openmrs-data) to diff against"
+    echo "                          its source -- see utils/fingerprint.sh"
     echo "  build                   Build the distribution and Docker image from source"
     echo "  pull                    Pull the images this instance would use, without starting anything"
     echo "  logs [service]          Tail the container logs; defaults to every service"
@@ -249,8 +252,8 @@ BUILD=false
 DEV=false
 FORCE=false
 # run-service forwards its remaining args verbatim as the one-off container's command
-# (e.g. ./execute-smoke-tests.sh liberia) -- skip flag validation for it.
-if [ "$COMMAND" != "run-service" ]; then
+# (e.g. ./execute-smoke-tests.sh liberia), and fingerprint takes its own -- skip flag validation for them.
+if [ "$COMMAND" != "run-service" ] && [ "$COMMAND" != fingerprint ]; then
     for arg in "$@"; do
         case "$arg" in
             --build) BUILD=true ;;
@@ -783,6 +786,27 @@ case "$COMMAND" in
             echo "OpenMRS did not become ready -- see log output above, or '$0 $NAME logs openmrs'."
             exit 1
         fi
+        ;;
+    fingerprint)
+        # The instance's own image and server options (as openmrs-db.yaml turns OPENMRS_DB_OPT_* into
+        # flags), so [server] and anything they affect read as they do on the running instance.
+        FP_ARGS=(--db-volume="${SERVICE_NAME}_db-data" --image="$OPENMRS_DB_IMAGE_NAME:$OPENMRS_DB_IMAGE_TAG" --database=openmrs)
+        for var in "${!OPENMRS_DB_OPT_@}"; do
+            opt="${var#OPENMRS_DB_OPT_}"
+            opt="${opt//_/-}"
+            if [ -n "${!var}" ]; then FP_ARGS+=(--server-opt="--$opt=${!var}"); else FP_ARGS+=(--server-opt="--$opt"); fi
+        done
+        for arg in "$@"; do
+            case "$arg" in
+                --data-dir) FP_ARGS+=(--data-dir="${SERVICE_NAME}_openmrs-data") ;;
+                --exclude-distribution-artifacts|--output=*) FP_ARGS+=("$arg") ;;
+                *) echo "Unknown option: '$arg'"; echo ""; usage ;;
+            esac
+        done
+        [ -f "$INSTANCE_DIR/openmrs-db.yaml" ] || { echo "error: $NAME has no openmrs-db service" >&2; exit 1; }
+        docker volume inspect "${SERVICE_NAME}_db-data" >/dev/null 2>&1 \
+            || { echo "error: ${SERVICE_NAME}_db-data doesn't exist -- nothing to fingerprint" >&2; exit 1; }
+        "$TOOL_DIR/utils/fingerprint.sh" "${FP_ARGS[@]}"
         ;;
     build)
         build_image
