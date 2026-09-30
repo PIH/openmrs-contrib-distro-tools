@@ -160,3 +160,82 @@ teardown() {
     run "$BIN/openmrs-docker" "$NAME" status
     assert_success
 }
+
+@test "create refuses a name Compose can't use as its project name, and creates nothing" {
+    NAME="$(instance)"
+    local bad
+    for bad in "$NAME-Upper" "$NAME/sub" ".$NAME" "-$NAME"; do
+        run "$BIN/openmrs-docker" create "$bad"
+        assert_failure
+        assert_output --partial "must be lowercase letters, digits, '-' and '_'"
+        [ ! -e "$OPENMRS_DOCKER_HOME/$bad" ]
+    done
+}
+
+@test "a SERVICE_NAME in env that Compose would change is refused, except by destroy" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    sed -i "s/^SERVICE_NAME=.*/SERVICE_NAME='$NAME-Upper'/" "$OPENMRS_DOCKER_HOME/$NAME/env"
+    run "$BIN/openmrs-docker" "$NAME" status
+    assert_failure
+    assert_output --partial "SERVICE_NAME '$NAME-Upper'"
+    run "$BIN/openmrs-docker" "$NAME" destroy --force
+    assert_success
+    [ ! -e "$OPENMRS_DOCKER_HOME/$NAME" ]
+}
+
+@test "a container-env line with trailing whitespace or tabs passes only the variables it names" {
+    NAME="$(instance)"
+    # A copy of the tool, so its service defaults can be edited.
+    local tool="$BATS_TEST_TMPDIR/tool" dir
+    mkdir -p "$tool" && cp -r "$REPO_ROOT/bin" "$REPO_ROOT/docker" "$REPO_ROOT/utils" "$tool/"
+    sed -i "s/^# container-env:.*/# container-env:\tOPENMRS_DB_OPT_ \t /" "$tool/docker/services/openmrs-db.env.defaults"
+    SERVICES=openmrs-db "$tool/bin/openmrs-docker" create "$NAME" >/dev/null
+    dir="$OPENMRS_DOCKER_HOME/$NAME"
+    run grep -c '^OPENMRS_DB_OPT_' "$dir/openmrs-db.env"
+    refute_output 0
+    run grep -v -e '^#' -e '^OPENMRS_DB_OPT_' "$dir/openmrs-db.env"
+    assert_output ''
+}
+
+@test "list shows only instance directories" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    mkdir -p "$OPENMRS_DOCKER_HOME/$NAME-not-an-instance"
+    run "$BIN/openmrs-docker" list
+    assert_success
+    assert_line "$NAME"
+    refute_line "$NAME-not-an-instance"
+    rmdir "$OPENMRS_DOCKER_HOME/$NAME-not-an-instance"
+}
+
+@test "add-service leaves the instance unchanged when the result isn't valid Compose" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db,openmrs "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    cp "$OPENMRS_DOCKER_HOME/$NAME/env" "$BATS_TEST_TMPDIR/env.before"
+    # the mediator depends on services from the openhim fragment, which isn't attached
+    run "$BIN/openmrs-docker" "$NAME" add-service openhim-advapacs-mediator
+    assert_failure
+    assert_output --partial "depends on undefined service"
+    [ ! -e "$OPENMRS_DOCKER_HOME/$NAME/openhim-advapacs-mediator.yaml" ]
+    cmp "$BATS_TEST_TMPDIR/env.before" "$OPENMRS_DOCKER_HOME/$NAME/env"
+    run "$BIN/openmrs-docker" "$NAME" status
+    assert_success
+}
+
+@test "add-service openmrs names OPENMRS_IMAGE_NAME when it isn't set" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    run env -u OPENMRS_IMAGE_NAME "$BIN/openmrs-docker" "$NAME" add-service openmrs
+    assert_failure
+    assert_output --partial "OPENMRS_IMAGE_NAME must be set"
+    [ ! -e "$OPENMRS_DOCKER_HOME/$NAME/openmrs.yaml" ]
+}
+
+@test "reset-openmrs-db-accounts refuses an instance with no openmrs-db service" {
+    NAME="$(instance)"
+    SERVICES=openhim "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    run "$BIN/openmrs-docker" "$NAME" reset-openmrs-db-accounts
+    assert_failure
+    assert_output --partial "has no openmrs-db service"
+}

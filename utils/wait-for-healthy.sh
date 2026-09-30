@@ -27,6 +27,10 @@ case "$TIMEOUT" in
     ''|*[!0-9]*|0) echo "error: --timeout must be a positive integer, got '$TIMEOUT'" >&2; exit 1 ;;
 esac
 docker inspect "$CONTAINER" >/dev/null 2>&1 || { echo "error: no such container: $CONTAINER" >&2; exit 1; }
+# Without one there's no status to wait for (Test is ["NONE"] when the image's was turned off).
+case "$(docker inspect --format '{{with .Config.Healthcheck}}{{index .Test 0}}{{end}}' "$CONTAINER")" in
+    ''|NONE) echo "error: $CONTAINER has no healthcheck to wait for" >&2; exit 1 ;;
+esac
 
 # Polled every second against a deadline, so the time docker inspect itself takes doesn't stretch
 # the timeout. The container's own healthcheck interval decides how soon it can report healthy.
