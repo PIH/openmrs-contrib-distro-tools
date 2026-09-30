@@ -665,6 +665,10 @@ every Linux host); where `flock` isn't installed (e.g. macOS), commands run unlo
 
 ### Changing the database passwords
 
+`OPENMRS_DB_PASSWORD` can't contain a backslash, and neither can `OPENMRS_DB_ROOT_PASSWORD` with a MySQL
+image: the MySQL images' first setup and openmrs-core's first install store it wrongly, so `openmrs-db`
+refuses one before setting up an empty data directory (MariaDB's images handle it in the root password).
+
 Changing `OPENMRS_DB_PASSWORD` or `OPENMRS_DB_ROOT_PASSWORD` in `env` on its own changes nothing:
 MySQL only takes them when it first sets up an empty data directory, and OpenMRS (core 2.6+) keeps
 the connection settings its runtime properties file got on its first start. After editing `env`, run:

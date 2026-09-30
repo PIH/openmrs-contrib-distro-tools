@@ -92,3 +92,33 @@ binlog_files() { # <instance>
     run docker inspect -f '{{.State.Health.Status}}' "$name-openmrs-db"
     assert_output healthy
 }
+
+@test "a DB password with a backslash is refused before the image sets up an empty data directory, naming the variable" {
+    # mysql's images put the passwords into SQL unescaped (a root password with one fails the
+    # first boot; the openmrs user gets the wrong password), and openmrs-core writes the connection
+    # password into a properties file unescaped.
+    local name
+    name="$(instance)"
+    OPENMRS_DB_PASSWORD='bs\x' SERVICES=openmrs-db create_instance "$name"
+    "$BIN/openmrs-docker" "$name" start >/dev/null 2>&1 || true
+    for i in $(seq 1 30); do
+        [ "$(docker inspect -f '{{.State.Running}}' "$name-openmrs-db" 2>/dev/null)" = true ] || break
+        sleep 1
+    done
+    run docker logs "$name-openmrs-db"
+    assert_output --partial "OPENMRS_DB_PASSWORD contains a backslash"
+    # nothing was set up in the data directory
+    run docker run --rm -v "${name}_db-data:/d:ro" alpine:3.21 sh -c 'ls -A /d | wc -l'
+    assert_output 0
+}
+
+@test "an existing data directory starts regardless (its accounts were set by other means)" {
+    local name env
+    name="$(instance)"
+    SERVICES=openmrs-db create_instance "$name"
+    start_db "$name"
+    env="$OPENMRS_DOCKER_HOME/$name/env"
+    sed -i "s/^OPENMRS_DB_ROOT_PASSWORD=.*/OPENMRS_DB_ROOT_PASSWORD='bs\\\\x'/" "$env"
+    "$BIN/openmrs-docker" "$name" start >/dev/null 2>&1
+    wait_for_mysql "$name-openmrs-db" root openmrs
+}
