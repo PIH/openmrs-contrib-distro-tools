@@ -22,6 +22,23 @@ services:
         [ $${#args[@]} -gt 0 ] || echo "No OPENMRS_DB_OPT_* variables set: starting with the server's own defaults" >&2
         server=mariadbd
         command -v mariadbd >/dev/null || server=mysqld
+        # Before the image sets up an empty data directory: mysql's images put the passwords into SQL
+        # unescaped (a backslash in the root password fails the setup, and the openmrs user gets a
+        # different password), and openmrs-core's first install writes the connection password into a
+        # properties file unescaped. MariaDB's images escape them. An existing data directory isn't
+        # checked: its accounts were set by other means (e.g. reset-openmrs-db-accounts).
+        if [ -z "$$(ls -A /var/lib/mysql 2>/dev/null)" ]; then
+          case "$$MYSQL_PASSWORD" in *\\*)
+            echo "error: OPENMRS_DB_PASSWORD contains a backslash, which the openmrs user and OpenMRS's connection settings would get wrong on first setup. Choose a password without one." >&2
+            exit 1 ;;
+          esac
+          if [ "$$server" = mysqld ]; then
+            case "$$MYSQL_ROOT_PASSWORD" in *\\*)
+              echo "error: OPENMRS_DB_ROOT_PASSWORD contains a backslash, which this MySQL image's first setup gets wrong. Choose a password without one." >&2
+              exit 1 ;;
+            esac
+          fi
+        fi
         exec docker-entrypoint.sh "$$server" "$${args[@]}"
     # Only the lines of the instance's env matching the "# container-env:" prefixes in
     # openmrs-db.env.defaults (OPENMRS_DB_OPT_*), which openmrs-docker copies into openmrs-db.env on
