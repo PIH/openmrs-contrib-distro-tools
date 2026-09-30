@@ -25,7 +25,7 @@ compose_config() { # [overlay...]
     run env SEED_IMAGE_NAME=placeholder/seed \
         RESTORE_MYSQL_DUMP_PATH=/tmp/dump.sql RESTORE_MYSQL_DUMP_FILENAME=dump.sql \
         RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME=archive.7z \
-        RESTORE_MYSQL_DATA_PATH=/tmp/datadir \
+        RESTORE_MYSQL_DATA_PATH=/tmp/datadir DISTRO_TOOLS_UTILS_DIR="$REPO_ROOT/utils" \
         RESTORE_OPENMRS_DATA_PATH=/tmp/data RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME=archive.tar.gz \
         docker compose --env-file "$dir/env" "${args[@]}" config -q
 }
