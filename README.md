@@ -1016,6 +1016,36 @@ missing. Its
 OpenHIM's clients authenticate with Basic auth or custom tokens; its JWT authentication is off,
 since nothing uses it and it would otherwise accept a token signed with a shared secret for any client.
 
+Inside the instance's Docker network, OpenHIM and its mediators talk plain HTTP, including
+openhim-core's admin API; TLS for access from outside is the reverse proxy's job. `openhim.yaml`
+publishes only what's used from outside, and its comments say why each one is:
+
+| Variable | Default | Published for |
+|---|---|---|
+| `OPENHIM_CONSOLE_HOST_PORT` | `9000` | the admin console |
+| `OPENHIM_ADMIN_API_HOST_PORT` | `8081` | the admin API, which the console (running in the admin's browser) calls directly |
+| `OPENHIM_ROUTER_HTTP_HOST_PORT` | `5001` | the router, for external systems calling a channel. A proxy in front should forward only those channels' paths: some channels are public |
+
+Behind a proxy, tell the console where the browser finds the admin API, and set the console's own
+address for links openhim-core generates. The defaults are for a browser on the same machine:
+
+| Variable | Default |
+|---|---|
+| `OPENHIM_CONSOLE_API_PROTOCOL`, `OPENHIM_CONSOLE_API_HOST`, `OPENHIM_CONSOLE_API_PORT`, `OPENHIM_CONSOLE_API_PATH` | `http`, `localhost`, `OPENHIM_ADMIN_API_HOST_PORT`, empty |
+| `OPENHIM_CONSOLE_URL` | `http://localhost:<OPENHIM_CONSOLE_HOST_PORT>` |
+
+OpenHIM's MongoDB database is named `openhim` (it was `openhim-development` before TASKS-596). An
+instance created before starts on an empty database: `openhim-setup` sets the admin password
+again and each mediator registers and provisions its channels and clients on its next start, but
+the transaction log, audit events, metrics and anything changed by hand in the console aren't
+carried over. The old database stays in the `mongo-data` volume, to copy with `mongodump` /
+`mongorestore --nsFrom 'openhim-development.*' --nsTo 'openhim.*'` or drop.
+
+For example, with the proxy serving the console at `https://openhim.example.org` and forwarding
+`/api` there to the admin API: `OPENHIM_CONSOLE_API_PROTOCOL=https`,
+`OPENHIM_CONSOLE_API_HOST=openhim.example.org`, `OPENHIM_CONSOLE_API_PORT=443`,
+`OPENHIM_CONSOLE_API_PATH=/api`, `OPENHIM_CONSOLE_URL=https://openhim.example.org`.
+
 The following example will create an instance with OpenHIM and its mediators installed,
 configured for Lesotho:
 

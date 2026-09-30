@@ -9,6 +9,24 @@ name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 # must stay stable since those are the DNS names Compose hands out on the
 # instance's default network.
 #
+# Inside the instance's Docker network everything is plain HTTP, including openhim-core's admin API
+# (api_protocol); TLS for access from outside is the reverse proxy's job (Caddy on the app cluster).
+#
+# Published ports (on all interfaces; the host is firewalled and VPN-only), each for something
+# outside the Docker network that uses it:
+#   OPENHIM_CONSOLE_HOST_PORT       -> openhim-console:80   the admin console, for people
+#   OPENHIM_ADMIN_API_HOST_PORT     -> openhim-core:8080    the admin API: the console runs in the
+#                                                           admin's browser, which calls it directly
+#   OPENHIM_ROUTER_HTTP_HOST_PORT   -> openhim-core:5001    the router, for external systems calling
+#                                                           a channel (AdvaPACS's result webhook to
+#                                                           the mediator). A proxy in front should
+#                                                           forward only those channels' paths: some
+#                                                           channels are public (e.g. the mediator's
+#                                                           outbound /advapacs/*).
+# Not published: openhim-core's HTTPS router (5000; the proxy terminates TLS), rerun, TCP adapter
+# and polling (7786-7788, used inside openhim-core), and mongo-db (openhim-core only). Mediators
+# reach openhim-core by service name, so they need nothing published either.
+#
 # openhim-setup is a one-shot job, not a long-running service: on a fresh
 # Mongo volume, openhim-core's own image hardcodes its root account as
 # root@openhim.org / openhim-password. openhim-setup changes the real password to
@@ -28,28 +46,32 @@ services:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-core
     image: jembi/openhim-core:${OPENHIM_CORE_IMAGE_TAG?}
     restart: unless-stopped
-    # PID 1 is otherwise Node, which never reaps the ssl_client helper that BusyBox wget spawns
-    # for the HTTPS healthcheck below.
+    # PID 1 is otherwise Node, which never reaps orphaned processes. 
     # init: true runs tini as PID 1 to reap them; see
     # https://docs.docker.com/reference/compose-file/services/#init and
     # https://github.com/krallin/tini
     init: true
     environment:
-      mongo_url: mongodb://mongo-db/openhim-development
-      mongo_atnaUrl: mongodb://mongo-db/openhim-development
-      NODE_ENV: development
+      # Named openhim since TASKS-596 (openhim-development before). An instance from before starts
+      # on an empty database, which the setup job and the mediators provision again; the old one
+      # stays in mongo-data until dropped (see README, "Adding OpenHIM and mediators").
+      mongo_url: mongodb://mongo-db/openhim
+      mongo_atnaUrl: mongodb://mongo-db/openhim
+      # Not development, whose config turns on debug logging and the audit servers (5050-5052).
+      NODE_ENV: production
+      api_protocol: http
       api_authenticationTypes: '["token", "basic", "openid", "local"]'
       authentication_enableCustomTokenAuthentication: "true"
       # Off: nothing authenticates to OpenHIM with a JWT (the mediator's clients use Basic auth), and
       # with it on, anyone who knew the shared secret could sign a token as any client.
       authentication_enableJWTAuthentication: "false"
-      openhimConsoleBaseUrl: http://localhost:${OPENHIM_CONSOLE_HOST_PORT?}
+      # The console's address for links openhim-core generates (e.g. in emails).
+      openhimConsoleBaseUrl: ${OPENHIM_CONSOLE_URL?}
     ports:
       - "${OPENHIM_ADMIN_API_HOST_PORT?}:8080"
-      - "${OPENHIM_ROUTER_HTTPS_HOST_PORT?}:5000"
       - "${OPENHIM_ROUTER_HTTP_HOST_PORT?}:5001"
     healthcheck:
-      test: "wget --no-check-certificate -qO- https://openhim-core:8080/heartbeat || exit 1"
+      test: "wget -qO- http://openhim-core:8080/heartbeat || exit 1"
       interval: 30s
       timeout: 30s
       retries: 3
@@ -70,7 +92,7 @@ services:
     command:
       - |
         set -eu
-        base="https://openhim-core:8080"
+        base="http://openhim-core:8080"
         email="root@openhim.org"
         default_password="openhim-password"
         # Credentials and body go to curl in files written by the shell's own printf, so the
@@ -82,7 +104,7 @@ services:
         # it, or OPENHIM_PASSWORD was left at its own default. Either way, nothing
         # to do.
         auth "$$OPENHIM_PASSWORD"
-        code=$$(curl -sk -K /tmp/auth -o /dev/null -w '%{http_code}' "$$base/users")
+        code=$$(curl -s -K /tmp/auth -o /dev/null -w '%{http_code}' "$$base/users")
         if [ "$$code" = "200" ]; then
           echo "OpenHIM admin password already matches OPENHIM_PASSWORD."
           exit 0
@@ -94,7 +116,7 @@ services:
         auth "$$default_password"
         printf '{"firstname":"Super","surname":"User","email":"%s","provider":"local","groups":["admin"],"password":"%s"}' \
           "$$email" "$$(esc "$$OPENHIM_PASSWORD")" > /tmp/body
-        curl -skf -K /tmp/auth -X PUT "$$base/users/$$email" \
+        curl -sf -K /tmp/auth -X PUT "$$base/users/$$email" \
           -H 'Content-Type: application/json' -d @/tmp/body
         echo "OpenHIM admin password set to OPENHIM_PASSWORD."
 
@@ -102,8 +124,14 @@ services:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-console
     image: jembi/openhim-console:${OPENHIM_CONSOLE_IMAGE_TAG?}
     restart: unless-stopped
+    # Where the console, running in the admin's browser, finds the admin API: as the browser sees
+    # it (e.g. https, the console's own host behind the proxy, and a path the proxy forwards to the
+    # admin API). The defaults are for a browser on the same machine, straight to the published port.
     environment:
-      OPENHIM_MEDIATOR_API_PORT: ${OPENHIM_ADMIN_API_HOST_PORT?}
+      OPENHIM_CONSOLE_PROTOCOL: ${OPENHIM_CONSOLE_API_PROTOCOL?}
+      OPENHIM_CORE_MEDIATOR_HOSTNAME: ${OPENHIM_CONSOLE_API_HOST?}
+      OPENHIM_MEDIATOR_API_PORT: ${OPENHIM_CONSOLE_API_PORT?}
+      OPENHIM_CONSOLE_HOSTPATH: ${OPENHIM_CONSOLE_API_PATH?}
     ports:
       - "${OPENHIM_CONSOLE_HOST_PORT?}:80"
     healthcheck:
