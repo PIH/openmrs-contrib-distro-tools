@@ -187,11 +187,33 @@ are internal implementation details of those workflows, not something a distro r
 ### Docker build arguments
 
 `docker_build_args` (one `NAME=value` per line) is passed to the image build (not to the variants).
-ETL projects use it to build on the exact PETL image that triggered them: petl's image workflow sends
-`petl-image-published` with `client_payload.petl_image` (`partnersinhealth/petl@sha256:...`), and the
-ETL caller passes it on:
+
+ETL projects use it to rebuild on a new PETL image. After pushing one, petl's image workflow sends
+`petl-image-published` to each ETL project with `client_payload.petl_image` (the image by digest,
+`partnersinhealth/petl@sha256:...`) and `client_payload.petl_tags` (the tags it moved, e.g.
+`["latest","3.8.0-SNAPSHOT"]`). A project rebuilds only if it's affected: the
+`etl-base-image-affected` action reads the `ARG PETL_BASE_IMAGE=` default in its `Dockerfile`, and a
+project built on one of those tags is; one pinned to another version, or by digest, isn't, and its
+build and deploys are skipped. An affected project builds on exactly the published image:
 
 ```yaml
+  check-petl-base:
+    if: github.repository_owner == 'PIH' && github.event.action == 'petl-image-published'
+    runs-on: ubuntu-latest
+    outputs:
+      affected: ${{ steps.check.outputs.affected }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/etl-base-image-affected@main
+        with:
+          published_tags: ${{ toJSON(github.event.client_payload.petl_tags) }}
+
+  build-and-publish:
+    needs: check-petl-base
+    if: github.repository_owner == 'PIH' && !cancelled() && (github.event.action != 'petl-image-published' || needs.check-petl-base.outputs.affected == 'true')
+    ...
+    with:
       docker_build_args: ${{ github.event.action == 'petl-image-published' && format('PETL_BASE_IMAGE={0}', github.event.client_payload.petl_image) || '' }}
 ```
 
