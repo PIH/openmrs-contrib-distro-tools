@@ -31,6 +31,8 @@
 # configured differently, and once OpenMRS has started, its Liquibase and scheduler tables -- so
 # fingerprint a restore before its first start.
 set -euo pipefail
+# One sort order whoever runs it, or two fingerprints taken under different locales differ in order.
+export LC_ALL=C
 # shellcheck source=lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 # shellcheck source=lib/mysql.sh
