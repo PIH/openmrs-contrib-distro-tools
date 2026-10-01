@@ -47,6 +47,24 @@ without_accounts() { # <fingerprint file>
     refute_output --partial 's3cret-hash-value'
 }
 
+@test "the same database fingerprints the same whatever the caller's locale" {
+    # Mixed case and underscores sort differently in C and en_US: seen restoring ci.pih-emr.org,
+    # whose two fingerprints were taken by users with different locales.
+    locale -a 2>/dev/null | grep -qix 'en_US.utf8' || skip "en_US.UTF-8 locale not installed"
+    local db
+    db="$(res sortdb)"
+    start_source_db "$db"
+    mysql_exec "$db" openmrs "
+        CREATE TABLE openmrs.appointment_service (id INT) ENGINE=InnoDB;
+        CREATE TABLE openmrs.appointmentsx (id INT) ENGINE=InnoDB;
+        CREATE FUNCTION openmrs.DrugStart() RETURNS INT DETERMINISTIC RETURN 1;
+        CREATE FUNCTION openmrs.currentState() RETURNS INT DETERMINISTIC RETURN 1;"
+    MYSQL_PASSWORD=openmrs LC_ALL=C "$UTILS/fingerprint.sh" --container="$db" --output=c.txt
+    MYSQL_PASSWORD=openmrs LC_ALL=en_US.UTF-8 "$UTILS/fingerprint.sh" --container="$db" --output=en.txt
+    run diff c.txt en.txt
+    assert_success
+}
+
 @test "a logical restore fingerprints the same as its source before the first start, apart from accounts" {
     MYSQL_PASSWORD=openmrs "$UTILS/backup-mysqldump.sh" --container="$SRC_DB" --user=root --output=dump.sql 2>/dev/null
     NAME="$(instance)"
