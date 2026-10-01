@@ -4,6 +4,10 @@
 
 load ../helpers
 
+# One SQL Server at a time from this file: each takes up to 3 GB, and several at once on a CI runner
+# (or a laptop) leave one unhealthy.
+setup_file() { export BATS_NO_PARALLELIZE_WITHIN_FILE=true; }
+
 SA='Sa-Placeholder-1'
 # Needs quoting in T-SQL and the shell (a single quote can't be in an env file); meets SQL Server's
 # complexity rules.
