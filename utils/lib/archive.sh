@@ -11,6 +11,8 @@
 # Writes <output.7z> from <source> (a volume or absolute directory), owned by the caller. With a
 # <top>, the archive holds one folder of that name, with the source's contents in it; with <top>
 # empty, the contents are at its top level. Further arguments are 7z switches, e.g. -x!<path>.
+# Symbolic links are stored as links (-snl), as tar does: followed, one pointing outside <source>
+# can't be read in the container, and 7z then fails.
 archive_7z_create() { # <output.7z> <source> <top> [7z switch...]
     local output=$1 source=$2 top=$3 mount=/src entry='*'   # 7z expands '*' itself, dotfiles too
     shift 3
@@ -18,7 +20,7 @@ archive_7z_create() { # <output.7z> <source> <top> [7z switch...]
     ARCHIVE_PASSWORD="${ARCHIVE_PASSWORD:-}" docker run --rm -e ARCHIVE_PASSWORD \
         -e OUT_NAME="$(basename "$output")" -e OWNER="$(id -u):$(id -g)" -v "$source:$mount:ro" \
         -v "$(dirname "$output"):/out" -w /src "$P7ZIP_IMAGE" \
-        sh -c 'printf "%s\n" "$ARCHIVE_PASSWORD" | 7z a -p -mx5 -t7z "/out/$OUT_NAME" "$@" >/dev/null &&
+        sh -c 'printf "%s\n" "$ARCHIVE_PASSWORD" | 7z a -p -mx5 -t7z -snl "/out/$OUT_NAME" "$@" >/dev/null &&
                chown "$OWNER" "/out/$OUT_NAME"' sh "$entry" "$@"
 }
 

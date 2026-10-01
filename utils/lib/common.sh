@@ -5,20 +5,24 @@
 #     containers by name (`docker -e VAR`), as MYSQL_PWD or on stdin, never on a command line,
 #     which `ps` on the host shows for processes in containers too.
 #   - Progress and errors go to stderr; stdout carries only a result a caller may capture.
-#   - A backup refuses an existing output, and a failed run removes the output it started.
+#   - A backup refuses an existing output, and a failed run removes the output it started, saying so.
+#   - A failing script always ends with an error: line (die, or the cleanup's fallback).
 #   - A script's header comment is its usage text, which `usage` prints.
 
 UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=images.sh
 . "$UTILS_DIR/lib/images.sh"
 
-die() { echo "error: $*" >&2; exit 1; }
+# A failing script always says so: die and usage set _ERROR_REPORTED, and otherwise the cleanup
+# below prints an error line (a command failing under `set -e` may print nothing useful itself).
+die() { echo "error: $*" >&2; _ERROR_REPORTED=true; exit 1; }
 warn() { echo "warning: $*" >&2; }
 note() { echo "$*" >&2; }
 
 # Prints the running script's header comment (the comment block after its #! line), and exits 1.
 usage() {
     awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0" >&2
+    _ERROR_REPORTED=true
     exit 1
 }
 
@@ -62,6 +66,9 @@ on_failure() { on_exit "[ \"\$_EXIT_STATUS\" -eq 0 ] || { $1; }"; }
 _run_cleanups() {
     _EXIT_STATUS=$1
     local c
+    if [ "$_EXIT_STATUS" -ne 0 ] && [ "${_ERROR_REPORTED:-}" != true ]; then
+        echo "error: $(basename "$0" .sh) failed (exit status $_EXIT_STATUS); see the messages above." >&2
+    fi
     for c in "${_CLEANUPS[@]}"; do eval "$c" || true; done
 }
 
@@ -70,7 +77,7 @@ _run_cleanups() {
 prepare_output_file() {
     [ ! -e "$1" ] || die "$1 already exists"
     mkdir -p "$(dirname "$1")"
-    on_failure "rm -f $(printf %q "$1")"
+    on_failure "rm -f $(printf %q "$1"); note $(printf %q "Removed the incomplete $1.")"
 }
 
 # The same for a new output directory, which this creates. Emptied in a container on failure,
@@ -78,5 +85,5 @@ prepare_output_file() {
 prepare_output_dir() {
     [ ! -e "$1" ] || die "$1 already exists"
     mkdir -p "$1"
-    on_failure "docker run --rm -v $(printf %q "$1"):/t $ALPINE_IMAGE find /t -mindepth 1 -delete >/dev/null 2>&1; rm -rf $(printf %q "$1")"
+    on_failure "docker run --rm -v $(printf %q "$1"):/t $ALPINE_IMAGE find /t -mindepth 1 -delete >/dev/null 2>&1; rm -rf $(printf %q "$1"); note $(printf %q "Removed the incomplete $1.")"
 }

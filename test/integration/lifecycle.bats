@@ -44,7 +44,8 @@ running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.p
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
     run timeout 120 "$BIN/openmrs-docker" "$NAME" wait
     assert_failure
-    assert_output --partial 'exited unexpectedly'
+    # Docker restarts it (restart: unless-stopped), so wait may see it exited or its healthcheck failed
+    assert_output --regexp 'exited unexpectedly|reported unhealthy'
     assert_output --partial 'OpenMRS did not become ready'
 }
 

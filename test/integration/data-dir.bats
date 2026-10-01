@@ -122,6 +122,31 @@ env_file() { echo "$OPENMRS_DOCKER_HOME/$NAME/env"; }
     assert_extracts_to out.tar.gz out "$FIXTURE_TREE"
 }
 
+@test "refuses a data directory holding a symbolic link, naming it and where it points (.7z)" {
+    # As found on a legacy server: a link back to the data directory by its absolute host path.
+    ln -s /home/tomcat/.OpenMRS "$BATS_TEST_TMPDIR/data/openmrs"
+    ARCHIVE_PASSWORD=pw run backup out.7z
+    assert_failure
+    assert_output --partial 'error: symbolic links'
+    assert_output --partial 'openmrs -> /home/tomcat/.OpenMRS'
+    assert [ ! -e out.7z ]
+}
+
+@test "refuses a data directory holding a symbolic link, naming it and where it points (.tar.gz)" {
+    ln -s ../complex_obs/1.jpg "$BATS_TEST_TMPDIR/data/.hidden/img"
+    run backup out.tar.gz
+    assert_failure
+    assert_output --partial '.hidden/img -> ../complex_obs/1.jpg'
+    assert [ ! -e out.tar.gz ]
+}
+
+@test "--exclude-distribution-artifacts ignores symbolic links in what it leaves out" {
+    ln -s /nowhere "$BATS_TEST_TMPDIR/data/modules/linked.omod"
+    ln -s /nowhere "$BATS_TEST_TMPDIR/data/.openmrs-lib-cache/linked"
+    ARCHIVE_PASSWORD=pw backup lean.7z --exclude-distribution-artifacts >/dev/null 2>&1
+    ARCHIVE_PASSWORD=pw assert_extracts_to lean.7z lean "$FIXTURE_TREE_EXCLUDED"
+}
+
 @test "ARCHIVE_PASSWORD never appears in a docker command line" {
     record_docker_argv
     ARCHIVE_PASSWORD=s3cret-archive-pw backup nightly.7z >/dev/null 2>&1

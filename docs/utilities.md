@@ -23,7 +23,9 @@ Run one as `openmrs-utils <name> [options]` (a passthrough to `utils/<name>.sh`)
 - `.7z` outputs are encrypted with `ARCHIVE_PASSWORD` (required for one), PIH's backup convention.
 - Progress and errors go to stderr, so stdout carries only a result a caller may capture (e.g.
   `extract-archive`'s path).
-- A backup refuses an output that already exists, and removes what it started writing if it fails.
+- A backup refuses an output that already exists, and removes what it started writing if it fails,
+  saying so. A failing utility always ends with an `error:` line, even when the tool that failed
+  (e.g. 7z) only printed a warning.
   Those that write a lot check the free disk space first, as `initialize` does
   ([Disk space](restore.md#disk-space)); `SKIP_DISK_SPACE_CHECK=true` goes ahead anyway.
 - Writing a new one: the helpers they share, and these conventions, are in `utils/lib/common.sh`.
@@ -34,7 +36,7 @@ Run one as `openmrs-utils <name> [options]` (a passthrough to `utils/<name>.sh`)
 |---|---|
 | `backup-mysqldump` | Dumps a database, with its routines and triggers, to `.sql`, `.gz` or `.7z` (streamed in, so never on disk unencrypted), usable as `RESTORE_MYSQL_DUMP_PATH`. `--strip-definers` removes `DEFINER=` clauses as it dumps |
 | `backup-percona` | Takes a prepared physical (XtraBackup) backup of a running server's data directory: a directory, or a `.7z` in the legacy nightly `percona.7z` layout, for `RESTORE_MYSQL_PERCONA_PATH` and the DW refresh. `--databases` limits it (the `mysql` system database is always included) |
-| `backup-openmrs-data-directory` | Archives an OpenMRS data directory to `.tar.gz` or `.7z`, holding one folder named after the archive, usable as `RESTORE_OPENMRS_DATA_PATH`. `--exclude-distribution-artifacts` leaves out what the image supplies on every start (the contents of `modules/`, `owa/`, `configuration/` and `frontend/`, and `.openmrs-lib-cache`). Refuses while a container uses the directory, unless `--allow-running` |
+| `backup-openmrs-data-directory` | Archives an OpenMRS data directory to `.tar.gz` or `.7z`, holding one folder named after the archive, usable as `RESTORE_OPENMRS_DATA_PATH`. `--exclude-distribution-artifacts` leaves out what the image supplies on every start (the contents of `modules/`, `owa/`, `configuration/` and `frontend/`, and `.openmrs-lib-cache`). Refuses while a container uses the directory, unless `--allow-running`. Refuses a directory holding symbolic links (outside what `--exclude-distribution-artifacts` leaves out), listing each with its target: delete the ones not needed, or replace them with what they point to |
 | `extract-archive` | Extracts a `.7z`, `.zip`, `.tar.gz`, `.tgz` or `.tar`, and prints the path of its single top-level entry (or of the directory, for an archive with several) |
 | `convert-percona-backup` | Turns a prepared XtraBackup directory into a MySQL data directory (`--copy-back`), usable as `RESTORE_MYSQL_DATA_PATH` |
 | `strip-mysqldump-definers` | Copies a dump without its `DEFINER=` clauses, so its routines, triggers and views work on a server without the source's accounts |
