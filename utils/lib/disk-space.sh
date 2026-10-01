@@ -83,6 +83,7 @@ disk_space_require() { # <what> <needed KiB> <free KiB> <where>
     fi
     if [ "$free" -lt $((needed + needed / 10)) ]; then
         echo "error: not enough disk space on $where: $what needs about $(disk_space_human "$needed") (plus 10%), and $(disk_space_human "$free") is free. Free up space, or set SKIP_DISK_SPACE_CHECK=true to go ahead anyway." >&2
+        _ERROR_REPORTED=true
         exit 1
     fi
     echo "Disk space: $what needs about $(disk_space_human "$needed"); $(disk_space_human "$free") free on $where." >&2

@@ -13,6 +13,9 @@
 #                     it rebuilds: smaller, and no stale .omods restored beside a newer distro's
 #   --allow-running   backs up even while a container is using --volume (the copy may then be
 #                     inconsistent, e.g. the search index)
+#   Refuses a directory holding symbolic links (outside what --exclude-distribution-artifacts leaves
+#   out), listing them: one pointing outside the directory wouldn't be backed up, or work once
+#   restored. Delete the ones not needed, or replace them with what they point to.
 #   ARCHIVE_PASSWORD  password for a .7z (required for one)
 #   SKIP_DISK_SPACE_CHECK=true  skips the free-space check
 set -euo pipefail
@@ -59,6 +62,15 @@ if $EXCLUDE_DISTRIBUTION_ARTIFACTS; then
     # The four folders' contents only, so they're still restored, empty.
     EXCLUDES=("$TOP/modules/*" "$TOP/owa/*" "$TOP/configuration/*" "$TOP/frontend/*" "$TOP/.openmrs-lib-cache")
 fi
+
+# Paths relative to the source, as find prints them under /s. Left-out folders are skipped whole,
+# though the four distribution folders themselves are kept, empty.
+LINKS=$(docker run --rm -v "$VOLUME:/s:ro" "$ALPINE_IMAGE" sh -c '
+    cd /s && for d in "$@"; do set -- "$@" -path "./$d" -prune -o; shift; done
+    find . "$@" -type l -exec sh -c "for l; do echo \"\${l#./} -> \$(readlink \"\$l\")\"; done" sh {} +
+' sh ${LEAVE_OUT[@]+"${LEAVE_OUT[@]}"})
+[ -z "$LINKS" ] || die "symbolic links in $VOLUME, which a backup can't carry over (delete the ones not needed, or replace them with what they point to):
+$LINKS"
 
 # Uncompressed: an openmrs-data directory is mostly already-compressed files (images, PDFs).
 disk_space_require "backing up $VOLUME" "$(disk_space_size_of "$VOLUME" ${LEAVE_OUT[@]+"${LEAVE_OUT[@]}"})" \
