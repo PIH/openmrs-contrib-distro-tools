@@ -19,8 +19,9 @@
 #                           passwords in env (restarts; utils/reset-mysql-accounts is the generic part)
 #   add-service <svc>       Attach a canonical service fragment (e.g. 'add-service reporting-db')
 #   remove-service <svc>    Detach a service fragment and remove its containers (its volumes are kept)
-#   run-service <svc> [cmd...]
+#   run-service [--pull] <svc> [cmd...]
 #                           Run a one-off container for an attached service via 'docker compose run'
+#                           (--pull: pull its image first)
 #   wait                    Block until OpenMRS finishes initializing (up to 60 minutes)
 #   fingerprint [--data-dir] [--exclude-distribution-artifacts] [--output=<file>]
 #                           Summarize the stopped instance's database (and openmrs-data) to diff against
@@ -120,7 +121,10 @@ case "$COMMAND" in
     start|update) parse_options "--build --dev" "$@"; set -- ;;
     destroy) parse_options --force "$@"; set -- ;;
     add-service|remove-service) [ $# -eq 1 ] || die "usage: $0 $NAME $COMMAND <service>" ;;
-    run-service) [ $# -ge 1 ] || die "usage: $0 $NAME run-service <service> [command...]" ;;
+    run-service)
+        RUN_SERVICE=${1:-}
+        [ "$RUN_SERVICE" != --pull ] || RUN_SERVICE=${2:-}
+        [ -n "$RUN_SERVICE" ] || die "usage: $0 $NAME run-service [--pull] <service> [command...]" ;;
     logs) [ $# -le 1 ] && [[ "${1:-}" != -* ]] || die "usage: $0 $NAME logs [service]" ;;
     fingerprint) ;;
     build) parse_options "" "$@"; set --; BUILD=true ;;
@@ -144,7 +148,7 @@ case "$COMMAND" in
     # A service can declare that a run holds the lock (petl: a deploy mustn't restart MySQL under
     # it); others, such as smoke tests, only check it.
     run-service)
-        if [ "$(service_directive "$1" run-service)" = holds-lock ]; then lock_instance hold; else lock_instance check; fi ;;
+        if [ "$(service_directive "$RUN_SERVICE" run-service)" = holds-lock ]; then lock_instance hold; else lock_instance check; fi ;;
     *) lock_instance hold ;;
 esac
 

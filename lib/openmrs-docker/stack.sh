@@ -31,10 +31,14 @@ cmd_logs() { # [svc]
     compose logs -f "$@"
 }
 
-cmd_run_service() { # <svc> [command...]
-    local svc=$1
+cmd_run_service() { # [--pull] <svc> [command...]
+    local pull=false svc
+    if [ "${1:-}" = --pull ]; then pull=true; shift; fi
+    svc=$1
     shift
     [ -e "$INSTANCE_DIR/$svc.yaml" ] || die "$svc not present on $NAME (run 'add-service $svc' first)"
+    # Named explicitly, so a profiled service's image is pulled too (a plain `pull` skips them).
+    if $pull; then compose pull "$svc"; fi
     # A lock-holding run starts only once OpenMRS has finished starting (and its Liquibase updates).
     if [ "$(service_directive "$svc" run-service)" = holds-lock ] && [ -e "$INSTANCE_DIR/openmrs.yaml" ]; then
         cmd_wait
