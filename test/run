@@ -56,7 +56,8 @@ export PATH="$DEPS_DIR/parallel:$PATH" PARALLEL=--will-cite
 # Pulled up front: a test that pulls one itself gets Docker's pull progress in the output it checks.
 # shellcheck source=../utils/lib/images.sh
 . "$TEST_DIR/../utils/lib/images.sh"
-for image in "$ALPINE_IMAGE" "$P7ZIP_IMAGE" "$PERCONA_IMAGE" mysql:5.6 mysql:8.0 mariadb:11.4; do
+for image in "$ALPINE_IMAGE" "$P7ZIP_IMAGE" "$PERCONA_IMAGE" mysql:5.6 mysql:8.0 mariadb:11.4 \
+        mcr.microsoft.com/mssql/server:2025-latest; do
     docker image inspect "$image" >/dev/null 2>&1 || docker pull -q "$image" >/dev/null
 done
 
