@@ -59,9 +59,9 @@ services:
       api_protocol: http
       api_authenticationTypes: '["token", "basic", "openid", "local"]'
       authentication_enableCustomTokenAuthentication: "true"
-      # Off: nothing authenticates to OpenHIM with a JWT (the mediator's clients use Basic auth), and
-      # with it on, anyone who knew the shared secret could sign a token as any client.
-      authentication_enableJWTAuthentication: "false"
+      # JWT authentication stays off by leaving authentication_enableJWTAuthentication unset
+      # From Claude: Never set it -- or any other openhim-core flag -- to "false": core reads env
+      # vars as strings and tests them for truthiness, so "false" turns the flag on.
       # The console's address for links openhim-core generates (e.g. in emails).
       openhimConsoleBaseUrl: ${OPENHIM_CONSOLE_URL?}
     ports:
