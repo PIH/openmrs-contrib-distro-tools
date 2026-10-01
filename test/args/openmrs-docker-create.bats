@@ -216,7 +216,7 @@ teardown() {
     # the mediator depends on services from the openhim fragment, which isn't attached
     run "$BIN/openmrs-docker" "$NAME" add-service openhim-advapacs-mediator
     assert_failure
-    assert_output --partial "depends on undefined service"
+    assert_output --partial "leaves $NAME's services invalid"
     [ ! -e "$OPENMRS_DOCKER_HOME/$NAME/openhim-advapacs-mediator.yaml" ]
     cmp "$BATS_TEST_TMPDIR/env.before" "$OPENMRS_DOCKER_HOME/$NAME/env"
     run "$BIN/openmrs-docker" "$NAME" status
@@ -267,4 +267,40 @@ teardown() {
     assert_failure
     assert_output --partial "unknown command 'frobnicate'"
     assert [ -d "$OPENMRS_DOCKER_HOME/$NAME" ]
+}
+
+@test "petl-sqlserver needs PETL_SQLSERVER_PASSWORD: create and add-service refuse without it, changing nothing" {
+    NAME="$(instance)"
+    run env -u PETL_SQLSERVER_PASSWORD SERVICES=openmrs-db,petl-sqlserver "$BIN/openmrs-docker" create "$NAME"
+    assert_failure
+    assert_output --partial 'PETL_SQLSERVER_PASSWORD: must be set'
+    assert [ ! -e "$OPENMRS_DOCKER_HOME/$NAME" ]
+    SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    cp "$OPENMRS_DOCKER_HOME/$NAME/env" "$BATS_TEST_TMPDIR/env.before"
+    run env -u PETL_SQLSERVER_PASSWORD "$BIN/openmrs-docker" "$NAME" add-service petl-sqlserver
+    assert_failure
+    assert_output --partial 'PETL_SQLSERVER_PASSWORD: must be set'
+    assert [ ! -e "$OPENMRS_DOCKER_HOME/$NAME/petl-sqlserver.yaml" ]
+    cmp "$BATS_TEST_TMPDIR/env.before" "$OPENMRS_DOCKER_HOME/$NAME/env"
+    PETL_SQLSERVER_PASSWORD='Pw-1234x' run "$BIN/openmrs-docker" "$NAME" add-service petl-sqlserver
+    assert_success
+    run grep -c "^PETL_SQLSERVER_PASSWORD='Pw-1234x'$" "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_output 1
+}
+
+@test "create writes the instance's own defaults, and sync puts back a required one deleted from env" {
+    NAME="$(instance)"
+    TZ=Africa/Maseru SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    local env="$OPENMRS_DOCKER_HOME/$NAME/env"
+    run grep -E '^(TZ|SEED_IMAGE_TAG|DISTRO_SOURCE_DIR)=' "$env"
+    assert_output "$(printf "%s\n" "TZ='Africa/Maseru'" "DISTRO_SOURCE_DIR=''" "SEED_IMAGE_TAG='latest'")"
+    sed -i '/^TZ=/d' "$env"
+    run "$BIN/openmrs-docker" "$NAME" status
+    assert_failure
+    assert_output --partial "is missing TZ"
+    run env -u TZ "$BIN/openmrs-docker" "$NAME" sync
+    assert_success
+    assert_output --partial "Added to env: TZ"
+    run grep '^TZ=' "$env"
+    assert_output "TZ='UTC'"
 }

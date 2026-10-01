@@ -4,7 +4,7 @@
 #
 # Usage: openmrs-utils purge-binlogs (--container=<name> | --host=<host> [--port=3306]
 #            [--client-image=mysql:5.6]) [--user=root]
-#   MYSQL_PASSWORD  password for --user, who needs SUPER or BINLOG_ADMIN (default: openmrs)
+#   MYSQL_PASSWORD  password for --user, who needs SUPER or BINLOG_ADMIN (required)
 set -euo pipefail
 # shellcheck source=lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
@@ -19,7 +19,8 @@ for arg in "$@"; do
     esac
 done
 mysql_source_given || usage
-mysql_connect "${MYSQL_PASSWORD:-openmrs}"
+mysql_password
+mysql_connect "$DB_PASSWORD"
 
 [ "$(sql 'SELECT @@log_bin')" = 1 ] || die "binary logging is off on $MYSQL_SOURCE, so it can't purge its binlogs. Turn it back on (e.g. OPENMRS_DB_OPT_log_bin=mysql-bin), restart, then run this again."
 summary() { sql 'SHOW BINARY LOGS' | awk '{ n++; b += $2 } END { printf "%d file(s), %d bytes", n, b }'; }

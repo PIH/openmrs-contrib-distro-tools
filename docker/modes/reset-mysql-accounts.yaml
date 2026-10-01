@@ -1,11 +1,6 @@
-# Overlay used by `openmrs-docker <name> initialize` after a physical restore (together with
-# restore-mysql-volume-from-data-dir.yaml or restore-mysql-volume-from-percona.yaml, each of which
-# fills db-data in a restore-mysql-volume service). A physical backup's accounts are the source
-# server's -- the image only creates its own on an empty data directory -- so they're set to this
-# instance's before openmrs-db first starts (see utils/lib/in-container/reset-mysql-accounts.sh).
-#
-# Set by initialize itself, not persisted to the instance's env file:
-#   DISTRO_TOOLS_UTILS_DIR -- this tool's utils/ directory
+# initialize, after a physical restore: sets the restored data directory's accounts to this
+# instance's before openmrs-db first starts (utils/lib/in-container/reset-mysql-accounts.sh). See
+# README.md here.
 
 services:
   reset-mysql-accounts:

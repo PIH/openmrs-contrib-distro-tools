@@ -7,6 +7,9 @@ REPO_ROOT="$(cd "$TEST_DIR/.." && pwd)"
 BIN="$REPO_ROOT/bin"
 UTILS="$REPO_ROOT/utils"
 MYSQL_IMAGE=mysql:5.6
+# The images the tool itself runs (P7ZIP_IMAGE etc.), so tests use, and pull, the same ones.
+# shellcheck source=../utils/lib/images.sh
+. "$REPO_ROOT/utils/lib/images.sh"
 
 bats_require_minimum_version 1.5.0
 
@@ -148,6 +151,18 @@ destroy_instance() { # <name>
 # aren't testing the database itself.
 write_tiny_dump() { # <path>
     printf 'CREATE TABLE marker (id INT);\nINSERT INTO marker VALUES (1);\n' > "$1"
+}
+
+# A stand-in for an OpenMRS image, so start/wait/stop can run without one: it sleeps, and a curl
+# shim answers openmrs.yaml's healthcheck (curl .../health/started) once it has started. With
+# OMRS_EXTRA_stub_exit set (an instance's OMRS_EXTRA_* reach the container), it exits at once.
+STUB_OPENMRS_IMAGE=distro-tools-test/stub-openmrs
+build_stub_openmrs_image() {
+    docker build -q -t "$STUB_OPENMRS_IMAGE" - >/dev/null <<'DOCKERFILE'
+FROM alpine:3.21
+RUN printf '#!/bin/sh\nexec test -e /tmp/started\n' > /usr/local/bin/curl && chmod +x /usr/local/bin/curl
+CMD ["sh", "-c", "[ -z \"$OMRS_EXTRA_stub_exit\" ] || exit 1; touch /tmp/started; exec sleep 3600"]
+DOCKERFILE
 }
 
 # --- openmrs-data fixtures -------------------------------------------------------------------------

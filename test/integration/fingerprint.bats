@@ -18,7 +18,7 @@ setup_file() {
         CREATE TRIGGER openmrs.encounter_ins BEFORE INSERT ON openmrs.encounter FOR EACH ROW SET NEW.encounter_id = NEW.encounter_id;
         CREATE FUNCTION openmrs.answer() RETURNS INT DETERMINISTIC RETURN 42;"
     export BEFORE="$BATS_FILE_TMPDIR/before.txt"
-    MYSQL_ROOT_PASSWORD=openmrs "$UTILS/fingerprint.sh" --container="$SRC_DB" --output="$BEFORE"
+    MYSQL_PASSWORD=openmrs "$UTILS/fingerprint.sh" --container="$SRC_DB" --output="$BEFORE"
 }
 teardown_file() { common_teardown_file; }
 
@@ -59,7 +59,7 @@ without_accounts() { # <fingerprint file>
 }
 
 @test "a physical (Percona) restore fingerprints the same as its source, apart from accounts" {
-    MYSQL_ROOT_PASSWORD=openmrs ARCHIVE_PASSWORD=pw "$UTILS/backup-percona.sh" --container="$SRC_DB" \
+    MYSQL_PASSWORD=openmrs ARCHIVE_PASSWORD=pw "$UTILS/backup-percona.sh" --container="$SRC_DB" \
         --volume="$SRC_DB-data" --output=backup.7z >/dev/null 2>&1
     NAME="$(instance)"
     SERVICES=openmrs-db create_instance "$NAME"
@@ -82,7 +82,7 @@ without_accounts() { # <fingerprint file>
     docker run -d --name "$later" -v "$later:/var/lib/mysql" "$MYSQL_IMAGE" >/dev/null
     wait_for_mysql "$later" root openmrs
     mysql_exec "$later" openmrs "INSERT INTO openmrs.encounter VALUES (3, '2026-09-03 12:00:00')"
-    MYSQL_ROOT_PASSWORD=openmrs "$UTILS/fingerprint.sh" --container="$later" --output=later.txt
+    MYSQL_PASSWORD=openmrs "$UTILS/fingerprint.sh" --container="$later" --output=later.txt
     run diff restored.txt later.txt
     assert_failure
     assert_output --partial '> openmrs.encounter 3'
@@ -95,8 +95,8 @@ without_accounts() { # <fingerprint file>
     docker run -d --name "$db" -p 127.0.0.1::3306 -e MYSQL_ROOT_PASSWORD=openmrs -e MYSQL_DATABASE=openmrs "$MYSQL_IMAGE" >/dev/null
     wait_for_mysql "$db" root openmrs
     port=$(docker port "$db" 3306 | head -1 | cut -d: -f2)
-    MYSQL_ROOT_PASSWORD=openmrs "$UTILS/fingerprint.sh" --container="$db" --output=c.txt
-    MYSQL_ROOT_PASSWORD=openmrs "$UTILS/fingerprint.sh" --host=127.0.0.1 --port="$port" --output=h.txt
+    MYSQL_PASSWORD=openmrs "$UTILS/fingerprint.sh" --container="$db" --output=c.txt
+    MYSQL_PASSWORD=openmrs "$UTILS/fingerprint.sh" --host=127.0.0.1 --port="$port" --output=h.txt
     run diff c.txt h.txt
     assert_success
 }
@@ -113,12 +113,12 @@ without_accounts() { # <fingerprint file>
     head -c 500 /dev/urandom > data/complex_obs/b.pdf
     head -c 2000 /dev/urandom > data/modules/x.omod
     echo 'connection.password=s3cret' > data/openmrs-runtime.properties
-    MYSQL_ROOT_PASSWORD=openmrs run "$UTILS/fingerprint.sh" --container="$SRC_DB" --data-dir="$BATS_TEST_TMPDIR/data"
+    MYSQL_PASSWORD=openmrs run "$UTILS/fingerprint.sh" --container="$SRC_DB" --data-dir="$BATS_TEST_TMPDIR/data"
     assert_line 'complex_obs/ files=2 bytes=1500'
     assert_line 'modules/ files=1 bytes=2000'
     assert_line --regexp '^\(top level\) files=1 bytes=[0-9]+$'
     refute_output --partial 's3cret'
-    MYSQL_ROOT_PASSWORD=openmrs run "$UTILS/fingerprint.sh" --container="$SRC_DB" --data-dir="$BATS_TEST_TMPDIR/data" \
+    MYSQL_PASSWORD=openmrs run "$UTILS/fingerprint.sh" --container="$SRC_DB" --data-dir="$BATS_TEST_TMPDIR/data" \
         --exclude-distribution-artifacts
     assert_line 'complex_obs/ files=2 bytes=1500'
     refute_output --partial 'modules/'

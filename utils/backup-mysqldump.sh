@@ -10,7 +10,7 @@
 #                     streamed in, so the dump is never on disk unencrypted)
 #   --strip-definers  removes DEFINER= clauses as it dumps, so the routines and triggers work on a
 #                     server without the source's accounts (see strip-mysqldump-definers)
-#   MYSQL_PASSWORD    password for --user (default: openmrs)
+#   MYSQL_PASSWORD    password for --user (required)
 #   ARCHIVE_PASSWORD  password for a .7z (required for one; on 7z's command line while it runs)
 set -euo pipefail
 # shellcheck source=lib/common.sh
@@ -42,7 +42,8 @@ case "$OUTPUT" in
 esac
 OUTPUT=$(abs_path "$OUTPUT")
 prepare_output_file "$OUTPUT"
-mysql_connect "${MYSQL_PASSWORD:-openmrs}"
+mysql_password
+mysql_connect "$DB_PASSWORD"
 
 # --single-transaction: a consistent snapshot, without locking tables. --flush-logs: starts a new
 # binlog, a clean point for purging the older ones.

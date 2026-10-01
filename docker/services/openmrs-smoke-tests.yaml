@@ -15,7 +15,7 @@ services:
       DATABASE_PASSWORD: ${OPENMRS_DB_PASSWORD?}
       ADMIN_USER_PASSWORD: ${SMOKE_TESTS_ADMIN_PASSWORD:-Admin123}
       MAVEN_GOALS: verify
-      TZ: ${TZ:-UTC}
+      TZ: ${TZ?}
     shm_size: 512m
     volumes:
       - ${SMOKE_TESTS_OUTPUT_DIR:-./smoke-test-output}:/smoketests/target

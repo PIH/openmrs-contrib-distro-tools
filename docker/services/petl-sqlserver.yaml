@@ -7,19 +7,15 @@ services:
     environment:
       ACCEPT_EULA: "Y"
       SA_PASSWORD: ${PETL_SQLSERVER_PASSWORD?}
-      # Read by the healthcheck's sqlcmd below (via -U with no -P, sqlcmd falls back to this env
-      # var) rather than passing the password as a -P argument, which would show up in this
-      # container's own process list/`docker inspect`'s healthcheck config.
+      # For sqlcmd, so the password isn't on its command line.
       SQLCMDPASSWORD: ${PETL_SQLSERVER_PASSWORD?}
-      TZ: ${TZ:-UTC}
+      TZ: ${TZ?}
     ports:
-      - ${PETL_SQLSERVER_PORT?}:1433
+      - ${PETL_SQLSERVER_PUBLISHED_PORT?}:1433
     volumes:
       - petl-sqlserver-data:/var/opt/mssql
     healthcheck:
-      # Checks SQL Server itself is accepting connections, not the target database -- that
-      # database doesn't exist yet at this point, it's created afterward by petl-sqlserver-init,
-      # which is gated on this healthcheck passing.
+      # SQL Server itself: petl-sqlserver-init creates the database once this passes.
       test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-Q", "SELECT 1"]
       interval: 5s
       timeout: 5s
@@ -27,12 +23,8 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  # One-shot: creates PETL_SQLSERVER_DATABASE once petl-sqlserver is confirmed healthy, then exits.
-  # The stock mssql/server image has no MYSQL_DATABASE-style "create this on first boot" mechanism
-  # (unlike openmrs-db.yaml's MYSQL_DATABASE), so something has to run CREATE DATABASE itself --
-  # this is a separate service rather than a custom image/entrypoint wrapping petl-sqlserver, so
-  # there's no Dockerfile to build or keep in sync with Microsoft's own image. Uses the same image
-  # (sqlcmd is already bundled in it) purely as a client, never runs sqlservr itself.
+  # Creates PETL_SQLSERVER_DATABASE, which the stock image has no setting for, then exits. Same
+  # image, as a sqlcmd client only.
   petl-sqlserver-init:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-petl-sqlserver-init
     image: mcr.microsoft.com/mssql/server:${PETL_SQLSERVER_IMAGE_TAG?}

@@ -121,7 +121,8 @@ case "$COMMAND" in
     run-service) [ $# -ge 1 ] || die "usage: $0 $NAME run-service <service> [command...]" ;;
     logs) [ $# -le 1 ] && [[ "${1:-}" != -* ]] || die "usage: $0 $NAME logs [service]" ;;
     fingerprint) ;;
-    initialize|stop|restart|status|sync|reset-openmrs-db-accounts|wait|build|pull) parse_options "" "$@"; set -- ;;
+    build) parse_options "" "$@"; set --; BUILD=true ;;
+    initialize|stop|restart|status|sync|reset-openmrs-db-accounts|wait|pull) parse_options "" "$@"; set -- ;;
     *) die "unknown command '$COMMAND' (run '$0' for usage)" ;;
 esac
 

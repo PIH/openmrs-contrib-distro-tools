@@ -52,9 +52,6 @@ services:
     # https://github.com/krallin/tini
     init: true
     environment:
-      # Named openhim since TASKS-596 (openhim-development before). An instance from before starts
-      # on an empty database, which the setup job and the mediators provision again; the old one
-      # stays in mongo-data until dropped (see README, "Adding OpenHIM and mediators").
       mongo_url: mongodb://mongo-db/openhim
       mongo_atnaUrl: mongodb://mongo-db/openhim
       # Not development, whose config turns on debug logging and the audit servers (5050-5052).

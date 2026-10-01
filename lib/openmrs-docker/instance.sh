@@ -16,12 +16,8 @@ cmd_create() { # <name>
     # is created, so a value env_line refuses leaves no half-created instance behind.
     env_content=$(
         echo "# instance"
-        env_line TZ "${TZ:-UTC}"
         env_line SERVICE_NAME "$name"
-        env_line DISTRO_SOURCE_DIR "${DISTRO_SOURCE_DIR:-}"
-        echo "# seed"
-        env_line SEED_IMAGE_NAME "${SEED_IMAGE_NAME:-}"
-        env_line SEED_IMAGE_TAG "${SEED_IMAGE_TAG:-latest}"
+        render_env_defaults "$TOOL_DIR/docker/instance.env.defaults"
         for svc in "${services[@]}"; do
             render_service_env_defaults "$svc"
         done
@@ -55,8 +51,9 @@ cmd_list() {
 # Refreshes each fragment from its canonical file, and adds to env, with its default, any variable
 # the refreshed fragments require that env doesn't have yet.
 cmd_sync() {
-    local f svc canonical defaults rendered=() i=0 added
+    local f svc canonical defaults instance_defaults rendered=() i=0 added
     # Rendered first: a value env_line refuses stops here, before anything is changed.
+    instance_defaults=$(render_env_defaults "$TOOL_DIR/docker/instance.env.defaults") || exit 1
     for f in "$INSTANCE_DIR"/*.yaml; do
         [ -e "$f" ] || continue
         defaults=$(render_service_env_defaults "$(basename "$f" .yaml)") || exit 1
@@ -76,6 +73,8 @@ cmd_sync() {
         fi
         i=$((i + 1))
     done
+    added=$(append_missing_env_defaults "$instance_defaults" --required)
+    [ -z "$added" ] || echo "Added to env: $(paste -sd' ' <<< "$added")"
     write_container_env_files "$INSTANCE_DIR"
 }
 

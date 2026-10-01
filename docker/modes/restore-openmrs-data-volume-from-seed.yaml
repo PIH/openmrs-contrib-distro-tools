@@ -1,21 +1,10 @@
-# Overlay used by `openmrs-docker <name> initialize` when the openmrs-data volume is being
-# populated from SEED_IMAGE_NAME (the default) rather than RESTORE_OPENMRS_DATA_PATH. Brings up
-# a transient `seed` service that extracts the seed image's data.tar.gz straight into
-# openmrs-data, then exits -- that's already the volume's complete final state (that's how it
-# was captured in the first place: a real prior boot's fully-populated data dir, exported as
-# is), so there's nothing left for OpenMRS to do to it. Combine with
-# restore-mysql-volume-from-seed.yaml for the historical "seed both volumes from one image"
-# behavior. Also declared as an openmrs-db dependency (not because openmrs-db needs
-# openmrs-data, but because `initialize` only ever targets `up -d openmrs-db`, and Compose only
-# starts a service that's targeted directly or pulled in as a dependency).
-#
-# Required env vars: SEED_IMAGE_NAME (no site suffix appended here)
-# Optional: SEED_IMAGE_TAG (default: latest)
+# initialize, SEED_IMAGE_NAME for openmrs-data: the seed image extracts its data directory into
+# openmrs-data, which is then complete (it was exported from a started instance). See README.md here.
 
 services:
   seed:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-seed
-    image: ${SEED_IMAGE_NAME:?SEED_IMAGE_NAME must be set}:${SEED_IMAGE_TAG:-latest}
+    image: ${SEED_IMAGE_NAME:?SEED_IMAGE_NAME must be set}:${SEED_IMAGE_TAG?}
     volumes:
       - openmrs-data:/target/data
 

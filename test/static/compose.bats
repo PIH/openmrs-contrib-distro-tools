@@ -9,6 +9,7 @@ setup_file() {
     export ALL_SERVICES
     ALL_SERVICES=$(cd "$REPO_ROOT/docker/services" && ls ./*.yaml | xargs -n1 basename | sed 's/\.yaml$//' | paste -sd, -)
     export CONFIG_INSTANCE="$(file_res config)"
+    export PETL_SQLSERVER_PASSWORD=Placeholder-1
     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }
 
@@ -139,7 +140,8 @@ assert_valid() {
 
 @test "fragments take their defaults only from .env.defaults: each required variable has one, none repeats it" {
     local defaults required repeated missing
-    defaults=$(sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$REPO_ROOT"/docker/services/*.env.defaults | sort -u)
+    defaults=$(sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$REPO_ROOT"/docker/services/*.env.defaults \
+        "$REPO_ROOT"/docker/instance.env.defaults | sort -u)
     required=$(grep -ho '\${[A-Za-z_][A-Za-z0-9_]*?' "$REPO_ROOT"/docker/services/*.yaml "$REPO_ROOT"/docker/modes/*.yaml \
         | sed 's/^\${//; s/?$//' | sort -u)
     repeated=$(grep -ho '\${[A-Za-z_][A-Za-z0-9_]*:-' "$REPO_ROOT"/docker/services/*.yaml "$REPO_ROOT"/docker/modes/*.yaml \
@@ -147,6 +149,34 @@ assert_valid() {
     missing=$(comm -23 <(echo "$required") <(echo "$defaults"))
     [ -z "$repeated" ] || fail "yaml default repeats .env.defaults (use \${VAR?}): $repeated"
     [ -z "$missing" ] || fail "\${VAR?} with no .env.defaults entry: $missing"
+}
+
+@test "every variable a fragment or overlay uses says what happens when it's unset (?, :? or :-)" {
+    local bare
+    bare=$(grep -Hno '\${[A-Za-z_][A-Za-z0-9_]*}' "$REPO_ROOT"/docker/services/*.yaml "$REPO_ROOT"/docker/modes/*.yaml || true)
+    [ -z "$bare" ] || fail "bare \${VAR} (Compose blanks it with only a warning): $bare"
+}
+
+@test "build overlay is valid" {
+    DISTRO_SOURCE_DIR=/tmp/distro compose_config build.yaml
+    assert_valid
+}
+
+@test "a variable in more than one .env.defaults has the same default in each" {
+    local differ
+    # name<TAB>line for each variable, then names with more than one distinct line.
+    differ=$(grep -h '^[A-Za-z_][A-Za-z0-9_]*=' "$REPO_ROOT"/docker/services/*.env.defaults |
+        awk -F= '{ print $1 "\t" $0 }' | sort -u | cut -f1 | uniq -d)
+    [ -z "$differ" ] || fail "defined differently in two .env.defaults: $differ"
+}
+
+@test "petl connects to petl-sqlserver on 1433 inside the network, whatever host port it publishes" {
+    run env PETL_SQLSERVER_PUBLISHED_PORT=1434 docker compose --env-file "$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE/env" \
+        -f "$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE/petl.yaml" -f "$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE/petl-sqlserver.yaml" \
+        -f "$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE/openmrs-db.yaml" --profile petl config --format json
+    assert_success
+    run jq -r '.services.petl.environment.PETL_SQLSERVER_PORT, (.services["petl-sqlserver"].ports[] | "\(.published):\(.target)")' <<< "$output"
+    assert_output "$(printf '1433\n1434:1433')"
 }
 
 @test "openhim has JWT authentication off, and openhim-setup passes no credentials on curl's command line" {

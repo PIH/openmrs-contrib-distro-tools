@@ -20,7 +20,7 @@ teardown() {
 
 percona_backup() { # <output> [args...]
     local out=$1; shift
-    MYSQL_ROOT_PASSWORD=openmrs "$UTILS/backup-percona.sh" --container="$SRC_DB" --volume="$SRC_DB-data" --output="$out" "$@"
+    MYSQL_PASSWORD=openmrs "$UTILS/backup-percona.sh" --container="$SRC_DB" --volume="$SRC_DB-data" --output="$out" "$@"
 }
 
 restore_percona() { # <path> [VAR=value...]
@@ -32,7 +32,7 @@ restore_percona() { # <path> [VAR=value...]
 
 in_7z() { # <archive> <password> <7z args...>
     local archive=$1 pw=$2; shift 2
-    docker run --rm -v "$(cd "$(dirname "$archive")" && pwd):/w" partnersinhealth/p7zip 7z "$@" -p"$pw" "/w/$(basename "$archive")"
+    docker run --rm -v "$(cd "$(dirname "$archive")" && pwd):/w" "$P7ZIP_IMAGE" 7z "$@" -p"$pw" "/w/$(basename "$archive")"
 }
 
 @test "backup-percona --output=<.7z> writes the legacy layout, and initialize restores it" {
@@ -64,7 +64,7 @@ in_7z() { # <archive> <password> <7z args...>
 @test "an unprepared backup directory is prepared first" {
     mkdir raw
     docker run --rm --network "container:$SRC_DB" -e MYSQL_PWD=openmrs -v "$SRC_DB-data:/var/lib/mysql:ro" \
-        -v "$BATS_TEST_TMPDIR/raw:/backup" partnersinhealth/percona-0.1-4 \
+        -v "$BATS_TEST_TMPDIR/raw:/backup" "$PERCONA_IMAGE" \
         sh -c 'innobackupex --user=root --password="$MYSQL_PWD" --host=127.0.0.1 --no-timestamp /backup/b' >/dev/null 2>&1
     run docker run --rm -v "$BATS_TEST_TMPDIR/raw:/r:ro" alpine:3.21 grep -c 'backup_type = full-backuped' /r/b/xtrabackup_checkpoints
     assert_output 1
@@ -103,7 +103,7 @@ in_7z() { # <archive> <password> <7z args...>
     wait_for_mysql "$db" root openmrs
     mysql_exec "$db" openmrs 'CREATE TABLE openmrs.marker (id INT) ENGINE=InnoDB; INSERT INTO openmrs.marker VALUES (7);'
     port=$(docker port "$db" 3306 | head -1 | cut -d: -f2)
-    MYSQL_ROOT_PASSWORD=openmrs ARCHIVE_PASSWORD=pw run "$UTILS/backup-percona.sh" \
+    MYSQL_PASSWORD=openmrs ARCHIVE_PASSWORD=pw run "$UTILS/backup-percona.sh" \
         --host=127.0.0.1 --port="$port" --volume="$BATS_TEST_TMPDIR/datadir" --output=host.7z
     assert_success
     ARCHIVE_PASSWORD=pw restore_percona host.7z

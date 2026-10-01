@@ -1,12 +1,5 @@
-# Developer-convenience overlay, layered on top of the copied service fragments:
-#   - mounts a locally-built distro over whatever's in the openmrs image, so a
-#     `mvn clean package` from DISTRO_SOURCE_DIR is what actually runs instead
-#   - exposes the Tomcat/Java debug port
-#
-# MySQL's host-published port is NOT here — it's always on in docker/services/openmrs-db.yaml.
-#
-# Usage (via openmrs-docker):
-#   openmrs-docker <name> start --dev
+# --dev: mounts the distro built in DISTRO_SOURCE_DIR over the openmrs image's, and publishes the
+# Java debug port. See README.md here.
 
 services:
   openmrs:

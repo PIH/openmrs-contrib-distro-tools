@@ -28,7 +28,7 @@ teardown() {
 }
 
 percona_backup() { # <output dir> [args...]
-    MYSQL_ROOT_PASSWORD=openmrs "$UTILS/backup-percona.sh" --container="$SRC_DB" --volume="$SRC_DB-data" --output="$@"
+    MYSQL_PASSWORD=openmrs "$UTILS/backup-percona.sh" --container="$SRC_DB" --volume="$SRC_DB-data" --output="$@"
 }
 
 # Backs up, converts and initializes a new instance from the result.
@@ -78,14 +78,14 @@ restore_physical() { # [backup-percona args...]
     assert_output 1
 }
 
-@test "MYSQL_ROOT_PASSWORD never appears in a docker command line" {
+@test "the MySQL password never appears in a docker command line" {
     mysql_exec "$SRC_DB" openmrs "SET PASSWORD FOR 'root'@'%' = PASSWORD('s3cret-root-pw');"
     record_docker_argv
-    MYSQL_ROOT_PASSWORD=s3cret-root-pw run "$UTILS/backup-percona.sh" --container="$SRC_DB" --volume="$SRC_DB-data" --output=backup
+    MYSQL_PASSWORD=s3cret-root-pw run "$UTILS/backup-percona.sh" --container="$SRC_DB" --volume="$SRC_DB-data" --output=backup
     local status_before_restore=$status
     assert_not_in_docker_argv s3cret-root-pw
     # nor inside the containers, for a .7z (innobackupex and 7z both run there)
-    MYSQL_ROOT_PASSWORD=s3cret-root-pw ARCHIVE_PASSWORD=s3cret-ps-root assert_not_in_ps_while s3cret-root-pw \
+    MYSQL_PASSWORD=s3cret-root-pw ARCHIVE_PASSWORD=s3cret-ps-root assert_not_in_ps_while s3cret-root-pw \
         "$UTILS/backup-percona.sh" --container="$SRC_DB" --volume="$SRC_DB-data" --output=backup-ps.7z
     # Checked first: restoring the password below goes through a command line itself.
     mysql_exec "$SRC_DB" s3cret-root-pw "SET PASSWORD FOR 'root'@'%' = PASSWORD('openmrs');"

@@ -40,16 +40,14 @@ services:
           fi
         fi
         exec docker-entrypoint.sh "$$server" "$${args[@]}"
-    # Only the lines of the instance's env matching the "# container-env:" prefixes in
-    # openmrs-db.env.defaults (OPENMRS_DB_OPT_*), which openmrs-docker copies into openmrs-db.env on
-    # every command -- not every secret in env.
+    # Env's OPENMRS_DB_OPT_* lines only, written by openmrs-docker (see "# container-env:" in .env.defaults).
     env_file: openmrs-db.env
     environment:
       MYSQL_DATABASE: openmrs
       MYSQL_USER: ${OPENMRS_DB_USER?}
       MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD?}
       MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD?}
-      TZ: ${TZ:-UTC}
+      TZ: ${TZ?}
     ports:
       - ${OPENMRS_DB_PORT?}:3306
     volumes:
