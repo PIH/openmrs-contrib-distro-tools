@@ -70,6 +70,29 @@ in_volume() { # <volume> <sh command>
     assert_output 1
 }
 
+@test "reset-mysql-accounts leaves accounts with a host name alone, which the server ignores, and lists them" {
+    # As on a legacy server: root@<its own host name>. MySQL images run with skip-name-resolve, so
+    # the server never loads that account, and SET PASSWORD for it fails.
+    local db vol
+    db=$(res legacy) vol=$(res legacydata)
+    docker run -d --name "$db" -v "$vol:/var/lib/mysql" -e MYSQL_ROOT_PASSWORD=old "$MYSQL_IMAGE" >/dev/null
+    wait_for_mysql "$db" root old
+    mysql_exec "$db" old "CREATE USER 'openmrs'@'localhost' IDENTIFIED BY 'legacy';
+        INSERT INTO mysql.user (Host, User, Password, ssl_cipher, x509_issuer, x509_subject, authentication_string)
+        VALUES ('ci.pih-emr.org', 'root', PASSWORD('old'), '', '', '', ''), ('%.example.org', 'petl', PASSWORD('old'), '', '', '', '');"
+    docker rm -f "$db" >/dev/null
+    MYSQL_ROOT_PASSWORD=new-root MYSQL_PASSWORD=new-pw run "$UTILS/reset-mysql-accounts.sh" --volume="$vol"
+    assert_success
+    assert_output --partial "Set the password of openmrs@localhost"
+    refute_output --partial "Set the password of root@ci.pih-emr.org"
+    assert_output --regexp "Left alone, since the server doesn't resolve host names \(no login can use them\): .*root@ci\.pih-emr\.org"
+    assert_output --regexp "Left alone, .*petl@%\.example\.org"
+    docker run -d --name "$db" -v "$vol:/var/lib/mysql" "$MYSQL_IMAGE" >/dev/null
+    wait_for_mysql "$db" root new-root
+    run docker exec "$db" sh -c 'mysql -h127.0.0.1 -uopenmrs -pnew-pw -N -e "SELECT 1" 2>/dev/null'
+    assert_output 1
+}
+
 @test "reset-mysql-accounts refuses while a container is using the data directory, and needs both passwords" {
     local vol
     vol=$(res busy)
