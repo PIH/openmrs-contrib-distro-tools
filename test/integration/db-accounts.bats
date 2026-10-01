@@ -109,3 +109,16 @@ assert_account_created() {
     assert_output --partial "openmrs-db-accounts failed"
     assert_output --partial "OPENMRS_DB_ACCOUNT_BAD_USER"
 }
+
+@test "changing an account's password doesn't recreate openmrs-db" {
+    new_instance
+    declare_account RPT reports "$PW" 'SELECT ON openmrs.*'
+    run start_and_wait_for_accounts
+    assert_output 0
+    local before
+    before=$(docker inspect -f '{{.Id}}' "$NAME-openmrs-db")
+    sed -i "s/^OPENMRS_DB_ACCOUNT_RPT_PASSWORD=.*/OPENMRS_DB_ACCOUNT_RPT_PASSWORD='n3w-pw'/" "$ENV"
+    run start_and_wait_for_accounts
+    assert_output 0
+    assert_equal "$(docker inspect -f '{{.Id}}' "$NAME-openmrs-db")" "$before"
+}

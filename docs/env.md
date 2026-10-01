@@ -29,9 +29,11 @@ Compose, differently).
 
 Containers don't get the whole file. A service whose container takes variables from `env` declares
 their name prefixes in its `.env.defaults`, as a `# container-env: PREFIX_ ...` line: `OMRS_` for
-openmrs (`OMRS_EXTRA_*` runtime properties, `OMRS_JAVA_SERVER_OPTS`), `OPENMRS_DB_OPT_` and
-`OPENMRS_DB_ACCOUNT_` for openmrs-db and openmrs-db-accounts, `PETL_`, `DATASOURCES_`, `SPRING_` and
-`LOGGING_` for petl, `SQLSERVER_LOGIN_` for sqlserver-setup. On every command, `openmrs-docker` copies the matching lines of `env` into `<svc>.env`
+openmrs (`OMRS_EXTRA_*` runtime properties, `OMRS_JAVA_SERVER_OPTS`), `OPENMRS_DB_OPT_` for
+openmrs-db, `PETL_`, `DATASOURCES_`, `SPRING_` and `LOGGING_` for petl, `SQLSERVER_LOGIN_` for
+sqlserver-setup. Another container in the same fragment gets its own file from a
+`# container-env <file>: PREFIX_ ...` line (`<file>.env`): openmrs-db-accounts gets the
+`OPENMRS_DB_ACCOUNT_` lines that way, so changing an account doesn't recreate (restart) openmrs-db. On every command, `openmrs-docker` copies the matching lines of `env` into `<svc>.env`
 (mode 600) in the instance directory, which is that fragment's `env_file`. Without the directive
 nothing from `env` is passed: the container gets only what its fragment names under `environment:`,
 which is how every secret it needs (DB passwords, OpenHIM and mediator settings) reaches it. Edit

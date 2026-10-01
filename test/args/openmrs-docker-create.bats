@@ -335,3 +335,17 @@ teardown() {
     assert_failure
     assert_output --partial 'PETL_MYSQL_PASSWORD: must be set'
 }
+
+@test "account declarations go to openmrs-db-accounts' own env file, not openmrs-db's" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db create_instance "$NAME"
+    local dir="$OPENMRS_DOCKER_HOME/$NAME"
+    printf "OPENMRS_DB_ACCOUNT_RPT_USER='reports'\nOPENMRS_DB_ACCOUNT_RPT_PASSWORD='Pw-1'\n" >> "$dir/env"
+    "$BIN/openmrs-docker" "$NAME" status >/dev/null 2>&1 || true
+    run grep -c '^OPENMRS_DB_ACCOUNT_' "$dir/openmrs-db.env"
+    assert_output 0
+    run grep -c '^OPENMRS_DB_ACCOUNT_' "$dir/openmrs-db-accounts.env"
+    assert_output 2
+    run grep -c '^OPENMRS_DB_OPT_' "$dir/openmrs-db-accounts.env"
+    assert_output 0
+}

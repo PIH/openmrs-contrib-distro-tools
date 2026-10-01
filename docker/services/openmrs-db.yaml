@@ -77,8 +77,9 @@ services:
       openmrs-db:
         condition: service_healthy
     entrypoint: ["bash", "/ensure-mysql-accounts.sh"]
-    # Env's OPENMRS_DB_OPT_* and OPENMRS_DB_ACCOUNT_* lines only (see "# container-env:" in .env.defaults).
-    env_file: openmrs-db.env
+    # Env's OPENMRS_DB_ACCOUNT_* lines only (see "# container-env openmrs-db-accounts:" in .env.defaults),
+    # so a change to them doesn't recreate openmrs-db.
+    env_file: openmrs-db-accounts.env
     environment:
       MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD?}
     volumes:
