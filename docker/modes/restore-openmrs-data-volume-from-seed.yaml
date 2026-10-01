@@ -9,13 +9,12 @@
 # openmrs-data, but because `initialize` only ever targets `up -d openmrs-db`, and Compose only
 # starts a service that's targeted directly or pulled in as a dependency).
 #
-# Required env vars: SEED_IMAGE_NAME (no site suffix appended here)
-# Optional: SEED_IMAGE_TAG (default: latest)
+# Required env vars: SEED_IMAGE_NAME, SEED_IMAGE_TAG
 
 services:
   seed:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-seed
-    image: ${SEED_IMAGE_NAME:?SEED_IMAGE_NAME must be set}:${SEED_IMAGE_TAG:-latest}
+    image: ${SEED_IMAGE_NAME:?SEED_IMAGE_NAME must be set}:${SEED_IMAGE_TAG?}
     volumes:
       - openmrs-data:/target/data
 

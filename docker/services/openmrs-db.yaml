@@ -49,7 +49,7 @@ services:
       MYSQL_USER: ${OPENMRS_DB_USER?}
       MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD?}
       MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD?}
-      TZ: ${TZ:-UTC}
+      TZ: ${TZ?}
     ports:
       - ${OPENMRS_DB_PORT?}:3306
     volumes:

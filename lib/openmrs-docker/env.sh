@@ -17,11 +17,12 @@ env_line() { # <name> <value>
     printf "%s='%s'\n" "$1" "$2"
 }
 
-# The lines of docker/services/<svc>.env.defaults, with each ${VAR:-default} expanded against the
-# current environment, so a value the caller exported (or, for add-service, the instance's env
-# already sourced) wins. Other comment lines pass through.
-render_service_env_defaults() { # <svc>
-    local template="$SERVICES_DIR/$1.env.defaults" line resolved
+# The lines of an .env.defaults file, with each ${VAR:-default} expanded against the current
+# environment, so a value the caller exported (or, for add-service and sync, the instance's env
+# already sourced) wins. Other comment lines pass through. A ${VAR:?message} fails the calling
+# subshell when VAR isn't set: callers run this inside $(...).
+render_env_defaults() { # <file>
+    local template=$1 line resolved
     [ -f "$template" ] || return 0
     while IFS= read -r line || [ -n "$line" ]; do
         # A rule for write_container_env_files, not a line for env.
@@ -34,6 +35,8 @@ render_service_env_defaults() { # <svc>
         fi
     done < "$template"
 }
+
+render_service_env_defaults() { render_env_defaults "$SERVICES_DIR/$1.env.defaults"; } # <svc>
 
 # A service whose container takes variables from env declares their name prefixes in its
 # .env.defaults ("# container-env: PREFIX_ ..."), and its fragment's env_file is <svc>.env. That file

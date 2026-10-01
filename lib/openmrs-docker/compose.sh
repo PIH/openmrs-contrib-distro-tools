@@ -1,6 +1,7 @@
 # Running an instance's Compose project, and its lock. Sourced by openmrs-docker.
 
-# COMPOSE_FILES: the instance's env file and fragments, and the dev overlay with --dev. initialize
+# COMPOSE_FILES: the instance's env file and fragments, and the dev and build overlays with --dev and
+# --build (and for `build`). initialize
 # adds its restore overlays, which nothing else uses. Rebuilt after a fragment is added or removed.
 compose_files() {
     local f
@@ -10,6 +11,7 @@ compose_files() {
         COMPOSE_FILES+=(-f "$f")
     done
     if $DEV; then COMPOSE_FILES+=(-f "$MODES_DIR/dev.yaml"); fi
+    if $BUILD; then COMPOSE_FILES+=(-f "$MODES_DIR/build.yaml"); fi
 }
 
 compose() { docker compose "${COMPOSE_FILES[@]}" "$@"; }

@@ -1,0 +1,7 @@
+# Overlay openmrs-docker adds for `build` and `--build`: builds the openmrs image from the distro
+# built in DISTRO_SOURCE_DIR.
+
+services:
+  openmrs:
+    build:
+      context: ${DISTRO_SOURCE_DIR:?DISTRO_SOURCE_DIR must be set to build}/distro/target/distro/web

@@ -11,7 +11,7 @@ services:
       # var) rather than passing the password as a -P argument, which would show up in this
       # container's own process list/`docker inspect`'s healthcheck config.
       SQLCMDPASSWORD: ${PETL_SQLSERVER_PASSWORD?}
-      TZ: ${TZ:-UTC}
+      TZ: ${TZ?}
     ports:
       - ${PETL_SQLSERVER_PUBLISHED_PORT?}:1433
     volumes:
