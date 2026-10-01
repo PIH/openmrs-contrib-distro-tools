@@ -185,9 +185,22 @@ openmrs-docker <name> run-service --pull petl
   too.
 - **A MySQL reporting database:** only for an ETL with a MySQL reporting stage (apzu-etl):
   `PETL_MYSQL_REPORTING_DATABASE` is created and granted to PETL's account.
-- **Job history:** `PETL_JOBSTORE`: `h2` (default; in the `petl-data` volume) or `sqlserver` (tables
-  `petl_database_change_log*` and `petl_job_execution` in `PETL_SQLSERVER_DATABASE`, where reports and
-  monitoring can read them).
+- **Job history:** by default PETL keeps it in H2, in the `petl-data` volume. To keep it in SQL Server
+  instead (tables `petl_database_change_log*` and `petl_job_execution` in its database, where reports
+  and monitoring can read them, as on the legacy test and production servers), add to `env`:
+
+  ```
+  SPRING_DATASOURCE_URL='jdbc:sqlserver://sqlserver:1433;databaseName=<PETL_SQLSERVER_DATABASE>'
+  SPRING_DATASOURCE_USERNAME='<PETL_SQLSERVER_USER>'
+  SPRING_DATASOURCE_PASSWORD='<PETL_SQLSERVER_PASSWORD>'
+  SPRING_DATASOURCE_DRIVER_CLASS_NAME='com.microsoft.sqlserver.jdbc.SQLServerDriver'
+  SPRING_DATASOURCE_PLATFORM='mssql'
+  SPRING_JPA_HIBERNATE_DIALECT='org.hibernate.dialect.SQLServer2012Dialect'
+  SPRING_LIQUIBASE_DATABASE_CHANGE_LOG_TABLE='petl_database_change_log'
+  SPRING_LIQUIBASE_DATABASE_CHANGE_LOG_LOCK_TABLE='petl_database_change_log_lock'
+  ```
+
+  (puppet's `openmrs_docker::service::petl` writes these with `job_store => 'sqlserver'`).
 - **A remote SQL Server:** without the `sqlserver` service, set `PETL_SQLSERVER_HOST` and
   `PETL_SQLSERVER_PORT` (defaults `sqlserver`, 1433), the user and the password; the login has to
   exist there.
