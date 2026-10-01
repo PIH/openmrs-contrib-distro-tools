@@ -17,6 +17,7 @@
 #   MYSQL_ROOT_PASSWORD, MYSQL_PASSWORD  the new passwords (required)
 #   RESET_DB_USER, RESET_DB_NAME         the application account and its database (default: openmrs)
 set -euo pipefail
+source /mysql-accounts.sh
 
 : "${MYSQL_ROOT_PASSWORD:?}" "${MYSQL_PASSWORD:?}"
 DB_USER="${RESET_DB_USER:-openmrs}"
@@ -35,18 +36,15 @@ until "$CLIENT" --socket="$SOCKET" -uroot -e 'SELECT 1' >/dev/null 2>&1; do
     sleep 1
 done
 sql() { "$CLIENT" --socket="$SOCKET" -uroot -N -B -e "$1"; }
-lit() { local v=${1//\\/\\\\}; printf "'%s'" "${v//\'/\\\'}"; }   # a quoted SQL string literal
 
 # Everything is read first: once FLUSH PRIVILEGES loads the grant tables (which account statements
 # need under --skip-grant-tables), new connections have to log in, so all the changes then run in
 # that one session.
-# 5.5/5.6 have no ALTER USER ... IDENTIFIED BY or CREATE USER IF NOT EXISTS; 5.7+ and MariaDB do.
-case "$(sql 'SELECT VERSION()')" in 5.5.*|5.6.*) LEGACY=true ;; *) LEGACY=false ;; esac
+if mysql_is_legacy "$(sql 'SELECT VERSION()')"; then LEGACY=true; else LEGACY=false; fi
 ACCOUNTS=$(sql 'SELECT user, host FROM mysql.user')
 STATEMENTS="FLUSH PRIVILEGES;"
 set_password() { # <user> <host> <password>
-    if $LEGACY; then STATEMENTS+=" SET PASSWORD FOR $(lit "$1")@$(lit "$2") = PASSWORD($(lit "$3"));"
-    else STATEMENTS+=" ALTER USER $(lit "$1")@$(lit "$2") IDENTIFIED BY $(lit "$3");"; fi
+    STATEMENTS+=" $(sql_set_password "$1" "$2" "$3" "$LEGACY")"
     echo "Set the password of $1@$2"
 }
 ensure_account() { # <user> <password> <privileges ON object> [WITH GRANT OPTION]

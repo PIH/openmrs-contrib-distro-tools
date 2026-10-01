@@ -62,6 +62,7 @@ running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.p
     run "$BIN/openmrs-docker" "$NAME" update
     assert_success
     refute_output --partial 'newer service definitions'
+    docker wait "$NAME-openmrs-db-accounts" >/dev/null   # the one-shot account setup, done once it exits
     assert_equal "$(running)" "$NAME-openmrs-db"
 }
 

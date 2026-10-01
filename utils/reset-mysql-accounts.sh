@@ -37,4 +37,5 @@ RESET_DB_USER="$DB_USER" RESET_DB_NAME="$DB_NAME" docker run --rm \
     -e MYSQL_ROOT_PASSWORD -e MYSQL_PASSWORD -e RESET_DB_USER -e RESET_DB_NAME \
     -v "$VOLUME:/var/lib/mysql" \
     -v "$UTILS_DIR/lib/in-container/reset-mysql-accounts.sh:/reset-mysql-accounts.sh:ro" \
+    -v "$UTILS_DIR/lib/in-container/mysql-accounts.sh:/mysql-accounts.sh:ro" \
     --entrypoint bash "$IMAGE" /reset-mysql-accounts.sh

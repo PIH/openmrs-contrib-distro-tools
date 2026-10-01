@@ -18,6 +18,7 @@ services:
     volumes:
       - db-data:/var/lib/mysql
       - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/reset-mysql-accounts.sh:/reset-mysql-accounts.sh:ro
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/mysql-accounts.sh:/mysql-accounts.sh:ro
 
   openmrs-db:
     depends_on:

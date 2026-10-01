@@ -67,5 +67,24 @@ services:
         limits:
           memory: ${OPENMRS_DB_MEMORY_LIMIT?}
 
+  # Makes sure the MySQL accounts declared in env as OPENMRS_DB_ACCOUNT_<ID>_* exist, with those
+  # passwords, grants and databases (utils/lib/in-container/ensure-mysql-accounts.sh). Runs on every
+  # start, and first for any service that depends on it, so a restored or rotated database gets them.
+  openmrs-db-accounts:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openmrs-db-accounts
+    image: ${OPENMRS_DB_IMAGE_NAME?}:${OPENMRS_DB_IMAGE_TAG?}
+    depends_on:
+      openmrs-db:
+        condition: service_healthy
+    entrypoint: ["bash", "/ensure-mysql-accounts.sh"]
+    # Env's OPENMRS_DB_OPT_* and OPENMRS_DB_ACCOUNT_* lines only (see "# container-env:" in .env.defaults).
+    env_file: openmrs-db.env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD?}
+    volumes:
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/ensure-mysql-accounts.sh:/ensure-mysql-accounts.sh:ro
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/mysql-accounts.sh:/mysql-accounts.sh:ro
+    restart: "no"
+
 volumes:
   db-data:
