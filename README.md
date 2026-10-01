@@ -891,8 +891,8 @@ This relies on the SDK generating a Dockerfile with the base image tag's version
 ## Seed image builds
 
 `.github/workflows/build-seeded-image.yml` is a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) — it builds a distro
-from source, runs it, exports the database and data volume, packages them into a seed image, and
-pushes it. A distro repo consumes it with a thin caller workflow, one job per site (no matrix — with
+from source, runs it, exports the database and data volume with `openmrs-utils backup-mysqldump` and
+`backup-openmrs-data-directory`, packages them into a seed image, and pushes it. A distro repo consumes it with a thin caller workflow, one job per site (no matrix — with
 this much of the logic already shared, a matrix mostly just saves repeating `secrets: inherit`):
 
 ```yaml

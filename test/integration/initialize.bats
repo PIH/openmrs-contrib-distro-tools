@@ -4,20 +4,28 @@
 
 load ../helpers
 
-# A seed image as build-seeded-image.yml makes one, from docker/Dockerfile.seed: a dump with
-# marker 7, and a flat data.tar.gz holding seed-only.txt.
+# Seed images as build-seeded-image.yml makes them, from docker/Dockerfile.seed: a dump with marker
+# 7, and data.tar.gz from backup-openmrs-data-directory holding seed-only.txt and runtime properties
+# (in one data/ folder).
+# FLAT_SEED_IMAGE's data.tar.gz is flat, as the workflow made them before.
 setup_file() {
-    export SEED_IMAGE="$(file_res seed)"
-    local ctx="$BATS_FILE_TMPDIR/seed"
-    mkdir -p "$ctx/data/complex_obs"
-    echo seed > "$ctx/data/complex_obs/seed-only.txt"
+    export SEED_IMAGE="$(file_res seed)" FLAT_SEED_IMAGE="$(file_res flat-seed)"
+    local ctx="$BATS_FILE_TMPDIR/seed" flat="$BATS_FILE_TMPDIR/flat-seed"
+    mkdir -p "$ctx" "$BATS_FILE_TMPDIR/data/complex_obs"
+    echo seed > "$BATS_FILE_TMPDIR/data/complex_obs/seed-only.txt"
+    echo 'connection.username=openmrs' > "$BATS_FILE_TMPDIR/data/openmrs-runtime.properties"
     printf 'CREATE TABLE marker (id INT);\nINSERT INTO marker VALUES (7);\n' | gzip > "$ctx/dump.sql.gz"
-    tar czf "$ctx/data.tar.gz" -C "$ctx/data" .
-    cp "$REPO_ROOT/docker/seed-entrypoint.sh" "$ctx/"
+    "$UTILS/backup-openmrs-data-directory.sh" --volume="$BATS_FILE_TMPDIR/data" --output="$ctx/data.tar.gz" 2>/dev/null
+    cp "$REPO_ROOT/docker/seed-entrypoint.sh" "$UTILS/lib/in-container/extract.sh" "$ctx/"
+    cp -r "$ctx" "$flat"
+    tar czf "$flat/data.tar.gz" -C "$BATS_FILE_TMPDIR/data" .
     docker build -q -t "$SEED_IMAGE" -f "$REPO_ROOT/docker/Dockerfile.seed" "$ctx" >/dev/null
+    docker build -q -t "$FLAT_SEED_IMAGE" -f "$REPO_ROOT/docker/Dockerfile.seed" "$flat" >/dev/null
 }
+SEED_DATA_TREE="$(printf '%s\n' ./complex_obs ./complex_obs/seed-only.txt ./openmrs-runtime.properties)"
+
 teardown_file() {
-    docker rmi -f "$SEED_IMAGE" >/dev/null 2>&1 || true
+    docker rmi -f "$SEED_IMAGE" "$FLAT_SEED_IMAGE" >/dev/null 2>&1 || true
     common_teardown_file
 }
 
@@ -40,10 +48,18 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     run db_marker_in_volume "${NAME}_db-data"
     assert_output 7
     run tree_of_volume "${NAME}_openmrs-data"
-    assert_output "$(printf './complex_obs\n./complex_obs/seed-only.txt')"
+    assert_output "$SEED_DATA_TREE"
     # A seeded openmrs-data has its runtime properties, so OpenMRS knows the tables exist.
     run grep -c '^OPENMRS_CREATE_TABLES=' "$OPENMRS_DOCKER_HOME/$NAME/env"
     assert_output 0
+}
+
+@test "a seed image with a flat data.tar.gz still fills openmrs-data" {
+    SEED_IMAGE_NAME="$FLAT_SEED_IMAGE" SERVICES=openmrs-db,openmrs create_instance "$NAME"
+    run_initialize "$NAME"
+    assert_success
+    run tree_of_volume "${NAME}_openmrs-data"
+    assert_output "$SEED_DATA_TREE"
 }
 
 @test "initialize takes db-data from the seed image and openmrs-data from a directory" {
@@ -65,7 +81,7 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     run db_marker_in_volume "${NAME}_db-data"
     assert_output 1
     run tree_of_volume "${NAME}_openmrs-data"
-    assert_output "$(printf './complex_obs\n./complex_obs/seed-only.txt')"
+    assert_output "$SEED_DATA_TREE"
 }
 
 @test "initialize gives up after INITIALIZE_DB_TIMEOUT, and leaves no containers or restore volumes" {
