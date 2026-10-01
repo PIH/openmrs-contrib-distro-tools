@@ -22,14 +22,17 @@ env_line() { # <name> <value>
 # already sourced) wins. Other comment lines pass through. A ${VAR:?message} fails the calling
 # subshell when VAR isn't set: callers run this inside $(...).
 render_env_defaults() { # <file>
-    local template=$1 line resolved
+    local template=$1 line name resolved
     [ -f "$template" ] || return 0
     while IFS= read -r line || [ -n "$line" ]; do
         # A rule for write_container_env_files, not a line for env.
         [[ "$line" == "# container-env:"* ]] && continue
         if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+            name=${BASH_REMATCH[1]}
             eval "resolved=${BASH_REMATCH[2]}"
-            env_line "${BASH_REMATCH[1]}" "$resolved"
+            # Later lines can build their default from this one (callers run this in a subshell).
+            printf -v "$name" '%s' "$resolved"
+            env_line "$name" "$resolved"
         else
             printf '%s\n' "$line"
         fi

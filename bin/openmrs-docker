@@ -62,6 +62,8 @@
 set -euo pipefail
 
 TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Service fragments and initialize's overlays mount scripts from utils/lib/in-container.
+export DISTRO_TOOLS_UTILS_DIR="$TOOL_DIR/utils"
 OPENMRS_DOCKER_HOME="${OPENMRS_DOCKER_HOME:-$HOME/openmrs}"
 SERVICES_DIR="$TOOL_DIR/docker/services"
 MODES_DIR="$TOOL_DIR/docker/modes"

@@ -5,8 +5,8 @@
 
 cmd_initialize() {
     require_new_instance
-    # For the overlays: the scripts they mount, and the images they run.
-    export DISTRO_TOOLS_UTILS_DIR="$TOOL_DIR/utils" P7ZIP_IMAGE PERCONA_IMAGE
+    # For the overlays: the images they run (openmrs-docker exports the utils dir they mount from).
+    export P7ZIP_IMAGE PERCONA_IMAGE
     select_db_source
     select_data_source
     check_restore_space

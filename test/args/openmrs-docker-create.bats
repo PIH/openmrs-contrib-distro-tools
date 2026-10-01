@@ -304,3 +304,13 @@ teardown() {
     run grep '^TZ=' "$env"
     assert_output "TZ='UTC'"
 }
+
+@test "a default can refer to a variable an earlier line of the same .env.defaults sets" {
+    NAME="$(instance)"   # for teardown
+    printf '%s\n' 'A_USER="${A_USER:-petl}"' 'B_USER="${B_USER:-${A_USER}}"' > "$BATS_TEST_TMPDIR/x.env.defaults"
+    run bash -c "source '$REPO_ROOT/utils/lib/common.sh'; source '$REPO_ROOT/lib/openmrs-docker/env.sh';
+        render_env_defaults '$BATS_TEST_TMPDIR/x.env.defaults'"
+    assert_success
+    assert_line "A_USER='petl'"
+    assert_line "B_USER='petl'"
+}
