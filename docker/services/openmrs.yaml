@@ -10,9 +10,7 @@ services:
         restart: true
     ports:
       - ${OPENMRS_HTTP_PORT?}:8080
-    # Only the lines of the instance's env matching the "# container-env:" prefixes in
-    # openmrs.env.defaults (OMRS_*), which openmrs-docker copies into openmrs.env on every command --
-    # not every secret in env. Resolves relative to this file's own directory, not CWD.
+    # Env's OMRS_* lines only, written by openmrs-docker (see "# container-env:" in .env.defaults).
     env_file:
       - openmrs.env
     environment:

@@ -1,13 +1,5 @@
-# Overlay used by `openmrs-docker <name> initialize` when the openmrs-data volume is being
-# populated from a local, already-extracted directory (RESTORE_OPENMRS_DATA_PATH) rather than
-# SEED_IMAGE_NAME. Runs a one-shot init container that copies the directory straight into
-# openmrs-data before openmrs-db/openmrs ever start. Also declared as an openmrs-db dependency
-# (not because openmrs-db needs openmrs-data, but because `initialize` only ever targets
-# `up -d openmrs-db`, and Compose only starts a service that's targeted directly or pulled in as
-# a dependency).
-#
-# Set by initialize itself, not persisted to the instance's env file:
-#   RESTORE_OPENMRS_DATA_PATH -- absolute path to a ready openmrs-data directory on the host
+# initialize, RESTORE_OPENMRS_DATA_PATH (a directory): copies it into openmrs-data. See README.md
+# here.
 
 services:
   restore-openmrs-data-volume:

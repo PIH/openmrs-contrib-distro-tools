@@ -1,21 +1,5 @@
-# Overlay used by `openmrs-docker <name> initialize` when the mysql/db-data volume is being
-# populated from a logical dump inside a .7z/.zip archive (RESTORE_MYSQL_DUMP_PATH, e.g. from
-# utils/backup-mysqldump.sh). A one-shot init container extracts the archive's single dump file
-# into the db-init volume -- never onto the host -- which openmrs-db then mounts as
-# /docker-entrypoint-initdb.d, so MySQL's own first-boot import picks it up, the same way
-# restore-mysql-volume-from-seed.yaml does. db-init is removed again by initialize once it's done.
-#
-# The dump inside may be plain (.sql) or gzip-compressed (.sql.gz); it's renamed to dump.sql or
-# dump.sql.gz to match, so MySQL's entrypoint decompresses (or doesn't) correctly.
-#
-# ARCHIVE_PASSWORD (optional -- a secret) is passed through from initialize's own environment by
-# name only, and reaches 7z on stdin (lib/in-container/extract.sh).
-#
-# Set by initialize itself, not persisted to the instance's env file:
-#   DISTRO_TOOLS_UTILS_DIR -- this tool's utils/ directory, for lib/in-container/extract.sh
-#   P7ZIP_IMAGE -- the image it runs, from utils/lib/images.sh
-#   RESTORE_MYSQL_DUMP_PATH             -- absolute path to the archive on the host
-#   RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME -- "archive.7z" or "archive.zip", matching its format
+# initialize, RESTORE_MYSQL_DUMP_PATH (.7z or .zip): extracts the archive's one dump (.sql or .sql.gz)
+# into db-init, where MySQL's entrypoint imports it on first start. See README.md here.
 
 services:
   restore-mysql-dump-archive:

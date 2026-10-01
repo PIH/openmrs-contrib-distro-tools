@@ -1,21 +1,10 @@
 name: ${SERVICE_NAME:?SERVICE_NAME must be set}
 
-# The AdvaPACS radiology-order mediator. Requires the openhim service
-# fragment (openhim.yaml) also be present on this instance -- it registers
-# itself with, and is routed to by, that fragment's openhim-core. Waits on
-# that fragment's openhim-setup job.
+# The AdvaPACS radiology-order mediator. Needs the openhim fragment: it registers with openhim-core,
+# which routes to it.
 #
-# The service key below (openhim-advapacs-mediator) is NOT just a naming
-# convention -- it's pinned by this mediator's own mediatorConfig.json
-# (built into its image), which hardcodes its inbound channel's route host to
-# that exact string. Compose hands out a DNS alias equal to a service's key
-# on the instance's default network, independent of container_name, so this
-# key must stay exactly as-is for openhim-core to be able to reach it. A
-# second, different mediator sharing this same OpenHIM instance would get its
-# own fragment file with its own service key, pinned the same way by its own
-# mediatorConfig.json -- there's no shared name the two would need to agree
-# on or could collide over.
-#
+# Don't rename the service: the mediator's mediatorConfig.json (in its image) routes its channel to
+# the host openhim-advapacs-mediator, which is this service's name on the instance's network.
 services:
   openhim-advapacs-mediator:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-advapacs-mediator

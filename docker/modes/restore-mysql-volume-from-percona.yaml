@@ -1,23 +1,7 @@
-# Overlay used by `openmrs-docker <name> initialize` when the mysql/db-data volume is restored from
-# a Percona/xtrabackup backup (RESTORE_MYSQL_PERCONA_PATH): an archive (.7z, .zip, .tar.gz, .tgz,
-# .tar) or a directory. Everything happens in containers and a temporary percona-staging volume, so
-# nothing unencrypted is written to the host:
-#   1. extract-percona-backup extracts the archive (or copies the directory) into percona-staging,
-#      unwrapping a single top-level folder -- so both a legacy "flat" percona.7z and an archive
-#      holding one <name>-percona/ folder work.
-#   2. restore-mysql-volume prepares it (innobackupex --apply-log) if it isn't already -- legacy
-#      nightly backups are -- then copies it into db-data (--copy-back) and gives it to mysql.
-# Always used together with reset-mysql-accounts.yaml. percona-staging is removed again by
-# initialize once it's done.
-#
-# ARCHIVE_PASSWORD (optional -- a secret) is passed through from initialize's own environment by
-# name only, and reaches 7z on stdin (lib/in-container/extract.sh).
-#
-# Set by initialize itself, not persisted to the instance's env file:
-#   DISTRO_TOOLS_UTILS_DIR -- this tool's utils/ directory, for lib/in-container/extract.sh
-#   P7ZIP_IMAGE, PERCONA_IMAGE -- the images it runs, from utils/lib/images.sh
-#   RESTORE_MYSQL_PERCONA_PATH -- absolute path to the archive or directory on the host
-#   RESTORE_MYSQL_PERCONA_NAME -- "archive.<ext>" for an archive (its format), "backup" for a directory
+# initialize, RESTORE_MYSQL_PERCONA_PATH (an archive or a directory): extracts the backup into
+# percona-staging (a legacy flat percona.7z, or one <name>-percona/ folder), prepares it if it isn't
+# already (innobackupex --apply-log; legacy nightly backups are), and copies it into db-data. See
+# README.md here.
 
 services:
   extract-percona-backup:
