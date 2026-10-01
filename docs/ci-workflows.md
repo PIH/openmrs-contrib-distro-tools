@@ -184,6 +184,17 @@ snapshot workflows use it for their one deploy, and the two release workflows us
 after `release:prepare`/`release:perform`, to deploy the next development version (see above). Both
 are internal implementation details of those workflows, not something a distro repo calls directly.
 
+### Docker build arguments
+
+`docker_build_args` (one `NAME=value` per line) is passed to the image build (not to the variants).
+ETL projects use it to build on the exact PETL image that triggered them: petl's image workflow sends
+`petl-image-published` with `client_payload.petl_image` (`partnersinhealth/petl@sha256:...`), and the
+ETL caller passes it on:
+
+```yaml
+      docker_build_args: ${{ github.event.action == 'petl-image-published' && format('PETL_BASE_IMAGE={0}', github.event.client_payload.petl_image) || '' }}
+```
+
 ### Base image variants
 
 Each of those four workflows can also push additional tags of `image_name` built from the same

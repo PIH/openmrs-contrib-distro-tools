@@ -23,6 +23,11 @@ on:
         required: false
         type: boolean
         default: false
+      docker_build_args:
+        description: Optional build arguments for the Docker image, one per line as NAME=value (e.g. an ETL image's PETL_BASE_IMAGE=partnersinhealth/petl@sha256:...)
+        required: false
+        type: string
+        default: ''
       docker_context:
         description: Docker build context directory, relative to the repo root (a built distro/web directory for an OpenMRS distro)
         required: false
@@ -78,6 +83,7 @@ jobs:
           version: ${{ steps.maven-deploy.outputs.version }}
           dockerhub_password: ${{ secrets.DOCKERHUB_PASSWORD }}
           image_variants: ${{ inputs.image_variants }}
+          build_args: ${{ inputs.docker_build_args }}
 
   notify-ci-dashboard:
     needs: build-and-publish
