@@ -31,7 +31,7 @@ dump() { # <output> [args...]
 
 # Lists the file names inside a .7z.
 names_in_7z() { # <archive> <password>
-    docker run --rm -v "$BATS_TEST_TMPDIR:/w:ro" partnersinhealth/p7zip \
+    docker run --rm -v "$BATS_TEST_TMPDIR:/w:ro" "$P7ZIP_IMAGE" \
         sh -c "7z l -slt -p'$2' '/w/$1' | sed -n 's/^Path = //p' | tail -n +2"
 }
 
@@ -139,7 +139,7 @@ initialize_from() { # <dump> [VAR=value...]
 
 @test "initialize restores a .sql.gz dump wrapped in a .7z directly" {
     dump inner.sql.gz 2>/dev/null
-    docker run --rm -v "$BATS_TEST_TMPDIR:/w" partnersinhealth/p7zip \
+    docker run --rm -v "$BATS_TEST_TMPDIR:/w" "$P7ZIP_IMAGE" \
         7z a -ppw -t7z /w/legacy.sql.gz.7z /w/inner.sql.gz >/dev/null
     initialize_from legacy.sql.gz.7z ARCHIVE_PASSWORD=pw
     assert_success

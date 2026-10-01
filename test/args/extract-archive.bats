@@ -37,7 +37,7 @@ teardown() { common_teardown; }
 
 @test "a flat .7z extracts to a new temporary directory when there's no --output-dir" {
     mkdir -p flat && echo x > flat/f1 && echo y > flat/f2
-    docker run --rm -v "$BATS_TEST_TMPDIR/flat:/w" -w /w partnersinhealth/p7zip 7z a -ppw /w/flat.7z f1 f2 >/dev/null
+    docker run --rm -v "$BATS_TEST_TMPDIR/flat:/w" -w /w "$P7ZIP_IMAGE" 7z a -ppw /w/flat.7z f1 f2 >/dev/null
     ARCHIVE_PASSWORD=pw run --separate-stderr "$UTILS/extract-archive.sh" --path=flat/flat.7z
     assert_success
     assert [ -f "$output/f1" ]

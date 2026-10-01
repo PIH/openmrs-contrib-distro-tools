@@ -7,6 +7,9 @@ REPO_ROOT="$(cd "$TEST_DIR/.." && pwd)"
 BIN="$REPO_ROOT/bin"
 UTILS="$REPO_ROOT/utils"
 MYSQL_IMAGE=mysql:5.6
+# The images the tool itself runs (P7ZIP_IMAGE etc.), so tests use, and pull, the same ones.
+# shellcheck source=../utils/lib/images.sh
+. "$REPO_ROOT/utils/lib/images.sh"
 
 bats_require_minimum_version 1.5.0
 

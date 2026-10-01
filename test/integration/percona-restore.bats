@@ -32,7 +32,7 @@ restore_percona() { # <path> [VAR=value...]
 
 in_7z() { # <archive> <password> <7z args...>
     local archive=$1 pw=$2; shift 2
-    docker run --rm -v "$(cd "$(dirname "$archive")" && pwd):/w" partnersinhealth/p7zip 7z "$@" -p"$pw" "/w/$(basename "$archive")"
+    docker run --rm -v "$(cd "$(dirname "$archive")" && pwd):/w" "$P7ZIP_IMAGE" 7z "$@" -p"$pw" "/w/$(basename "$archive")"
 }
 
 @test "backup-percona --output=<.7z> writes the legacy layout, and initialize restores it" {
@@ -64,7 +64,7 @@ in_7z() { # <archive> <password> <7z args...>
 @test "an unprepared backup directory is prepared first" {
     mkdir raw
     docker run --rm --network "container:$SRC_DB" -e MYSQL_PWD=openmrs -v "$SRC_DB-data:/var/lib/mysql:ro" \
-        -v "$BATS_TEST_TMPDIR/raw:/backup" partnersinhealth/percona-0.1-4 \
+        -v "$BATS_TEST_TMPDIR/raw:/backup" "$PERCONA_IMAGE" \
         sh -c 'innobackupex --user=root --password="$MYSQL_PWD" --host=127.0.0.1 --no-timestamp /backup/b' >/dev/null 2>&1
     run docker run --rm -v "$BATS_TEST_TMPDIR/raw:/r:ro" alpine:3.21 grep -c 'backup_type = full-backuped' /r/b/xtrabackup_checkpoints
     assert_output 1

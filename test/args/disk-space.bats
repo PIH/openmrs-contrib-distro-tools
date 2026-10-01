@@ -19,7 +19,7 @@ random_file() { # <path> <KiB>
     NAME="$(instance)"
     SERVICES=openmrs-db create_instance "$NAME"
     random_file src/dump.sql 1024
-    docker run --rm -v "$BATS_TEST_TMPDIR/src:/w" -w /w partnersinhealth/p7zip 7z a -ppw /w/dump.7z dump.sql >/dev/null
+    docker run --rm -v "$BATS_TEST_TMPDIR/src:/w" -w /w "$P7ZIP_IMAGE" 7z a -ppw /w/dump.7z dump.sql >/dev/null
     ARCHIVE_PASSWORD=pw DISK_SPACE_FREE_KB=100 run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=src/dump.7z
     assert_failure
     assert_output --partial "not enough disk space on Docker's volumes"
