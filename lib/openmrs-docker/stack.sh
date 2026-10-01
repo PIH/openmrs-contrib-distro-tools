@@ -39,10 +39,6 @@ cmd_run_service() { # [--pull] <svc> [command...]
     [ -e "$INSTANCE_DIR/$svc.yaml" ] || die "$svc not present on $NAME (run 'add-service $svc' first)"
     # Named explicitly, so a profiled service's image is pulled too (a plain `pull` skips them).
     if $pull; then compose pull "$svc"; fi
-    # A lock-holding run starts only once OpenMRS has finished starting (and its Liquibase updates).
-    if [ "$(service_directive "$svc" run-service)" = holds-lock ] && [ -e "$INSTANCE_DIR/openmrs.yaml" ]; then
-        cmd_wait
-    fi
     # The setups first (account and login setup), so the service never runs on a failed one.
     local setups
     setups=$(setup_services)
@@ -56,7 +52,8 @@ cmd_run_service() { # [--pull] <svc> [command...]
 
 cmd_wait() {
     local container="${SERVICE_NAME}-openmrs" logs_pid
-    docker logs -f "$container" 2>&1 &
+    # From now: a container that has run for a while has a long history, which isn't this startup.
+    docker logs -f --since "$(date +%s)" "$container" 2>&1 &
     logs_pid=$!
     # OpenMRS's healthcheck (/openmrs/health/started) turns unhealthy only once it has failed to
     # start, unlike MySQL's during an import, so that fails at once.

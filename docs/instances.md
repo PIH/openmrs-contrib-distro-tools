@@ -111,10 +111,10 @@ error: <name> is busy: initialize (pid 12345, started 2026-09-30 11:39:19) -- ru
 So on a puppet-managed host, the `pull && start` puppet runs on every apply fails, and changes
 nothing, while an `initialize`, `reset-openmrs-db-accounts` or PETL run is in progress. With
 `OPENMRS_DOCKER_LOCK_WAIT=<seconds>` set, a command waits up to that long for the lock instead, and
-then fails naming the holder (puppet's `pull && start` waits an hour). `run-service` holds the lock
-for a service that declares it (`# run-service: holds-lock` in its `.env.defaults`; petl does, so a
-deploy can't restart MySQL under a PETL run), first waiting for OpenMRS to be up if the instance has
-it. For other services (the smoke tests) it refuses while the instance is busy but doesn't hold the
+then fails naming the holder (puppet's deploys wait an hour). `run-service` holds the lock for a
+service that declares it (`# run-service: holds-lock` in its `.env.defaults`; petl does, so a deploy
+can't restart MySQL under a PETL run). It doesn't wait for, or need, OpenMRS: PETL also runs against
+restored databases with no OpenMRS. For other services (the smoke tests) it refuses while the instance is busy but doesn't hold the
 lock. `status`, `logs` and `wait` never wait for it. The lock is released however its holder exits,
 so there's nothing to clean up after a crash. It uses `flock(1)` (util-linux, on every Linux host);
 where `flock` isn't installed (e.g. macOS), commands run unlocked.

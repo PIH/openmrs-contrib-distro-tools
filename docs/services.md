@@ -191,6 +191,6 @@ openmrs-docker <name> run-service --pull petl
 - **A remote SQL Server:** without the `sqlserver` service, set `PETL_SQLSERVER_HOST` and
   `PETL_SQLSERVER_PORT` (defaults `sqlserver`, 1433), the user and the password; the login has to
   exist there.
-- **Runs and deploys:** a `run-service petl` holds the instance's lock for the whole run, after
-  waiting for OpenMRS to be up, so a deploy (`pull`, `start`, ...) waits for it or refuses
+- **Runs and deploys:** a `run-service petl` holds the instance's lock for the whole run, so a
+  deploy (`pull`, `start`, ...) waits for it or refuses. PETL doesn't need OpenMRS running
   ([One command at a time](instances.md#one-command-at-a-time)).
