@@ -9,8 +9,6 @@ setup_file() {
     export ALL_SERVICES
     ALL_SERVICES=$(cd "$REPO_ROOT/docker/services" && ls ./*.yaml | xargs -n1 basename | sed 's/\.yaml$//' | paste -sd, -)
     export CONFIG_INSTANCE="$(file_res config)"
-    # As openmrs-docker exports it, for the fragments that mount in-container scripts.
-    export DISTRO_TOOLS_UTILS_DIR="$REPO_ROOT/utils"
     export PETL_SQLSERVER_PASSWORD=Placeholder-1
     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }

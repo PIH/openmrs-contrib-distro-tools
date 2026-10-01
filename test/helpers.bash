@@ -26,6 +26,8 @@ export RUN_PREFIX="${RUN_PREFIX:-odt${BATS_ROOT_PID}}"
 export OPENMRS_DOCKER_HOME="$BATS_RUN_TMPDIR/openmrs-home"
 export OPENMRS_IMAGE_NAME=placeholder/openmrs
 export OPENMRS_DB_PORT=0
+# As openmrs-docker exports it, for tests that run docker compose on an instance's fragments directly.
+export DISTRO_TOOLS_UTILS_DIR="$REPO_ROOT/utils"
 export OPENMRS_HTTP_PORT=0
 export OPENMRS_DB_OPT_innodb_buffer_pool_size=256M
 # initialize would otherwise run the (placeholder) OpenMRS image to find the owner for a restored
