@@ -1,0 +1,36 @@
+name: ETL base image affected?
+description: After petl publishes an image (petl-image-published), says whether this ETL project's Dockerfile builds on one of the tags that just moved, so only those projects rebuild. Run after actions/checkout.
+
+inputs:
+  published_tags:
+    description: The tags just published, as a JSON array (the event's client_payload.petl_tags)
+    required: true
+  dockerfile:
+    description: The Dockerfile, relative to the checkout
+    required: false
+    default: Dockerfile
+  build_arg:
+    description: The build arg whose default names the base image
+    required: false
+    default: PETL_BASE_IMAGE
+  image:
+    description: The published image, without tag
+    required: false
+    default: partnersinhealth/petl
+
+outputs:
+  affected:
+    description: "'true' if the Dockerfile builds on one of the published tags"
+    value: ${{ steps.check.outputs.affected }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      env:
+        DOCKERFILE: ${{ inputs.dockerfile }}
+        BUILD_ARG: ${{ inputs.build_arg }}
+        IMAGE: ${{ inputs.image }}
+        PUBLISHED_TAGS: ${{ inputs.published_tags }}
+      run: '"$GITHUB_ACTION_PATH/affected.sh" "$DOCKERFILE" "$BUILD_ARG" "$IMAGE" "$PUBLISHED_TAGS"'

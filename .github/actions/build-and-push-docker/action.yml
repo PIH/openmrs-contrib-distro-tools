@@ -18,6 +18,10 @@ inputs:
     description: Comma-separated platforms to build for
     required: false
     default: linux/amd64,linux/arm64
+  build_args:
+    description: Optional build arguments for the image, one per line as NAME=value (not applied to image_variants)
+    required: false
+    default: ''
   image_variants:
     description: |
       Optional additional tags of image_name to build from the same context on variants of the base image, one per line
@@ -49,6 +53,7 @@ runs:
         context: ${{ inputs.context }}
         push: true
         platforms: ${{ inputs.platforms }}
+        build-args: ${{ inputs.build_args }}
         tags: |
           ${{ inputs.image_name }}:latest
           ${{ inputs.image_name }}:${{ inputs.version }}
