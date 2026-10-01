@@ -269,22 +269,22 @@ teardown() {
     assert [ -d "$OPENMRS_DOCKER_HOME/$NAME" ]
 }
 
-@test "petl-sqlserver needs PETL_SQLSERVER_PASSWORD: create and add-service refuse without it, changing nothing" {
+@test "sqlserver needs SQLSERVER_SA_PASSWORD: create and add-service refuse without it, changing nothing" {
     NAME="$(instance)"
-    run env -u PETL_SQLSERVER_PASSWORD SERVICES=openmrs-db,petl-sqlserver "$BIN/openmrs-docker" create "$NAME"
+    run env -u SQLSERVER_SA_PASSWORD SERVICES=openmrs-db,sqlserver "$BIN/openmrs-docker" create "$NAME"
     assert_failure
-    assert_output --partial 'PETL_SQLSERVER_PASSWORD: must be set'
+    assert_output --partial 'SQLSERVER_SA_PASSWORD: must be set'
     assert [ ! -e "$OPENMRS_DOCKER_HOME/$NAME" ]
     SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
     cp "$OPENMRS_DOCKER_HOME/$NAME/env" "$BATS_TEST_TMPDIR/env.before"
-    run env -u PETL_SQLSERVER_PASSWORD "$BIN/openmrs-docker" "$NAME" add-service petl-sqlserver
+    run env -u SQLSERVER_SA_PASSWORD "$BIN/openmrs-docker" "$NAME" add-service sqlserver
     assert_failure
-    assert_output --partial 'PETL_SQLSERVER_PASSWORD: must be set'
-    assert [ ! -e "$OPENMRS_DOCKER_HOME/$NAME/petl-sqlserver.yaml" ]
+    assert_output --partial 'SQLSERVER_SA_PASSWORD: must be set'
+    assert [ ! -e "$OPENMRS_DOCKER_HOME/$NAME/sqlserver.yaml" ]
     cmp "$BATS_TEST_TMPDIR/env.before" "$OPENMRS_DOCKER_HOME/$NAME/env"
-    PETL_SQLSERVER_PASSWORD='Pw-1234x' run "$BIN/openmrs-docker" "$NAME" add-service petl-sqlserver
+    SQLSERVER_SA_PASSWORD='Pw-1234x' run "$BIN/openmrs-docker" "$NAME" add-service sqlserver
     assert_success
-    run grep -c "^PETL_SQLSERVER_PASSWORD='Pw-1234x'$" "$OPENMRS_DOCKER_HOME/$NAME/env"
+    run grep -c "^SQLSERVER_SA_PASSWORD='Pw-1234x'$" "$OPENMRS_DOCKER_HOME/$NAME/env"
     assert_output 1
 }
 

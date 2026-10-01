@@ -9,7 +9,7 @@ setup_file() {
     export ALL_SERVICES
     ALL_SERVICES=$(cd "$REPO_ROOT/docker/services" && ls ./*.yaml | xargs -n1 basename | sed 's/\.yaml$//' | paste -sd, -)
     export CONFIG_INSTANCE="$(file_res config)"
-    export PETL_SQLSERVER_PASSWORD=Placeholder-1
+    export PETL_SQLSERVER_PASSWORD=Placeholder-1 SQLSERVER_SA_PASSWORD=Placeholder-1
     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }
 
@@ -170,13 +170,12 @@ assert_valid() {
     [ -z "$differ" ] || fail "defined differently in two .env.defaults: $differ"
 }
 
-@test "petl connects to petl-sqlserver on 1433 inside the network, whatever host port it publishes" {
-    run env PETL_SQLSERVER_PUBLISHED_PORT=1434 docker compose --env-file "$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE/env" \
-        -f "$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE/petl.yaml" -f "$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE/petl-sqlserver.yaml" \
-        -f "$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE/openmrs-db.yaml" --profile petl config --format json
+@test "sqlserver listens on 1433 inside the network, whatever host port it publishes" {
+    run env SQLSERVER_PUBLISHED_PORT=1434 docker compose --env-file "$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE/env" \
+        -f "$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE/sqlserver.yaml" config --format json
     assert_success
-    run jq -r '.services.petl.environment.PETL_SQLSERVER_PORT, (.services["petl-sqlserver"].ports[] | "\(.published):\(.target)")' <<< "$output"
-    assert_output "$(printf '1433\n1434:1433')"
+    run jq -r '.services.sqlserver.ports[] | "\(.published):\(.target)"' <<< "$output"
+    assert_output '1434:1433'
 }
 
 @test "openhim has JWT authentication off, and openhim-setup passes no credentials on curl's command line" {
