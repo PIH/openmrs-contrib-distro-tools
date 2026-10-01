@@ -24,7 +24,7 @@ echo "export PATH=\"$DISTRO_TOOLS_HOME/bin:\$PATH\"" >> ~/.bashrc   # ~/.zshrc f
 ```
 
 Open a new terminal, and `openmrs-docker`, `openmrs-utils` and `openmrs-sdk` are available. You
-need Docker with the Compose plugin. To update the tool, `git pull` in it.
+need Docker with the Compose plugin, 2.20 or later. To update the tool, `git pull` in it.
 
 ### On Windows
 
