@@ -100,3 +100,12 @@ assert_account_created() {
     run docker logs "$NAME-openmrs-db-accounts"
     assert_output --partial 'No OPENMRS_DB_ACCOUNT_* accounts declared'
 }
+
+@test "start fails, naming openmrs-db-accounts, when the account setup fails" {
+    new_instance
+    declare_account BAD 'bad user' x 'ALL ON *.*'
+    run "$BIN/openmrs-docker" "$NAME" start
+    assert_failure
+    assert_output --partial "openmrs-db-accounts failed"
+    assert_output --partial "OPENMRS_DB_ACCOUNT_BAD_USER"
+}

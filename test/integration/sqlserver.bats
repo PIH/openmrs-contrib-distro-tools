@@ -64,3 +64,23 @@ sqlcmd_as() { # <login> <password> <query>
     run sqlcmd_as petl Second-pw-2 "SELECT 1"
     assert_output 1
 }
+
+@test "a password containing the login name is refused, naming it" {
+    printf "SQLSERVER_LOGIN_PETL_USER='petl'\nSQLSERVER_LOGIN_PETL_PASSWORD='Petl-pw-1'\nSQLSERVER_LOGIN_PETL_DATABASES='db1'\n" >> "$ENV"
+    run "$BIN/openmrs-docker" "$NAME" start
+    assert_failure
+    assert_output --partial "sqlserver-setup failed"
+    assert_output --partial "SQLSERVER_LOGIN_PETL_PASSWORD can't contain the login name"
+}
+
+@test "run-service stops before the service runs when a setup fails" {
+    destroy_instance "$NAME"
+    NAME="$(instance)-petl"
+    PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 \
+        SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 SERVICES=openmrs-db,petl,sqlserver create_instance "$NAME"
+    sed -i "s/^SQLSERVER_LOGIN_PETL_USER=.*/SQLSERVER_LOGIN_PETL_USER='bad]login'/" "$OPENMRS_DOCKER_HOME/$NAME/env"
+    run "$BIN/openmrs-docker" "$NAME" run-service petl sh -c 'echo PETL-RAN'
+    assert_failure
+    assert_output --partial "sqlserver-setup failed"
+    refute_output --partial "PETL-RAN"
+}

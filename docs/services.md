@@ -37,7 +37,8 @@ It creates `<user>@'%'` if missing, sets its password to the one in `env` (so a 
 restored database's old one, is replaced), creates the databases and applies the grants. It checks
 every declaration first and changes nothing if one is wrong; its log (`openmrs-docker <name> logs
 openmrs-db-accounts`) names it. Accounts that aren't declared, and the same user's accounts for other
-hosts, are left alone: removing one is up to you. A service can declare its own account in its
+hosts, are left alone: removing one is up to you. If it fails, so do `start` and `update`, naming it,
+and `run-service` doesn't run a service that needs it. A service can declare its own account in its
 `.env.defaults`, as petl does.
 
 ## OpenHIM and mediators
@@ -126,8 +127,9 @@ SQLSERVER_LOGIN_<ID>_DATABASES='<db> ...'
 SQLSERVER_LOGIN_<ID>_ROLE='db_owner'          # the default
 ```
 
-As for MySQL accounts, every declaration is checked first, and logins that aren't declared are left
-alone. `SQLSERVER_SA_PASSWORD` has no default; SQL Server needs passwords of at least 8 characters,
+As for MySQL accounts, every declaration is checked first, logins that aren't declared are left
+alone, and a failure stops `start`, `update` and `run-service`. A password can't contain its login's
+name (SQL Server's policy). `SQLSERVER_SA_PASSWORD` has no default; SQL Server needs passwords of at least 8 characters,
 with three of upper case, lower case, digits and symbols. The instance's services reach it on 1433;
 `SQLSERVER_PUBLISHED_PORT` (default 1433, or `<address>:<port>`) is where it's reachable from outside
 Docker, e.g. for reporting tools. `SQLSERVER_MEMORY_LIMIT` (3g) is the container's memory limit.

@@ -28,6 +28,9 @@ for id in $ids; do
     [[ "${!u:-}" =~ $ident ]] || errors+=("$u must be set, to letters, digits and _")
     [ -n "${!pw:-}" ] || errors+=("$pw must be set")
     [[ "${!pw:-}" != *\\* ]] || errors+=("$pw can't contain a backslash")
+    # SQL Server's password policy refuses one containing the login name, with a less clear message.
+    login=${!u:-} password=${!pw:-}
+    [ -n "$login" ] && [[ "${password,,}" == *"${login,,}"* ]] && errors+=("$pw can't contain the login name")
     [ -n "${!d:-}" ] || errors+=("$d must list at least one database")
     for db in ${!d:-}; do [[ "$db" =~ $ident ]] || errors+=("$d: '$db' isn't a plain database name"); done
     [[ "${!r:-db_owner}" =~ $ident ]] || errors+=("$r isn't a plain role name")

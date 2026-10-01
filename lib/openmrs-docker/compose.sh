@@ -16,7 +16,32 @@ compose_files() {
 
 compose() { docker compose "${COMPOSE_FILES[@]}" "$@"; }
 
-start_stack() { compose up -d; }
+# The one-shot setup services the instance's fragments declare ("# setup-services: <svc> ..." in a
+# .env.defaults), e.g. openmrs-db-accounts.
+setup_services() {
+    local f
+    for f in "$INSTANCE_DIR"/*.yaml; do
+        [ -e "$f" ] || continue
+        service_directive "$(basename "$f" .yaml)" setup-services
+    done | tr ' ' '\n' | sed '/^$/d'
+}
+
+# Waits for each setup service's container to exit, and fails naming the first that didn't succeed.
+# Compose itself only warns about an optional dependency that failed, and `up -d` doesn't wait.
+check_setup_services() {
+    local svc id code
+    for svc in $(setup_services); do
+        id=$(compose ps -a -q "$svc")
+        [ -n "$id" ] || continue
+        code=$(docker wait "$id")
+        if [ "$code" != 0 ]; then
+            docker logs --tail 20 "$id" >&2
+            die "$svc failed (exit $code; above, or '$0 $NAME logs $svc')"
+        fi
+    done
+}
+
+start_stack() { compose up -d; check_setup_services; }
 
 require_distro_source() {
     [ -n "${DISTRO_SOURCE_DIR:-}" ] || die "DISTRO_SOURCE_DIR must be set in $ENV_FILE for this command"

@@ -43,6 +43,14 @@ cmd_run_service() { # [--pull] <svc> [command...]
     if [ "$(service_directive "$svc" run-service)" = holds-lock ] && [ -e "$INSTANCE_DIR/openmrs.yaml" ]; then
         cmd_wait
     fi
+    # The setups first (account and login setup), so the service never runs on a failed one.
+    local setups
+    setups=$(setup_services)
+    if [ -n "$setups" ]; then
+        # shellcheck disable=SC2086 # one service name per word
+        compose up -d $setups
+        check_setup_services
+    fi
     compose run --rm "$svc" "$@"
 }
 

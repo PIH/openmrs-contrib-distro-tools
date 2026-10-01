@@ -39,7 +39,9 @@ which is how every secret it needs (DB passwords, OpenHIM and mediator settings)
 
 A `# run-service: holds-lock` line in a service's `.env.defaults` makes `run-service` hold the
 instance's lock for that service's runs ([One command at a time](instances.md#one-command-at-a-time));
-petl has it.
+petl has it. A `# setup-services: <svc> ...` line names a fragment's one-shot setup services
+(`openmrs-db-accounts`, `sqlserver-setup`): `start` and `update` wait for them and fail, naming the
+one that didn't succeed, and `run-service` runs them first and doesn't run the service if one fails.
 
 ## Variables
 
