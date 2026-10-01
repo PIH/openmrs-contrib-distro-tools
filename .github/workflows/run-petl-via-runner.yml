@@ -53,7 +53,9 @@ jobs:
       # context (often public). run-petl writes the full log under /home/<instance>/logs on the host.
       - name: Run PETL
         if: steps.gate.outputs.disabled != 'true'
-        timeout-minutes: 60
+        # Above run-petl's own waits (up to an hour for another openmrs-docker command, then for
+        # OpenMRS), so a run that waits too long fails with run-petl's message rather than a kill.
+        timeout-minutes: 150
         env:
           INSTANCE: ${{ inputs.instance }}
         run: |

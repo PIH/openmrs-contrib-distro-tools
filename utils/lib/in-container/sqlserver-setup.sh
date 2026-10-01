@@ -26,6 +26,8 @@ for id in $ids; do
     p="SQLSERVER_LOGIN_${id}"; u="${p}_USER" pw="${p}_PASSWORD" d="${p}_DATABASES" r="${p}_ROLE"
     [[ "$id" =~ $ident ]] || errors+=("$p: the id must be letters, digits and _")
     [[ "${!u:-}" =~ $ident ]] || errors+=("$u must be set, to letters, digits and _")
+    # sa is the server's own admin (SQLSERVER_SA_PASSWORD), and already dbo everywhere.
+    [ "${!u:-}" != sa ] || errors+=("$u can't be sa: declare a login of its own")
     [ -n "${!pw:-}" ] || errors+=("$pw must be set")
     [[ "${!pw:-}" != *\\* ]] || errors+=("$pw can't contain a backslash")
     # SQL Server's password policy refuses one containing the login name, with a less clear message.

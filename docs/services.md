@@ -129,7 +129,8 @@ SQLSERVER_LOGIN_<ID>_ROLE='db_owner'          # the default
 
 As for MySQL accounts, every declaration is checked first, logins that aren't declared are left
 alone, and a failure stops `start`, `update` and `run-service`. A password can't contain its login's
-name (SQL Server's policy). `SQLSERVER_SA_PASSWORD` has no default; SQL Server needs passwords of at least 8 characters,
+name (SQL Server's policy), and `sa` can't be declared (it's the server's admin, set by
+`SQLSERVER_SA_PASSWORD`). `SQLSERVER_SA_PASSWORD` has no default; SQL Server needs passwords of at least 8 characters,
 with three of upper case, lower case, digits and symbols. The instance's services reach it on 1433;
 `SQLSERVER_PUBLISHED_PORT` (default 1433, or `<address>:<port>`) is where it's reachable from outside
 Docker, e.g. for reporting tools. `SQLSERVER_MEMORY_LIMIT` (3g) is the container's memory limit.
@@ -137,9 +138,15 @@ Docker, e.g. for reporting tools. `SQLSERVER_MEMORY_LIMIT` (3g) is the container
 `sqlserver` replaces `petl-sqlserver`. To move an instance that has it: `openmrs-docker <name>
 remove-service petl-sqlserver`, then with `SQLSERVER_SA_PASSWORD` and `PETL_MYSQL_PASSWORD` set in your
 shell, `openmrs-docker <name> add-service sqlserver` and `openmrs-docker <name> sync` (the newer petl
-fragment); in `env`, set `PETL_SQLSERVER_HOST='sqlserver'` and add the `OPENMRS_DB_ACCOUNT_PETL_*` and
-`SQLSERVER_LOGIN_PETL_*` lines from `docker/services/petl.env.defaults`. Then run PETL to rebuild the
-data (or copy it from the `petl-sqlserver-data` volume yourself).
+fragment). Then, in `env`:
+
+- set `PETL_SQLSERVER_HOST='sqlserver'`;
+- set `PETL_SQLSERVER_USER='petl'` and `PETL_MYSQL_USER='petl'`: older instances have `sa` and the
+  OpenMRS account there, and `sa` can't be a declared login;
+- add the `OPENMRS_DB_ACCOUNT_PETL_*` and `SQLSERVER_LOGIN_PETL_*` lines from
+  `docker/services/petl.env.defaults`, with the same users and passwords.
+
+Then run PETL to rebuild the data (or copy it from the `petl-sqlserver-data` volume yourself).
 
 ## PETL
 

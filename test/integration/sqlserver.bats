@@ -92,3 +92,10 @@ sqlcmd_as() { # <login> <password> <query>
     run sqlcmd_as reports 'Ab1-$(SQLCMDUSER)z' "SELECT 1"
     assert_output 1
 }
+
+@test "a declared sa login is refused, naming it" {
+    printf "SQLSERVER_LOGIN_ADMIN_USER='sa'\nSQLSERVER_LOGIN_ADMIN_PASSWORD='Other-pw-9'\nSQLSERVER_LOGIN_ADMIN_DATABASES='db1'\n" >> "$ENV"
+    run "$BIN/openmrs-docker" "$NAME" start
+    assert_failure
+    assert_output --partial "SQLSERVER_LOGIN_ADMIN_USER can't be sa"
+}
