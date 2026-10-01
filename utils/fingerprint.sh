@@ -4,7 +4,7 @@
 # passwords or other secrets are written.
 #
 # Usage: openmrs-utils fingerprint (--container=<name> | --host=<host> [--port=3306]
-#            [--client-image=mysql:5.6] | --db-volume=<volume or dir> [--image=mysql:5.6]
+#            [--client-image=mysql:5.6] [--user=root] | --db-volume=<volume or dir> [--image=mysql:5.6]
 #            [--server-opt=<flag>...]) [--database=openmrs]
 #            [--data-dir=<volume or dir> [--exclude-distribution-artifacts]] [--output=<file>]
 #   --db-volume   a stopped server's data directory, read by starting --image on it with grants
@@ -13,7 +13,7 @@
 #   --database    the OpenMRS database, for [recent]
 #   --data-dir    also summarizes this OpenMRS data directory; --exclude-distribution-artifacts
 #                 leaves out what the image supplies, as backup-openmrs-data-directory does
-#   MYSQL_ROOT_PASSWORD  root's password, for --container and --host (default: openmrs)
+#   MYSQL_PASSWORD  password for --user, for --container and --host (required)
 #
 # Sections, each sorted, one fact per line, so a diff shows only what changed:
 #   [server]     version, character set and collation, lower_case_table_names, sql_mode,
@@ -46,6 +46,7 @@ OUTPUT=
 for arg in "$@"; do
     case "$arg" in
         --client-image=*) DB_CLIENT_IMAGE="${arg#*=}" ;;
+        --user=*) DB_USER="${arg#*=}" ;;
         --db-volume=*) DB_VOLUME="${arg#*=}" ;;
         --image=*) IMAGE="${arg#*=}" ;;
         --server-opt=*) SERVER_OPTS+=("${arg#*=}") ;;
@@ -59,7 +60,8 @@ done
 
 if [ -z "$DB_VOLUME" ]; then
     mysql_source_given || usage
-    mysql_connect "${MYSQL_ROOT_PASSWORD:-openmrs}"
+    mysql_password
+    mysql_connect "$DB_PASSWORD"
 else
     [ -z "$DB_CONTAINER$DB_HOST" ] || usage
     refuse_if_in_use "$DB_VOLUME" "two servers on one data directory corrupt it"

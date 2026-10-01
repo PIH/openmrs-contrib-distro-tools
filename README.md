@@ -514,6 +514,9 @@ so `ARCHIVE_PASSWORD` is on 7z's command line inside its container while the dum
 <script-name> [args...]` (a thin passthrough to the script of that name under `utils/` -- see
 "Install" above), or the script directly by its full path -- the two are equivalent. Run any script
 with no arguments for its exact usage; run `openmrs-utils` with no arguments to list them all.
+The utilities that connect to a MySQL server log in as `--user` (root by default) with the password
+in `MYSQL_PASSWORD`, and refuse to run without it. (`fingerprint` and `backup-percona` used to take
+`MYSQL_ROOT_PASSWORD`, which still works for now, with a warning.)
 Progress and errors go to stderr, so stdout carries only a result a caller may capture (e.g.
 `extract-archive`'s path). A backup refuses an output that already exists, and removes what it
 started writing if it fails. The scripts share helpers in `utils/lib/`; `common.sh` there sets out
@@ -534,7 +537,7 @@ check free disk space before writing anything, as `initialize` does (see "Disk s
   minutes on a large `obs`), routines/triggers/views, the highest id and `date_created` on
   `encounter`/`obs`/`patient`/`person`/`users`, accounts (`user@host`), and with `--data-dir` the
   files and bytes per top-level folder. No row contents or secrets. `--container`/`--host` log in as
-  root (`MYSQL_ROOT_PASSWORD`); `--db-volume` reads a *stopped* instance's `db-data` by starting its
+  `--user` (root by default, with `MYSQL_PASSWORD`); `--db-volume` reads a *stopped* instance's `db-data` by starting its
   image on it with grants disabled and no networking, with any `--server-opt` flags -- the way to
   check a restore after `initialize`, before OpenMRS first starts (which changes Liquibase and
   scheduler tables). For an instance, `openmrs-docker <name> fingerprint` passes its image and
@@ -562,7 +565,7 @@ check free disk space before writing anything, as `initialize` does (see "Disk s
   the restore target doesn't cause a restored routine/trigger to fail at execution time.
 - **`backup-percona (--container=<name> | --host=<host> [--port=3306]) --volume=<db data volume or
   host dir> --output=<dir | path.7z> [--databases=<list>]`** -- takes a prepared physical backup of
-  a running MySQL server's data directory, as root (`MYSQL_ROOT_PASSWORD` env var). `--container`
+  a running MySQL server's data directory, as `--user` (root by default, with `MYSQL_PASSWORD`). `--container`
   reaches a MySQL container through its network; `--host` connects over TCP with host networking,
   for a MySQL installed on the host (e.g. `--host=127.0.0.1 --volume=/var/lib/mysql` on a legacy
   server). `--volume` is the server's data directory, read directly. An `--output` ending in `.7z`

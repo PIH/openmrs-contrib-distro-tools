@@ -59,7 +59,7 @@ mariadb_exec() { # <container> <sql>
     local db
     db=$(res db)
     start_mariadb "$db"
-    MYSQL_ROOT_PASSWORD=openmrs run "$UTILS/fingerprint.sh" --container="$db" --output=running.txt
+    MYSQL_PASSWORD=openmrs run "$UTILS/fingerprint.sh" --container="$db" --output=running.txt
     assert_success
     run cat running.txt
     assert_line 'openmrs.marker 1'

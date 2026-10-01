@@ -29,7 +29,7 @@ teardown() {
     assert_line 'character_set_server latin1'
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
     wait_for_mysql "$NAME-openmrs-db" root openmrs
-    MYSQL_ROOT_PASSWORD=openmrs "$UTILS/fingerprint.sh" --container="$NAME-openmrs-db" --output=running.txt
+    MYSQL_PASSWORD=openmrs "$UTILS/fingerprint.sh" --container="$NAME-openmrs-db" --output=running.txt
     run diff stopped.txt running.txt
     assert_success
 }

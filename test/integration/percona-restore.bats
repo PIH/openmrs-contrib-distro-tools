@@ -20,7 +20,7 @@ teardown() {
 
 percona_backup() { # <output> [args...]
     local out=$1; shift
-    MYSQL_ROOT_PASSWORD=openmrs "$UTILS/backup-percona.sh" --container="$SRC_DB" --volume="$SRC_DB-data" --output="$out" "$@"
+    MYSQL_PASSWORD=openmrs "$UTILS/backup-percona.sh" --container="$SRC_DB" --volume="$SRC_DB-data" --output="$out" "$@"
 }
 
 restore_percona() { # <path> [VAR=value...]
@@ -103,7 +103,7 @@ in_7z() { # <archive> <password> <7z args...>
     wait_for_mysql "$db" root openmrs
     mysql_exec "$db" openmrs 'CREATE TABLE openmrs.marker (id INT) ENGINE=InnoDB; INSERT INTO openmrs.marker VALUES (7);'
     port=$(docker port "$db" 3306 | head -1 | cut -d: -f2)
-    MYSQL_ROOT_PASSWORD=openmrs ARCHIVE_PASSWORD=pw run "$UTILS/backup-percona.sh" \
+    MYSQL_PASSWORD=openmrs ARCHIVE_PASSWORD=pw run "$UTILS/backup-percona.sh" \
         --host=127.0.0.1 --port="$port" --volume="$BATS_TEST_TMPDIR/datadir" --output=host.7z
     assert_success
     ARCHIVE_PASSWORD=pw restore_percona host.7z

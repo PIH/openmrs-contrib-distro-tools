@@ -6,7 +6,8 @@
 #                              a server reached over TCP (e.g. 127.0.0.1 for a MySQL installed on
 #                              the host); the tools run in DB_CLIENT_IMAGE (a script's
 #                              --client-image) with host networking, so the host needs only Docker
-# The password reaches the tools as MYSQL_PWD, which docker passes by name.
+# The password for DB_USER (a script's --user, root by default) is MYSQL_PASSWORD, which reaches the
+# tools as MYSQL_PWD, passed to docker by name.
 # shellcheck disable=SC2034 # the scripts use these
 
 DB_CONTAINER=
@@ -31,6 +32,19 @@ mysql_source_given() {
     [ -z "$DB_CONTAINER" ] || [ -z "$DB_HOST" ] || die "pass either --container or --host, not both"
     MYSQL_SOURCE=${DB_CONTAINER:-$DB_HOST:$DB_PORT}
     [ -n "$DB_CONTAINER$DB_HOST" ]
+}
+
+# Sets DB_PASSWORD from MYSQL_PASSWORD, refusing to go on without it. MYSQL_ROOT_PASSWORD, which
+# fingerprint and backup-percona used to take, still works for now, with a warning.
+mysql_password() {
+    if [ -n "${MYSQL_PASSWORD:-}" ]; then
+        DB_PASSWORD=$MYSQL_PASSWORD
+    elif [ -n "${MYSQL_ROOT_PASSWORD:-}" ]; then
+        warn "MYSQL_ROOT_PASSWORD is deprecated here and will stop working: set MYSQL_PASSWORD, the password for --user ($DB_USER)"
+        DB_PASSWORD=$MYSQL_ROOT_PASSWORD
+    else
+        die "MYSQL_PASSWORD must be set: the password for --user ($DB_USER)"
+    fi
 }
 
 # Logs in as DB_USER with <password> from here on, and finds the tools the server's image (or

@@ -42,7 +42,7 @@ random_file() { # <path> <KiB>
     local vol
     vol=$(res data)
     docker run --rm -v "$vol:/d" alpine:3.21 sh -c 'head -c 2097152 /dev/urandom > /d/ibdata1'
-    DISK_SPACE_FREE_KB=100 run "$UTILS/backup-percona.sh" --container="$(res none)" --volume="$vol" --output=backup
+    MYSQL_PASSWORD=x DISK_SPACE_FREE_KB=100 run "$UTILS/backup-percona.sh" --container="$(res none)" --volume="$vol" --output=backup
     assert_failure
     assert_output --partial "a physical backup of $vol needs about 2.0M"
     [ ! -e backup ]

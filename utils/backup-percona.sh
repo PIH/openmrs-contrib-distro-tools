@@ -5,14 +5,15 @@
 # RESTORE_MYSQL_PERCONA_PATH and the legacy DW refresh take.
 #
 # Usage: openmrs-utils backup-percona (--container=<name> | --host=<host> [--port=3306])
-#            --volume=<volume or dir> --output=<new dir | file.7z> [--databases=<list>]
+#            --volume=<volume or dir> --output=<new dir | file.7z> [--databases=<list>] [--user=root]
 #   --volume             the server's data directory (a volume or absolute path), which
 #                        XtraBackup reads directly
 #   --output             a new directory, or a .7z (made from a temporary volume, so the backup is
 #                        never on the host unencrypted)
 #   --databases          a space-separated list to back up, instead of all (mysql and
 #                        performance_schema are added: a restore without mysql has no accounts)
-#   MYSQL_ROOT_PASSWORD  root's password (default: openmrs)
+#   MYSQL_PASSWORD       password for --user, who needs RELOAD, LOCK TABLES, PROCESS and REPLICATION
+#                        CLIENT (required)
 #   ARCHIVE_PASSWORD     password for a .7z (required for one)
 #   SKIP_DISK_SPACE_CHECK=true  skips the free-space check
 set -euo pipefail
@@ -33,6 +34,7 @@ for arg in "$@"; do
         --volume=*) VOLUME="${arg#*=}" ;;
         --output=*) OUTPUT="${arg#*=}" ;;
         --databases=*) DATABASES="${arg#*=}" ;;
+        --user=*) DB_USER="${arg#*=}" ;;
         *) mysql_source_arg "$arg" || die "unknown argument: $arg" ;;
     esac
 done
@@ -46,6 +48,8 @@ case "$OUTPUT" in
         [ -n "${ARCHIVE_PASSWORD:-}" ] || die "ARCHIVE_PASSWORD must be set to produce a .7z output"
         ;;
 esac
+
+mysql_password
 
 # The whole data directory, even with --databases, so this errs on the side of refusing. A .7z's
 # temporary volume and the archive are both checked against it.
@@ -82,10 +86,10 @@ else
 fi
 
 note "Backing up $MYSQL_SOURCE (physical/xtrabackup) to $OUTPUT..."
-MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-openmrs}" BACKUP_DATABASES="$DATABASES" docker run --rm "${NETWORK[@]}" \
-    -e MYSQL_PWD -e BACKUP_DATABASES -e CONNECT_HOST="$CONNECT_HOST" -e CONNECT_PORT="$CONNECT_PORT" \
+MYSQL_PWD="$DB_PASSWORD" BACKUP_DATABASES="$DATABASES" docker run --rm "${NETWORK[@]}" \
+    -e MYSQL_PWD -e BACKUP_DATABASES -e DB_USER="$DB_USER" -e CONNECT_HOST="$CONNECT_HOST" -e CONNECT_PORT="$CONNECT_PORT" \
     -v "$VOLUME:/var/lib/mysql:ro" -v "$BACKUP:/backup" "$PERCONA_IMAGE" \
-    sh -c 'set -- --user=root --host="$CONNECT_HOST" --port="$CONNECT_PORT"
+    sh -c 'set -- --user="$DB_USER" --host="$CONNECT_HOST" --port="$CONNECT_PORT"
            [ -n "$BACKUP_DATABASES" ] && set -- "$@" --databases="$BACKUP_DATABASES"
            innobackupex "$@" /backup' >&2
 
