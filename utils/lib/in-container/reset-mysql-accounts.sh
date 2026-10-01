@@ -8,7 +8,10 @@
 #     account such as a legacy openmrs@localhost would otherwise win over '%' for local logins,
 #     with its old password);
 #   - removes anonymous accounts (''@<host>), which would also win over '%';
-#   - keeps every other account, and lists them.
+#   - keeps every other account, and lists them;
+#   - leaves alone, and lists, accounts whose host is a host name (e.g. a legacy server's
+#     root@<its name>): MySQL images run with skip-name-resolve, so the server never loads them,
+#     can't change them, and no login can use them.
 # Those are the accounts a new instance gets from the image's MYSQL_ROOT_PASSWORD and MYSQL_USER.
 #
 #   MYSQL_ROOT_PASSWORD, MYSQL_PASSWORD  the new passwords (required)
@@ -57,12 +60,18 @@ ensure_account() { # <user> <password> <privileges ON object> [WITH GRANT OPTION
         echo "Created $1@%"
     fi
 }
-OTHERS=()
+OTHERS=() UNRESOLVED=()
+# MySQL's own test (hostname_requires_resolving): not localhost, not IPv6, and something other than
+# digits and . _ % / (an IPv4 address, pattern or netmask).
+needs_resolving() { # <host>
+    case "$1" in localhost|*:*) return 1 ;; *[!0-9._%/]*) return 0 ;; *) return 1 ;; esac
+}
 # Split by hand: `read` with IFS=tab would drop an anonymous account's empty user name (tab is IFS
 # whitespace, so a leading one is skipped).
 while IFS= read -r line; do
     [ -n "$line" ] || continue
     user=${line%%$'\t'*} host=${line#*$'\t'}
+    if needs_resolving "$host"; then UNRESOLVED+=("$user@$host"); continue; fi
     case "$user" in
         '') STATEMENTS+=" DROP USER ''@$(lit "$host");"; echo "Removed anonymous account ''@$host" ;;
         root) set_password root "$host" "$MYSQL_ROOT_PASSWORD" ;;
@@ -77,4 +86,5 @@ STATEMENTS+=" FLUSH PRIVILEGES;"
 # On stdin, so the passwords aren't in the client's command line.
 "$CLIENT" --socket="$SOCKET" -uroot <<< "$STATEMENTS"
 [ ${#OTHERS[@]} -eq 0 ] || echo "Kept the other accounts (remove any this instance doesn't need): ${OTHERS[*]}"
+[ ${#UNRESOLVED[@]} -eq 0 ] || echo "Left alone, since the server doesn't resolve host names (no login can use them): ${UNRESOLVED[*]}"
 kill "$PID" && wait "$PID" || true
