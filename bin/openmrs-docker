@@ -141,7 +141,10 @@ fi
 
 case "$COMMAND" in
     status|logs|wait) ;;
-    run-service) lock_instance check ;;
+    # A service can declare that a run holds the lock (petl: a deploy mustn't restart MySQL under
+    # it); others, such as smoke tests, only check it.
+    run-service)
+        if [ "$(service_directive "$1" run-service)" = holds-lock ]; then lock_instance hold; else lock_instance check; fi ;;
     *) lock_instance hold ;;
 esac
 

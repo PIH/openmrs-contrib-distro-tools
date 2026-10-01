@@ -53,15 +53,22 @@ remove_restore_volumes() { # <project>
 
 # Commands that change the instance hold its lock until they exit, and refuse while another command
 # holds it: puppet runs `pull && start` on every apply, which mustn't happen part way through e.g.
-# an initialize. flock(1) releases the lock however its holder exits. Without flock (util-linux,
-# so not on macOS), commands run unlocked.
+# an initialize or a PETL run. With OPENMRS_DOCKER_LOCK_WAIT=<seconds> they wait that long for it
+# instead. flock(1) releases the lock however its holder exits. Without flock (util-linux, so not on
+# macOS), commands run unlocked.
 lock_instance() { # hold | check (refuse if held, without holding it)
     local lock="$INSTANCE_DIR/.lock"
     command -v flock >/dev/null || return 0
     # Opened read-only (all flock needs), so a lock file another user created still works.
     [ -e "$lock" ] || : >> "$lock"
     exec 9<"$lock"
-    flock -n 9 || die "$NAME is busy: $(cat "$lock" 2>/dev/null) -- run this again once that finishes."
+    local wait=${OPENMRS_DOCKER_LOCK_WAIT:-0}
+    [[ "$wait" =~ ^[0-9]+$ ]] || die "OPENMRS_DOCKER_LOCK_WAIT must be a number of seconds"
+    if ! flock -n 9; then
+        [ "$wait" -gt 0 ] || die "$NAME is busy: $(cat "$lock" 2>/dev/null) -- run this again once that finishes."
+        note "$NAME is busy: $(cat "$lock" 2>/dev/null) -- waiting up to ${wait}s"
+        flock -w "$wait" 9 || die "$NAME is still busy after ${wait}s: $(cat "$lock" 2>/dev/null)"
+    fi
     if [ "$1" = check ]; then
         exec 9>&-
     else

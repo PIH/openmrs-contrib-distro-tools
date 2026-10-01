@@ -39,6 +39,11 @@ render_env_defaults() { # <file>
     done < "$template"
 }
 
+# A service's directive in its .env.defaults ("# <name>: value"), e.g. "# run-service: holds-lock".
+service_directive() { # <svc> <name>
+    sed -n "s/^# $2: *//p" "$SERVICES_DIR/$1.env.defaults" 2>/dev/null | head -1
+}
+
 render_service_env_defaults() { render_env_defaults "$SERVICES_DIR/$1.env.defaults"; } # <svc>
 
 # A service whose container takes variables from env declares their name prefixes in its

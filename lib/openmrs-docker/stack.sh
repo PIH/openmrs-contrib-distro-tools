@@ -35,6 +35,10 @@ cmd_run_service() { # <svc> [command...]
     local svc=$1
     shift
     [ -e "$INSTANCE_DIR/$svc.yaml" ] || die "$svc not present on $NAME (run 'add-service $svc' first)"
+    # A lock-holding run starts only once OpenMRS has finished starting (and its Liquibase updates).
+    if [ "$(service_directive "$svc" run-service)" = holds-lock ] && [ -e "$INSTANCE_DIR/openmrs.yaml" ]; then
+        cmd_wait
+    fi
     compose run --rm "$svc" "$@"
 }
 
