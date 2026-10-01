@@ -8,18 +8,20 @@ services:
     image: ${PETL_IMAGE_NAME?}:${PETL_IMAGE_TAG?}
     profiles: ["petl"]
     depends_on:
-      openmrs-db:
-        condition: service_healthy
+      openmrs-db-accounts:
+        condition: service_completed_successfully
+      # Only when the instance has sqlserver (PETL may write to a SQL Server elsewhere).
+      sqlserver-setup:
+        condition: service_completed_successfully
+        required: false
+    # Env's PETL_*, DATASOURCES_*, SPRING_* and LOGGING_* lines (see "# container-env:" in .env.defaults).
+    env_file: petl.env
     environment:
-      PETL_FULL_REFRESH_JOBS: ${PETL_FULL_REFRESH_JOBS?}
-      PETL_MAX_RETRIES: ${PETL_MAX_RETRIES?}
       PETL_MYSQL_HOST: openmrs-db
       PETL_MYSQL_PORT: 3306
-      PETL_MYSQL_USER: ${PETL_MYSQL_USER?}
-      PETL_MYSQL_PASSWORD: ${PETL_MYSQL_PASSWORD?}
-      PETL_MYSQL_ROOT_PASSWORD: ${PETL_MYSQL_ROOT_PASSWORD?}
-      PETL_SQLSERVER_HOST: ${PETL_SQLSERVER_HOST?}
-      PETL_SQLSERVER_PORT: ${PETL_SQLSERVER_PORT?}
-      PETL_SQLSERVER_USER: ${PETL_SQLSERVER_USER?}
-      PETL_SQLSERVER_PASSWORD: ${PETL_SQLSERVER_PASSWORD?}
       TZ: ${TZ?}
+    volumes:
+      - petl-data:/home/petl/data
+
+volumes:
+  petl-data:

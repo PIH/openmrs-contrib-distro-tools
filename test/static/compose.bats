@@ -9,7 +9,7 @@ setup_file() {
     export ALL_SERVICES
     ALL_SERVICES=$(cd "$REPO_ROOT/docker/services" && ls ./*.yaml | xargs -n1 basename | sed 's/\.yaml$//' | paste -sd, -)
     export CONFIG_INSTANCE="$(file_res config)"
-    export PETL_SQLSERVER_PASSWORD=Placeholder-1 SQLSERVER_SA_PASSWORD=Placeholder-1
+    export PETL_SQLSERVER_PASSWORD=Placeholder-1 SQLSERVER_SA_PASSWORD=Placeholder-1 PETL_MYSQL_PASSWORD=Placeholder-1
     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }
 
@@ -218,4 +218,21 @@ assert_valid() {
     assert_output '[80]'
     run jq -r '[.services["mongo-db"].ports // [], .services["openhim-advapacs-mediator"].ports // []] | flatten | length' <<< "$config"
     assert_output 0
+}
+
+@test "petl gets only its config namespaces from env, keeps its job history in a volume, and waits for account setup" {
+    local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f json
+    printf "DATASOURCES_OPENMRS_CESCI_HOST='openmrs-db'\nOTHER_SECRET='nope'\n" >> "$dir/env"
+    "$BIN/openmrs-docker" "$CONFIG_INSTANCE" status >/dev/null 2>&1 || true   # every command regenerates petl.env
+    run grep -E '^(DATASOURCES_OPENMRS_CESCI_HOST|OTHER_SECRET)=' "$dir/petl.env"
+    assert_output "DATASOURCES_OPENMRS_CESCI_HOST='openmrs-db'"
+    for f in "$dir"/*.yaml; do args+=(-f "$f"); done
+    run docker compose --env-file "$dir/env" "${args[@]}" --profile petl config --format json
+    assert_success
+    json=$output
+    run jq -r '.services.petl.volumes[] | "\(.source):\(.target)"' <<< "$json"
+    assert_output "petl-data:/home/petl/data"
+    run jq -r '.services.petl.depends_on | to_entries[] | "\(.key) \(.value.condition) \(.value.required)"' <<< "$json"
+    assert_line "openmrs-db-accounts service_completed_successfully true"
+    assert_line "sqlserver-setup service_completed_successfully false"
 }

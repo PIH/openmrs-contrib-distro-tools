@@ -314,3 +314,24 @@ teardown() {
     assert_line "A_USER='petl'"
     assert_line "B_USER='petl'"
 }
+
+@test "adding petl declares its MySQL account and SQL Server login from its own variables" {
+    NAME="$(instance)"
+    PETL_MYSQL_PASSWORD='My-pw-1' PETL_SQLSERVER_PASSWORD='Sql-pw-1' SQLSERVER_SA_PASSWORD='Sa-pw-1' \
+        SERVICES=openmrs-db,petl,sqlserver create_instance "$NAME"
+    run cat "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_line "OPENMRS_DB_ACCOUNT_PETL_USER='petl'"
+    assert_line "OPENMRS_DB_ACCOUNT_PETL_PASSWORD='My-pw-1'"
+    assert_line "OPENMRS_DB_ACCOUNT_PETL_GRANTS='ALL ON *.*'"
+    assert_line "SQLSERVER_LOGIN_PETL_USER='petl'"
+    assert_line "SQLSERVER_LOGIN_PETL_PASSWORD='Sql-pw-1'"
+    assert_line "SQLSERVER_LOGIN_PETL_DATABASES='openmrs_reporting'"
+    refute_output --partial '# run-service:'
+}
+
+@test "petl needs PETL_MYSQL_PASSWORD" {
+    NAME="$(instance)"
+    run env -u PETL_MYSQL_PASSWORD PETL_SQLSERVER_PASSWORD=x SERVICES=openmrs-db,petl "$BIN/openmrs-docker" create "$NAME"
+    assert_failure
+    assert_output --partial 'PETL_MYSQL_PASSWORD: must be set'
+}
