@@ -84,3 +84,11 @@ sqlcmd_as() { # <login> <password> <query>
     assert_output --partial "sqlserver-setup failed"
     refute_output --partial "PETL-RAN"
 }
+
+@test "a password with sqlcmd's \$(variable) syntax is kept literally" {
+    printf "SQLSERVER_LOGIN_RPT_USER='reports'\nSQLSERVER_LOGIN_RPT_PASSWORD='Ab1-\$(SQLCMDUSER)z'\nSQLSERVER_LOGIN_RPT_DATABASES='db1'\n" >> "$ENV"
+    run start_and_wait_for_setup
+    assert_output 0
+    run sqlcmd_as reports 'Ab1-$(SQLCMDUSER)z' "SELECT 1"
+    assert_output 1
+}

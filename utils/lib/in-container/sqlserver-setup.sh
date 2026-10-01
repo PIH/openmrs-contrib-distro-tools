@@ -12,8 +12,8 @@
 set -euo pipefail
 : "${SQLCMDPASSWORD:?}"
 SQLCMD=/opt/mssql-tools18/bin/sqlcmd
-# The script on stdin, so passwords stay off the command line.
-run_sql() { "$SQLCMD" -C -S sqlserver -U sa -b -h -1 -W -i /dev/stdin <<< "SET NOCOUNT ON; $1"; }
+# The script on stdin, so passwords stay off the command line; -x: no $(variable) expansion in it.
+run_sql() { "$SQLCMD" -C -S sqlserver -U sa -b -x -h -1 -W -i /dev/stdin <<< "SET NOCOUNT ON; $1"; }
 q() { printf "N'%s'" "${1//\'/\'\'}"; }   # an N'...' string literal
 
 ident='^[A-Za-z0-9_]+$'
