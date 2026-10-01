@@ -1,6 +1,6 @@
 # Helpers every utils/ script uses. Sourced, not run.
 #
-# How the utilities behave (the README's "Utilities" section says the same for users):
+# How the utilities behave (docs/utilities.md says the same for users):
 #   - Values are --name=value options. Secrets are environment variables: they reach the tools in
 #     containers by name (`docker -e VAR`), as MYSQL_PWD or on stdin, never on a command line,
 #     which `ps` on the host shows for processes in containers too.

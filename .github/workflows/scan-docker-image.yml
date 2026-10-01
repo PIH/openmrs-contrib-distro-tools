@@ -3,7 +3,7 @@ name: Scan Docker image
 # Report-only: never fails the caller's pipeline on findings, only on a
 # scan-execution error (bad image ref, registry pull failure, etc). Findings
 # go to the calling repo's own Security tab, which only works for public
-# repos on the free tier used here -- see README for details.
+# repos on the free tier used here -- see docs/ci-workflows.md.
 permissions:
   security-events: write
 
