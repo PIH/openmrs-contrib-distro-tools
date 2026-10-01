@@ -25,6 +25,13 @@ doesn't bring up: run it with `openmrs-docker <name> run-service <svc> [command.
 `openhim` is the standard OpenHIM install (MongoDB, openhim-core and openhim-console). Each mediator is
 its own fragment, and more than one can be attached to the same OpenHIM.
 
+OpenHIM's MongoDB database is named `openhim` (it was `openhim-development` before TASKS-596). An
+instance created before starts on an empty database: `openhim-setup` sets the admin password again
+and each mediator registers and provisions its channels and clients on its next start, but the
+transaction log, audit events, metrics and anything changed by hand in the console aren't carried
+over. The old database stays in the `mongo-data` volume, to copy with `mongodump` / `mongorestore
+--nsFrom 'openhim-development.*' --nsTo 'openhim.*'` or drop.
+
 OpenHIM's clients authenticate with Basic auth or custom tokens; its JWT authentication is off,
 since nothing uses it and it would otherwise accept a token signed with a shared secret for any
 client.
@@ -47,17 +54,16 @@ address for links openhim-core generates. The defaults are for a browser on the 
 | `OPENHIM_CONSOLE_API_PROTOCOL`, `OPENHIM_CONSOLE_API_HOST`, `OPENHIM_CONSOLE_API_PORT`, `OPENHIM_CONSOLE_API_PATH` | `http`, `localhost`, `OPENHIM_ADMIN_API_HOST_PORT`, empty |
 | `OPENHIM_CONSOLE_URL` | `http://localhost:<OPENHIM_CONSOLE_HOST_PORT>` |
 
-OpenHIM's MongoDB database is named `openhim` (it was `openhim-development` before TASKS-596). An
-instance created before starts on an empty database: `openhim-setup` sets the admin password again
-and each mediator registers and provisions its channels and clients on its next start, but the
-transaction log, audit events, metrics and anything changed by hand in the console aren't carried
-over. The old database stays in the `mongo-data` volume, to copy with `mongodump` / `mongorestore
---nsFrom 'openhim-development.*' --nsTo 'openhim.*'` or drop.
-
 For example, with the proxy serving the console at `https://openhim.example.org` and forwarding
 `/api` there to the admin API: `OPENHIM_CONSOLE_API_PROTOCOL=https`,
 `OPENHIM_CONSOLE_API_HOST=openhim.example.org`, `OPENHIM_CONSOLE_API_PORT=443`,
 `OPENHIM_CONSOLE_API_PATH=/api`, `OPENHIM_CONSOLE_URL=https://openhim.example.org`.
+
+Logging in to the console needs that proxy, serving the admin API over HTTPS. openhim-core's session
+cookie is Secure, and core trusts the proxy's `X-Forwarded-Proto` to know the request came in over
+HTTPS. Caddy sends it by default; behind nginx, add `proxy_set_header X-Forwarded-Proto $scheme;`.
+Without it, or with the browser going straight to the published port, every login fails, and
+openhim-core logs "Cannot send secure cookie over unencrypted connection".
 
 The following example will create an instance with OpenHIM and its mediators installed, configured
 for Lesotho:

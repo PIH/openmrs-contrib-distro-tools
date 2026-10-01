@@ -204,6 +204,9 @@ assert_valid() {
     refute_output --regexp 'curl -[a-z]*k'
     run jq -r '.services["openhim-core"].environment.api_protocol' <<< "$config"
     assert_output http
+    # so the console's Secure session cookie can be set behind the TLS-terminating proxy
+    run jq -r '.services["openhim-core"].environment.api_trustProxy' <<< "$config"
+    assert_output true
     # OpenHIM's own images on release tags, not latest
     run jq -r '.services["openhim-core"].image, .services["openhim-console"].image' <<< "$config"
     refute_output --partial ':latest'

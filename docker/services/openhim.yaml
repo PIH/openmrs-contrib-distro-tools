@@ -57,6 +57,8 @@ services:
       # Not development, whose config turns on debug logging and the audit servers (5050-5052).
       NODE_ENV: production
       api_protocol: http
+      # Take https from the proxy's X-Forwarded-Proto, or core can't set the console's Secure session cookie.
+      api_trustProxy: "true"
       api_authenticationTypes: '["token", "basic", "openid", "local"]'
       authentication_enableCustomTokenAuthentication: "true"
       # JWT authentication stays off by leaving authentication_enableJWTAuthentication unset
