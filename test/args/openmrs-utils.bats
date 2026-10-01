@@ -9,10 +9,13 @@ teardown() { common_teardown; }
 @test "with no arguments, lists every utils script and fails" {
     run "$BIN/openmrs-utils"
     assert_failure
-    for script in backup-mysqldump backup-openmrs-data-directory backup-percona convert-percona-backup \
-        extract-archive strip-mysqldump-definers clear-configuration-checksums wait-for-healthy purge-binlogs; do
-        assert_output --partial "  $script"
+    local script
+    for script in "$UTILS"/*.sh; do
+        assert_output --partial "  $(basename "$script" .sh)"
     done
+    # utils/lib/ holds helpers, not utilities.
+    refute_output --partial '  common'
+    refute_output --partial '  mysql'
 }
 
 @test "rejects an unknown script name" {

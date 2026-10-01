@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# remove-service removes only the containers of the fragment it removes, and never starts anything.
+# Attaching and removing fragments, run-service, and destroy, with small alpine fragments in place of the real services.
 
 load ../helpers
 
@@ -67,4 +67,42 @@ YAML
     assert_failure
     assert_output --partial "gone"
     [ -e "$DIR/gone.yaml" ]
+}
+
+@test "run-service runs a profiled fragment once with the given command, and start leaves it alone" {
+    cat > "$DIR/job.yaml" <<'YAML'
+name: ${SERVICE_NAME:?SERVICE_NAME must be set}
+services:
+  job:
+    image: alpine:3.21
+    profiles: ["job"]
+YAML
+    "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
+    assert_equal "$(running | wc -l)" 2
+    run "$BIN/openmrs-docker" "$NAME" run-service job echo "hello from job"
+    assert_success
+    assert_output --partial 'hello from job'
+    assert_equal "$(docker ps -aq --filter "label=com.docker.compose.service=job" --filter "label=com.docker.compose.project=$NAME")" ""
+    run "$BIN/openmrs-docker" "$NAME" run-service nope
+    assert_failure
+    assert_output --partial "nope not present on $NAME"
+}
+
+@test "destroy removes everything even when the fragments no longer interpolate" {
+    "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
+    assert_equal "$(running | wc -l)" 2
+    sed -i 's/image: alpine:3.21/image: alpine:${NOT_SET_ANYWHERE?}/' "$DIR/keep.yaml"
+    run "$BIN/openmrs-docker" "$NAME" destroy --force
+    assert_success
+    assert_output --partial "removing this instance's containers and volumes by their Compose project label"
+    assert_equal "$(docker ps -aq --filter "label=com.docker.compose.project=$NAME")" ""
+    assert_equal "$(docker volume ls -q --filter "label=com.docker.compose.project=$NAME")" ""
+    [ ! -e "$DIR" ]
+}
+
+@test "destroy removes root-owned files a container left in the instance directory" {
+    docker run --rm -v "$DIR:/d" alpine:3.21 sh -c 'mkdir /d/out && touch /d/out/report && chmod 700 /d/out'
+    run "$BIN/openmrs-docker" "$NAME" destroy --force
+    assert_success
+    [ ! -e "$DIR" ]
 }

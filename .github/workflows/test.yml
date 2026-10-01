@@ -40,4 +40,5 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Backup and restore round trips
-        run: test/run integration
+        # Twice the runner's CPUs: the tests mostly wait on containers starting.
+        run: TEST_JOBS=8 test/run integration
