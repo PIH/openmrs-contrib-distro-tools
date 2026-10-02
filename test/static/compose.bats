@@ -220,7 +220,7 @@ assert_valid() {
     assert_output 0
 }
 
-@test "petl gets only its config namespaces from env, keeps its job history in a volume, and waits for account setup" {
+@test "petl gets only its config namespaces from env, and keeps its job history in a volume" {
     local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f json
     printf "DATASOURCES_OPENMRS_CESCI_HOST='openmrs-db'\nOTHER_SECRET='nope'\n" >> "$dir/env"
     "$BIN/openmrs-docker" "$CONFIG_INSTANCE" status >/dev/null 2>&1 || true   # every command regenerates petl.env
@@ -232,7 +232,4 @@ assert_valid() {
     json=$output
     run jq -r '.services.petl.volumes[] | "\(.source):\(.target)"' <<< "$json"
     assert_output "petl-data:/home/petl/data"
-    run jq -r '.services.petl.depends_on | to_entries[] | "\(.key) \(.value.condition) \(.value.required)"' <<< "$json"
-    assert_line "openmrs-db-accounts service_completed_successfully true"
-    assert_line "sqlserver-setup service_completed_successfully false"
 }

@@ -349,3 +349,16 @@ teardown() {
     run grep -c '^OPENMRS_DB_OPT_' "$dir/openmrs-db-accounts.env"
     assert_output 0
 }
+
+@test "petl works without sqlserver: add-service petl, and remove-service sqlserver from an instance with petl" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db create_instance "$NAME"
+    run env PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 PETL_SQLSERVER_HOST=reports.example.org \
+        "$BIN/openmrs-docker" "$NAME" add-service petl
+    assert_success
+    destroy_instance "$NAME"
+    PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 SQLSERVER_SA_PASSWORD=Sa-pw-1 \
+        SERVICES=openmrs-db,petl,sqlserver create_instance "$NAME"
+    run "$BIN/openmrs-docker" "$NAME" remove-service sqlserver
+    assert_success
+}
