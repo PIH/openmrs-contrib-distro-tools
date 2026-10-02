@@ -329,13 +329,19 @@ Once done, tear the instance down with `openmrs-docker myinstance destroy --forc
 ## Deploys and PETL runs on self-hosted runners
 
 Both run on a server's own self-hosted runner (`runner-label`), skip with a warning while
-`/etc/puppet/build-disabled` exists there, and keep their output on the host: it can contain secrets
+`/etc/puppet/build-disabled` exists there, or while the instance they're for is held
+(`/etc/puppet/build-disabled-<instance>`), and keep their output on the host: it can contain secrets
 or data, and the job runs in the calling repo's context, often a public one. A runner runs one job at
 a time, so jobs for the same host queue whichever repo they come from.
 
-- **`deploy-via-runner.yml`** (`runner-label`, `puppet-manifest`, `run-etl`): `git pull` and
-  `puppet-apply.sh <manifest>` in `/etc/puppet`; with `run-etl`, the legacy host-installed PETL
-  (`/opt/petl/bin/execute-full.sh`). For `openmrs_docker` instances, puppet runs `pull && start`.
+- **`deploy-via-runner.yml`** (`runner-label`, `puppet-manifest`, `instances`, `host`, `run-etl`):
+  `git pull` and `puppet-apply.sh <manifest>` in `/etc/puppet`. `instances` (`all` by default, `none`,
+  or one instance's name) and `host` (default `true`) choose what puppet applies, with the `site`
+  manifest only; an app's deploy passes its own instance and `host: false`. A deploy for a held instance skips entirely; one for
+  `all` warns about held instances, which puppet skips. A running deploy is never cancelled; per
+  repository and instance, only the newest pending deploy waits. For `openmrs_docker` instances,
+  puppet runs `openmrs-docker <instance> update`. With `run-etl`, the legacy host-installed PETL
+  (`/opt/petl/bin/execute-full.sh`).
 - **`run-petl-via-runner.yml`** (`runner-label`, `instance`): runs PETL for an `openmrs_docker`
   instance, as `sudo -u <instance> /home/<instance>/bin/run-petl`. Puppet's
   `openmrs_docker::service::petl` installs that script and, with `ci_runner => true`, the one sudoers
@@ -350,7 +356,7 @@ An ETL project calls it after building its image:
     needs: build-and-publish
     concurrency:
       group: run-petl-on-ces-ci-${{ github.ref }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     uses: PIH/openmrs-contrib-distro-tools/.github/workflows/run-petl-via-runner.yml@main
     with:
       runner-label: appclstr-01

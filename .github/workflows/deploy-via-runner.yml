@@ -16,6 +16,14 @@ on:
         description: "Manifest to apply, passed to puppet-apply.sh (e.g. 'site' or 'petl')"
         default: 'site'
         type: string
+      instances:
+        description: "openmrs_docker instances to apply: 'all', 'none', or one instance's name"
+        default: 'all'
+        type: string
+      host:
+        description: 'Whether to apply the rest of the host too (false: only the openmrs_docker instances)'
+        default: true
+        type: boolean
       run-etl:
         description: 'Whether to run the full ETL job after the puppet apply'
         default: false
@@ -42,21 +50,77 @@ jobs:
     needs: notify-started
     if: always()
     runs-on: [self-hosted, "${{ inputs.runner-label }}"]
+    # A running deploy always finishes: cancelling it can stop puppet part way through an instance. GitHub keeps at
+    # most one pending run per group, the newest. Groups are per repository; across repos the host's runner queues
+    # jobs, and puppet-apply.sh waits for any other apply.
+    concurrency:
+      group: deploy-${{ inputs.runner-label }}-${{ inputs.instances }}
+      cancel-in-progress: false
     steps:
-      # Deploys can be paused on a host (e.g. during maintenance or a demo) by
-      # creating /etc/puppet/build-disabled, optionally containing a reason,
-      # and resumed by deleting it. The job still succeeds, with a warning.
-      # The reason is shown in this job's log, which may be public.
-      - name: Check for build-disabled flag
+      # Deploys can be paused on a host (e.g. during maintenance or a demo) by creating /etc/puppet/build-disabled,
+      # and one openmrs_docker instance held by creating /etc/puppet/build-disabled-<instance>, each optionally
+      # containing a reason, and resumed by deleting it. A deploy that targets a held instance skips entirely; one
+      # for all instances warns, and puppet skips the held ones. The job still succeeds, with a warning. The reason
+      # is shown in this job's log, which may be public. Outputs: disabled=true when skipped; args, the
+      # puppet-apply.sh options (validated here).
+      - name: Check for build-disabled flags
         id: gate
+        env:
+          RUNNER_LABEL: ${{ inputs.runner-label }}
+          MANIFEST: ${{ inputs.puppet-manifest }}
+          INSTANCES: ${{ inputs.instances }}
+          HOST: ${{ inputs.host }}
+          PUPPET_DIR: /etc/puppet
         run: |
-          FLAG=/etc/puppet/build-disabled
-          if [ -e "$FLAG" ]; then
-            REASON=$(cat "$FLAG" 2>/dev/null | tr '\n' ' ')
-            SINCE=$(date -r "$FLAG" '+%Y-%m-%d %H:%M %Z')
-            echo "::warning::Deploy skipped: $FLAG present on ${{ inputs.runner-label }} since ${SINCE}. ${REASON:-No reason given.} Delete the file to resume."
-            echo "disabled=true" >> "$GITHUB_OUTPUT"
+          if [[ ! "$INSTANCES" =~ ^(all|none|[a-z0-9][a-z0-9_-]*)$ ]]; then
+            echo "::error::instances must be all, none or an instance name"
+            exit 1
           fi
+          # The runner's sudoers rule allows options only with the site manifest.
+          if [ "$MANIFEST" != site ] && { [ "$INSTANCES" != all ] || [ "$HOST" != true ]; }; then
+            echo "::error::instances and host apply only to the site manifest"
+            exit 1
+          fi
+          if [ "$HOST" != true ] && [ "$INSTANCES" = none ]; then
+            echo "::error::host: false with instances: none applies nothing"
+            exit 1
+          fi
+          warn() { # <flag> <what>
+            REASON=$(tr '\n' ' ' < "$1" 2>/dev/null)
+            SINCE=$(date -r "$1" '+%Y-%m-%d %H:%M %Z')
+            echo "::warning::$2 on ${RUNNER_LABEL} since ${SINCE}. ${REASON:-No reason given.} Delete the file to resume."
+          }
+          if [ -e "$PUPPET_DIR/build-disabled" ]; then
+            warn "$PUPPET_DIR/build-disabled" "Deploy skipped: $PUPPET_DIR/build-disabled present"
+            echo "disabled=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$INSTANCES" in
+            all)
+              for FLAG in "$PUPPET_DIR"/build-disabled-*; do
+                NAME=${FLAG##*/build-disabled-}
+                # Only an instance's name holds it (e.g. not an editor's build-disabled-ces-ci~).
+                [ -e "$FLAG" ] && [[ "$NAME" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || continue
+                warn "$FLAG" "$NAME held by $FLAG, skipped by this deploy"
+              done
+              ;;
+            none) ;;
+            *)
+              if [ -e "$PUPPET_DIR/build-disabled-$INSTANCES" ]; then
+                warn "$PUPPET_DIR/build-disabled-$INSTANCES" "Deploy skipped: $INSTANCES held by $PUPPET_DIR/build-disabled-$INSTANCES"
+                echo "disabled=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              ;;
+          esac
+          ARGS=()
+          case "$INSTANCES" in
+            all) ;;
+            none) ARGS+=(--no-instances) ;;
+            *) ARGS+=(--instance "$INSTANCES") ;;
+          esac
+          [ "$HOST" = true ] || ARGS+=(--no-host)
+          echo "args=${ARGS[*]}" >> "$GITHUB_OUTPUT"
       # Output is deliberately not streamed to this step's log: puppet-apply.sh
       # runs with Puppet's -v -d flags, which can echo decrypted secrets
       # (resource parameters, exec commands, etc.) to console, and this job
@@ -67,11 +131,16 @@ jobs:
       # migration; check there for failure details.
       - name: Puppet apply
         if: steps.gate.outputs.disabled != 'true'
+        env:
+          MANIFEST: ${{ inputs.puppet-manifest }}
+          ARGS: ${{ steps.gate.outputs.args }}
         run: |
-          MSG="puppet-apply.sh ${{ inputs.puppet-manifest }}: full log is at /var/log/mirebalais-puppet on the host (VPN access required); not shown here since it may contain secrets."
+          MSG="puppet-apply.sh ${MANIFEST} ${ARGS}: full log is at /var/log/mirebalais-puppet on the host (VPN access required); not shown here since it may contain secrets."
           cd /etc/puppet
           sudo git pull > /dev/null
-          if sudo ./puppet-apply.sh ${{ inputs.puppet-manifest }} > /dev/null 2>&1; then
+          # ARGS is split into words on purpose; the gate validated it.
+          # shellcheck disable=SC2086
+          if sudo ./puppet-apply.sh "$MANIFEST" $ARGS > /dev/null 2>&1; then
             echo "Succeeded. ${MSG}"
           else
             echo "::error::Failed. ${MSG}"

@@ -38,17 +38,27 @@ jobs:
     if: always()
     runs-on: [self-hosted, "${{ inputs.runner-label }}"]
     steps:
-      # As in deploy-via-runner.yml: /etc/puppet/build-disabled pauses this host.
-      - name: Check for build-disabled flag
+      # As in deploy-via-runner.yml: /etc/puppet/build-disabled pauses this host, and
+      # /etc/puppet/build-disabled-<instance> holds the instance (puppet's cron entry for PETL checks it too).
+      - name: Check for build-disabled flags
         id: gate
+        env:
+          RUNNER_LABEL: ${{ inputs.runner-label }}
+          INSTANCE: ${{ inputs.instance }}
+          PUPPET_DIR: /etc/puppet
         run: |
-          FLAG=/etc/puppet/build-disabled
-          if [ -e "$FLAG" ]; then
-            REASON=$(cat "$FLAG" 2>/dev/null | tr '\n' ' ')
-            SINCE=$(date -r "$FLAG" '+%Y-%m-%d %H:%M %Z')
-            echo "::warning::PETL run skipped: $FLAG present on ${{ inputs.runner-label }} since ${SINCE}. ${REASON:-No reason given.} Delete the file to resume."
-            echo "disabled=true" >> "$GITHUB_OUTPUT"
-          fi
+          [[ "$INSTANCE" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "::error::bad instance name"; exit 1; }
+          for FLAG in "$PUPPET_DIR/build-disabled" "$PUPPET_DIR/build-disabled-$INSTANCE"; do
+            if [ -e "$FLAG" ]; then
+              REASON=$(tr '\n' ' ' < "$FLAG" 2>/dev/null)
+              SINCE=$(date -r "$FLAG" '+%Y-%m-%d %H:%M %Z')
+              WHAT="$FLAG present"
+              [ "$FLAG" = "$PUPPET_DIR/build-disabled" ] || WHAT="$INSTANCE held by $FLAG"
+              echo "::warning::PETL run skipped: ${WHAT} on ${RUNNER_LABEL} since ${SINCE}. ${REASON:-No reason given.} Delete the file to resume."
+              echo "disabled=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
       # Output isn't streamed: PETL's errors can include data, and this job runs in the calling repo's
       # context (often public). run-petl writes the full log under /home/<instance>/logs on the host.
       - name: Run PETL
