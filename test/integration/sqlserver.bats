@@ -54,11 +54,11 @@ sqlcmd_as() { # <login> <password> <query>
     run start_and_wait_for_setup
     assert_output 0
     sed -i "s/^SQLSERVER_LOGIN_PETL_PASSWORD=.*/SQLSERVER_LOGIN_PETL_PASSWORD='Second-pw-2'/" "$ENV"
-    printf "SQLSERVER_LOGIN_BAD_USER='bad]login'\nSQLSERVER_LOGIN_BAD_PASSWORD='x'\nSQLSERVER_LOGIN_BAD_DATABASES='db2'\n" >> "$ENV"
+    printf "SQLSERVER_LOGIN_BAD_USER='reports'\nSQLSERVER_LOGIN_BAD_PASSWORD='Rpt-pw-9'\n" >> "$ENV"
     run start_and_wait_for_setup
     assert_output 1
     run docker logs "$NAME-sqlserver-setup"
-    assert_output --partial 'SQLSERVER_LOGIN_BAD_USER'
+    assert_output --partial 'SQLSERVER_LOGIN_BAD_DATABASES must list at least one database'
     assert_output --partial 'nothing was changed'
     run sqlcmd_as petl First-pw-1 "SELECT 1"
     assert_output 1
@@ -69,12 +69,12 @@ sqlcmd_as() { # <login> <password> <query>
     assert_output 1
 }
 
-@test "a password containing the login name is refused, naming it" {
+@test "a password SQL Server's policy refuses (here: containing the login name) fails start, with SQL Server's message" {
     printf "SQLSERVER_LOGIN_PETL_USER='petl'\nSQLSERVER_LOGIN_PETL_PASSWORD='Petl-pw-1'\nSQLSERVER_LOGIN_PETL_DATABASES='db1'\n" >> "$ENV"
     run "$BIN/openmrs-docker" "$NAME" start
     assert_failure
     assert_output --partial "sqlserver-setup failed"
-    assert_output --partial "SQLSERVER_LOGIN_PETL_PASSWORD can't contain the login name"
+    assert_output --partial "Password validation failed"
 }
 
 @test "run-service stops before the service runs when a setup fails" {
@@ -82,7 +82,7 @@ sqlcmd_as() { # <login> <password> <query>
     NAME="$(instance)-petl"
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 \
         SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 SERVICES=openmrs-db,petl,sqlserver create_instance "$NAME"
-    sed -i "s/^SQLSERVER_LOGIN_PETL_USER=.*/SQLSERVER_LOGIN_PETL_USER='bad]login'/" "$OPENMRS_DOCKER_HOME/$NAME/env"
+    printf "SQLSERVER_LOGIN_BAD_USER='reports'\nSQLSERVER_LOGIN_BAD_PASSWORD='Rpt-pw-9'\n" >> "$OPENMRS_DOCKER_HOME/$NAME/env"   # no databases
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1 || true   # fails on the same login; leaves the instance up
     run "$BIN/openmrs-docker" "$NAME" run-service petl sh -c 'echo PETL-RAN'
     assert_failure

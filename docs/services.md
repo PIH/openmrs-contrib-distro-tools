@@ -34,9 +34,9 @@ OPENMRS_DB_ACCOUNT_<ID>_DATABASES='<db> ...'   # optional: created if missing
 ```
 
 It creates `<user>@'%'` if missing, sets its password to the one in `env` (so a rotated password, or a
-restored database's old one, is replaced), creates the databases and applies the grants. It checks
-every declaration first and changes nothing if one is wrong; its log (`openmrs-docker <name> logs
-openmrs-db-accounts`) names it. Accounts that aren't declared, and the same user's accounts for other
+restored database's old one, is replaced), creates the databases and applies the grants. A
+declaration missing a value changes nothing; anything else wrong fails with MySQL's own error. Either
+way its log (`openmrs-docker <name> logs openmrs-db-accounts`) says why. Accounts that aren't declared, and the same user's accounts for other
 hosts, are left alone: removing one is up to you. `root` and the OpenMRS account (`OPENMRS_DB_USER`) can't be declared: their passwords are the instance's own (`OPENMRS_DB_*`). If it fails, so do `start` and `update`, naming it,
 and a lock-holding `run-service` (petl) doesn't run. A service can declare its own account in its
 `.env.defaults`, as petl does.
@@ -128,10 +128,10 @@ SQLSERVER_LOGIN_<ID>_DATABASES='<db> ...'
 SQLSERVER_LOGIN_<ID>_ROLE='db_owner'          # the default
 ```
 
-As for MySQL accounts, every declaration is checked first, logins that aren't declared are left
-alone, and a failure stops `start`, `update` and a lock-holding `run-service`. A password can't contain its login's
-name (SQL Server's policy), and `sa` can't be declared (it's the server's admin, set by
-`SQLSERVER_SA_PASSWORD`). `SQLSERVER_SA_PASSWORD` has no default; SQL Server needs passwords of at least 8 characters,
+As for MySQL accounts, logins that aren't declared are left alone, anything wrong fails with SQL
+Server's own error, and a failure stops `start`, `update` and a lock-holding `run-service`. SQL
+Server's policy also refuses a password containing its login's name. `sa` can't be declared (it's the
+server's admin, set by `SQLSERVER_SA_PASSWORD`). `SQLSERVER_SA_PASSWORD` has no default; SQL Server needs passwords of at least 8 characters,
 with three of upper case, lower case, digits and symbols. The instance's services reach it on 1433;
 `SQLSERVER_PUBLISHED_PORT` (default 1433, or `<address>:<port>`) is where it's reachable from outside
 Docker, e.g. for reporting tools. `SQLSERVER_MEMORY_LIMIT` (3g) is the container's memory limit.
