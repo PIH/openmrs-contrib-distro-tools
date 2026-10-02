@@ -118,7 +118,8 @@ runs on every `start`, and first for any service that depends on it:
   (4) tempdb files;
 - each database in `SQLSERVER_DATABASES` (space-separated), created if missing;
 - each login declared in `env`, created if missing, its password kept to the one in `env`, and a user
-  with the role in each of its databases (created if missing):
+  with the role in each of its databases (created if missing; an existing user, e.g. in a database
+  restored from another server, is remapped to this server's login):
 
 ```
 SQLSERVER_LOGIN_<ID>_USER='<login>'

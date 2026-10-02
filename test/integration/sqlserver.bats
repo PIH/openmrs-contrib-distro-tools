@@ -104,3 +104,15 @@ sqlcmd_as() { # <login> <password> <query>
     assert_failure
     assert_output --partial "SQLSERVER_LOGIN_ADMIN_USER can't be sa"
 }
+
+@test "a database user left orphaned (e.g. a database restored from another server) is remapped to the login" {
+    printf "SQLSERVER_LOGIN_PETL_USER='petl'\nSQLSERVER_LOGIN_PETL_PASSWORD='First-pw-1'\nSQLSERVER_LOGIN_PETL_DATABASES='db1'\n" >> "$ENV"
+    run start_and_wait_for_setup
+    assert_output 0
+    # As after a restore: the database has a user petl whose login (SID) isn't this server's.
+    sqlcmd_as sa "$SA" "DROP LOGIN [petl]" >/dev/null
+    run start_and_wait_for_setup
+    assert_output 0
+    run sqlcmd_as petl First-pw-1 "SELECT HAS_DBACCESS('db1')"
+    assert_output 1
+}

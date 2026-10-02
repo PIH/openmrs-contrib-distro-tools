@@ -6,7 +6,8 @@
 #     have made one per CPU, up to 8);
 #   - each database in SQLSERVER_DATABASES and in any login's _DATABASES, created if missing (SIMPLE);
 #   - each login declared as SQLSERVER_LOGIN_<ID>_USER, _PASSWORD, _DATABASES, _ROLE (db_owner):
-#     created if missing, its password set on every run, a user in each of its databases with the role.
+#     created if missing, its password set on every run, a user in each of its databases with the role
+#     (an existing user remapped to the login, e.g. after a restore from another server).
 # Everything is checked first: a bad declaration changes nothing. Undeclared logins are left alone.
 #   SQLCMDPASSWORD  sa's password (required)
 set -euo pipefail
@@ -68,8 +69,11 @@ for id in $ids; do
     ELSE ALTER LOGIN [$login] WITH PASSWORD = $(q "${!pw}")"
     echo "Login $login ready"
     for db in ${!d}; do
+        # An existing user is remapped to this server's login: in a database restored from another
+        # server it's orphaned (the login's SID differs), and the login couldn't use the database.
         run_sql "USE [$db]; IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = $(q "$login"))
-            CREATE USER [$login] FOR LOGIN [$login]; ALTER ROLE [$role] ADD MEMBER [$login]"
+            CREATE USER [$login] FOR LOGIN [$login]
+        ELSE ALTER USER [$login] WITH LOGIN = [$login]; ALTER ROLE [$role] ADD MEMBER [$login]"
         echo "$login is $role in $db"
     done
 done
