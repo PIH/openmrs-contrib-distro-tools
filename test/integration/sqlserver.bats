@@ -90,6 +90,17 @@ sqlcmd_as() { # <login> <password> <query>
     refute_output --partial "PETL-RAN"
 }
 
+@test "an instance with petl and sqlserver but no PETL_SQLSERVER_PASSWORD fails start, naming the login's password" {
+    destroy_instance "$NAME"
+    NAME="$(instance)-petl"
+    env -u PETL_SQLSERVER_PASSWORD PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=My-pw-1 \
+        SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 SERVICES=openmrs-db,petl,sqlserver \
+        "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    run "$BIN/openmrs-docker" "$NAME" start
+    assert_failure
+    assert_output --partial "SQLSERVER_LOGIN_PETL_PASSWORD must be set"
+}
+
 @test "a password with sqlcmd's \$(variable) syntax is kept literally" {
     printf "SQLSERVER_LOGIN_RPT_USER='reports'\nSQLSERVER_LOGIN_RPT_PASSWORD='Ab1-\$(SQLCMDUSER)z'\nSQLSERVER_LOGIN_RPT_DATABASES='db1'\n" >> "$ENV"
     run start_and_wait_for_setup

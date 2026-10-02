@@ -336,6 +336,14 @@ teardown() {
     assert_output --partial 'PETL_MYSQL_PASSWORD: must be set'
 }
 
+@test "petl doesn't need PETL_SQLSERVER_PASSWORD (an ETL writing only to MySQL)" {
+    NAME="$(instance)"
+    run env -u PETL_SQLSERVER_PASSWORD PETL_MYSQL_PASSWORD=My-pw-1 SERVICES=openmrs-db,petl "$BIN/openmrs-docker" create "$NAME"
+    assert_success
+    run grep '^PETL_SQLSERVER_PASSWORD=' "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_output "PETL_SQLSERVER_PASSWORD=''"
+}
+
 @test "account declarations go to openmrs-db-accounts' own env file, not openmrs-db's" {
     NAME="$(instance)"
     SERVICES=openmrs-db create_instance "$NAME"

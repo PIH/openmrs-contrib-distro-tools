@@ -176,9 +176,12 @@ openmrs-docker <name> run-service --pull petl
   `-` become `_`, uppercased), so e.g. `DATASOURCES_OPENMRS_CESCI_HOST` sets
   `datasources.openmrs.cesci.host`, overriding the image's `application.yml`.
 - **Its accounts:** PETL connects to MySQL as `PETL_MYSQL_USER` (`petl`) and to SQL Server as
-  `PETL_SQLSERVER_USER` (`petl`); `PETL_MYSQL_PASSWORD` and `PETL_SQLSERVER_PASSWORD` have no
-  default. ETL projects' datasource files paste these into YAML unquoted, so keep them to letters,
-  digits and `-`, `_`, `.`, `+`, `=`, `~` (a ` #` cuts one short; `: ` or a leading `"`, `!`, `&`, `*`,
+  `PETL_SQLSERVER_USER` (`petl`). `PETL_MYSQL_PASSWORD` has no default and must be set.
+  `PETL_SQLSERVER_PASSWORD` is needed only by an ETL that writes to SQL Server (not, e.g., an
+  apzu-etl run filling only its MySQL reporting database); with `sqlserver` in the instance,
+  `sqlserver-setup` refuses to start without it (`SQLSERVER_LOGIN_PETL_PASSWORD must be set`).
+  ETL projects' datasource files paste these into YAML unquoted, so keep them to letters, digits
+  and `-`, `_`, `.`, `+`, `=`, `~` (a ` #` cuts one short; `: ` or a leading `"`, `!`, `&`, `*`,
   `%`, `@`, `[`, `{` breaks the file). petl's defaults declare the matching MySQL account (`OPENMRS_DB_ACCOUNT_PETL_*`, `ALL ON
   *.*`) and SQL Server login (`SQLSERVER_LOGIN_PETL_*`, `db_owner` on `PETL_SQLSERVER_DATABASE`,
   default `openmrs_reporting`), and petl waits for both setups before it runs. If you change a PETL
