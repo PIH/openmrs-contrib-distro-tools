@@ -39,15 +39,18 @@ cmd_run_service() { # [--pull] <svc> [command...]
     [ -e "$INSTANCE_DIR/$svc.yaml" ] || die "$svc not present on $NAME (run 'add-service $svc' first)"
     # Named explicitly, so a profiled service's image is pulled too (a plain `pull` skips them).
     if $pull; then compose pull "$svc"; fi
-    # The setups first (account and login setup), so the service never runs on a failed one.
-    local setups
-    setups=$(setup_services)
-    if [ -n "$setups" ]; then
-        # shellcheck disable=SC2086 # one service name per word
-        compose up -d $setups
-        check_setup_services
+    if [ "$(service_directive "$svc" run-service)" != holds-lock ]; then
+        compose run --rm "$svc" "$@"
+        return
     fi
-    compose run --rm "$svc" "$@"
+    # A lock-holding service (petl) is a job against the running instance: its setups run first, as
+    # one-off containers with the current env, so it never runs on a failed one, and neither they
+    # nor it start, stop or recreate any of the instance's containers (--no-deps).
+    local setup
+    for setup in $(setup_services); do
+        compose run --rm --no-deps "$setup" || die "$setup failed (above), so $svc didn't run -- is $NAME running ('$0 $NAME start')?"
+    done
+    compose run --rm --no-deps "$svc" "$@"
 }
 
 cmd_wait() {

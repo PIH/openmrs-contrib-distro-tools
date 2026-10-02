@@ -39,11 +39,13 @@ nothing from `env` is passed: the container gets only what its fragment names un
 which is how every secret it needs (DB passwords, OpenHIM and mediator settings) reaches it. Edit
 `env`, not the generated files.
 
-A `# run-service: holds-lock` line in a service's `.env.defaults` makes `run-service` hold the
-instance's lock for that service's runs ([One command at a time](instances.md#one-command-at-a-time));
-petl has it. A `# setup-services: <svc> ...` line names a fragment's one-shot setup services
-(`openmrs-db-accounts`, `sqlserver-setup`): `start` and `update` wait for them and fail, naming the
-one that didn't succeed, and `run-service` runs them first and doesn't run the service if one fails.
+A `# run-service: holds-lock` line in a service's `.env.defaults` makes it a job against the running
+instance (petl has it): `run-service` holds the instance's lock for the run
+([One command at a time](instances.md#one-command-at-a-time)), runs the setup services first, and
+starts, stops or recreates none of the instance's containers. A `# setup-services: <svc> ...` line
+names a fragment's one-shot setup services (`openmrs-db-accounts`, `sqlserver-setup`): `start` and
+`update` wait for them and fail, naming the one that didn't succeed; a lock-holding `run-service`
+runs each as a one-off with the current env, and doesn't run the service if one fails.
 
 ## Variables
 

@@ -113,8 +113,10 @@ nothing, while an `initialize`, `reset-openmrs-db-accounts` or PETL run is in pr
 `OPENMRS_DOCKER_LOCK_WAIT=<seconds>` set, a command waits up to that long for the lock instead, and
 then fails naming the holder (puppet's deploys wait an hour). `run-service` holds the lock for a
 service that declares it (`# run-service: holds-lock` in its `.env.defaults`; petl does, so a deploy
-can't restart MySQL under a PETL run). It doesn't wait for, or need, OpenMRS: PETL also runs against
-restored databases with no OpenMRS. For other services (the smoke tests) it refuses while the instance is busy but doesn't hold the
+can't restart MySQL under a PETL run). Such a run is a job against the running instance: it runs the
+setup services first (account and login setup), and starts, stops or recreates none of the
+instance's containers, so `openmrs-db` (and `sqlserver`, if it has one) must be running. It doesn't
+need OpenMRS: PETL also runs against restored databases with no OpenMRS. For other services (the smoke tests) it refuses while the instance is busy but doesn't hold the
 lock. `status`, `logs` and `wait` never wait for it. The lock is released however its holder exits,
 so there's nothing to clean up after a crash. It uses `flock(1)` (util-linux, on every Linux host);
 where `flock` isn't installed (e.g. macOS), commands run unlocked.

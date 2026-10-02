@@ -31,6 +31,7 @@ teardown() {
     NAME="$(instance)"
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=Pw-1 PETL_SQLSERVER_PASSWORD=Pw-1 \
         SERVICES=openmrs-db,petl create_instance "$NAME"
+    "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1   # a PETL run is against the running instance
     "$BIN/openmrs-docker" "$NAME" run-service petl sleep 8 > petl.log 2>&1 3>&- &
     local petl=$!
     until grep -q 'run-service' "$OPENMRS_DOCKER_HOME/$NAME/.lock" 2>/dev/null && docker ps --format '{{.Names}}' | grep -q "^$NAME-petl"; do

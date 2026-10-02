@@ -38,7 +38,7 @@ restored database's old one, is replaced), creates the databases and applies the
 every declaration first and changes nothing if one is wrong; its log (`openmrs-docker <name> logs
 openmrs-db-accounts`) names it. Accounts that aren't declared, and the same user's accounts for other
 hosts, are left alone: removing one is up to you. If it fails, so do `start` and `update`, naming it,
-and `run-service` doesn't run a service that needs it. A service can declare its own account in its
+and a lock-holding `run-service` (petl) doesn't run. A service can declare its own account in its
 `.env.defaults`, as petl does.
 
 ## OpenHIM and mediators
@@ -128,7 +128,7 @@ SQLSERVER_LOGIN_<ID>_ROLE='db_owner'          # the default
 ```
 
 As for MySQL accounts, every declaration is checked first, logins that aren't declared are left
-alone, and a failure stops `start`, `update` and `run-service`. A password can't contain its login's
+alone, and a failure stops `start`, `update` and a lock-holding `run-service`. A password can't contain its login's
 name (SQL Server's policy), and `sa` can't be declared (it's the server's admin, set by
 `SQLSERVER_SA_PASSWORD`). `SQLSERVER_SA_PASSWORD` has no default; SQL Server needs passwords of at least 8 characters,
 with three of upper case, lower case, digits and symbols. The instance's services reach it on 1433;
@@ -205,5 +205,6 @@ openmrs-docker <name> run-service --pull petl
   `PETL_SQLSERVER_PORT` (defaults `sqlserver`, 1433), the user and the password; the login has to
   exist there.
 - **Runs and deploys:** a `run-service petl` holds the instance's lock for the whole run, so a
-  deploy (`pull`, `start`, ...) waits for it or refuses. PETL doesn't need OpenMRS running
+  deploy (`pull`, `start`, ...) waits for it or refuses. It runs against the running instance:
+  `openmrs-db` (and `sqlserver`, if the instance has it) must be up, OpenMRS needn't be
   ([One command at a time](instances.md#one-command-at-a-time)).

@@ -87,6 +87,9 @@ running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.p
 @test "run-service petl doesn't need OpenMRS: it runs, and leaves OpenMRS stopped, on an instance that has it" {
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=Pw-1 PETL_SQLSERVER_PASSWORD=Pw-1 \
         OPENMRS_IMAGE_NAME="$STUB_OPENMRS_IMAGE" OPENMRS_IMAGE_TAG=latest SERVICES=openmrs-db,openmrs,petl create_instance "$NAME"
+    # The database running, OpenMRS stopped (e.g. PETL against a restored database).
+    "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
+    docker stop "$NAME-openmrs" >/dev/null
     run "$BIN/openmrs-docker" "$NAME" run-service petl echo PETL-RAN
     assert_success
     assert_output --partial 'PETL-RAN'

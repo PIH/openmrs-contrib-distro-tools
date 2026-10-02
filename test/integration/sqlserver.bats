@@ -83,6 +83,7 @@ sqlcmd_as() { # <login> <password> <query>
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 \
         SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 SERVICES=openmrs-db,petl,sqlserver create_instance "$NAME"
     sed -i "s/^SQLSERVER_LOGIN_PETL_USER=.*/SQLSERVER_LOGIN_PETL_USER='bad]login'/" "$OPENMRS_DOCKER_HOME/$NAME/env"
+    "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1 || true   # fails on the same login; leaves the instance up
     run "$BIN/openmrs-docker" "$NAME" run-service petl sh -c 'echo PETL-RAN'
     assert_failure
     assert_output --partial "sqlserver-setup failed"
