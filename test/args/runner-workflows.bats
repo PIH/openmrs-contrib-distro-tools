@@ -9,7 +9,7 @@ setup() {
     export PUPPET_DIR="$BATS_TEST_TMPDIR/puppet" GITHUB_OUTPUT="$BATS_TEST_TMPDIR/output"
     mkdir -p "$PUPPET_DIR"
     : > "$GITHUB_OUTPUT"
-    export RUNNER_LABEL=appclstr-01
+    export RUNNER_LABEL=appclstr-01 MANIFEST=site
 }
 
 # Prints the run: script of step <id> in job <job> of workflow <file>.
@@ -91,6 +91,23 @@ outputs() { cat "$GITHUB_OUTPUT"; }
     assert_output --partial "No reason given."
     run outputs
     refute_line "disabled=true"
+    assert_line "args="
+}
+
+@test "all: files that can't be holds aren't reported as held" {
+    touch "$PUPPET_DIR/build-disabled-ces-ci~" "$PUPPET_DIR/build-disabled-" "$PUPPET_DIR/build-disabled-Old"
+    INSTANCES=all HOST=true deploy_gate
+    assert_success
+    refute_output --partial "::warning::"
+}
+
+@test "instances and host need the site manifest" {
+    MANIFEST=petl INSTANCES=ces-ci HOST=false deploy_gate
+    assert_failure
+    assert_output --partial "::error::instances and host apply only to the site manifest"
+    MANIFEST=petl INSTANCES=all HOST=true deploy_gate
+    assert_success
+    run outputs
     assert_line "args="
 }
 

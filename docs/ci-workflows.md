@@ -336,8 +336,8 @@ a time, so jobs for the same host queue whichever repo they come from.
 
 - **`deploy-via-runner.yml`** (`runner-label`, `puppet-manifest`, `instances`, `host`, `run-etl`):
   `git pull` and `puppet-apply.sh <manifest>` in `/etc/puppet`. `instances` (`all` by default, `none`,
-  or one instance's name) and `host` (default `true`) choose what puppet applies; an app's deploy
-  passes its own instance and `host: false`. A deploy for a held instance skips entirely; one for
+  or one instance's name) and `host` (default `true`) choose what puppet applies, with the `site`
+  manifest only; an app's deploy passes its own instance and `host: false`. A deploy for a held instance skips entirely; one for
   `all` warns about held instances, which puppet skips. A running deploy is never cancelled; per
   repository and instance, only the newest pending deploy waits. For `openmrs_docker` instances,
   puppet runs `openmrs-docker <instance> update`. With `run-etl`, the legacy host-installed PETL

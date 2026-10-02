@@ -67,12 +67,18 @@ jobs:
         id: gate
         env:
           RUNNER_LABEL: ${{ inputs.runner-label }}
+          MANIFEST: ${{ inputs.puppet-manifest }}
           INSTANCES: ${{ inputs.instances }}
           HOST: ${{ inputs.host }}
           PUPPET_DIR: /etc/puppet
         run: |
           if [[ ! "$INSTANCES" =~ ^(all|none|[a-z0-9][a-z0-9_-]*)$ ]]; then
             echo "::error::instances must be all, none or an instance name"
+            exit 1
+          fi
+          # The runner's sudoers rule allows options only with the site manifest.
+          if [ "$MANIFEST" != site ] && { [ "$INSTANCES" != all ] || [ "$HOST" != true ]; }; then
+            echo "::error::instances and host apply only to the site manifest"
             exit 1
           fi
           if [ "$HOST" != true ] && [ "$INSTANCES" = none ]; then
@@ -92,8 +98,10 @@ jobs:
           case "$INSTANCES" in
             all)
               for FLAG in "$PUPPET_DIR"/build-disabled-*; do
-                [ -e "$FLAG" ] || continue
-                warn "$FLAG" "${FLAG##*/build-disabled-} held by $FLAG, skipped by this deploy"
+                NAME=${FLAG##*/build-disabled-}
+                # Only an instance's name holds it (e.g. not an editor's build-disabled-ces-ci~).
+                [ -e "$FLAG" ] && [[ "$NAME" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || continue
+                warn "$FLAG" "$NAME held by $FLAG, skipped by this deploy"
               done
               ;;
             none) ;;
