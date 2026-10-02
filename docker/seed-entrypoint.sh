@@ -7,6 +7,10 @@ if grep -q ' /target/data ' /proc/mounts; then
     # data.tar.gz holds one data/ folder (backup-openmrs-data-directory); older seeds were flat.
     root=$(sh /extract.sh /seed/data.tar.gz /target/data/.seed-staging --print-root)
     find "$root" -mindepth 1 -maxdepth 1 -exec mv {} /target/data/ \;
+    # The volume's root is created root-owned; it takes the backed-up folder's owner and mode, so
+    # OpenMRS's non-root user can still create and replace files in it.
+    chown "$(stat -c %u:%g "$root")" /target/data
+    chmod "$(stat -c %a "$root")" /target/data
     rm -rf /target/data/.seed-staging
 fi
 if grep -q ' /target/db-init ' /proc/mounts; then

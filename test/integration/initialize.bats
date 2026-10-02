@@ -14,6 +14,7 @@ setup_file() {
     mkdir -p "$ctx" "$BATS_FILE_TMPDIR/data/complex_obs"
     echo seed > "$BATS_FILE_TMPDIR/data/complex_obs/seed-only.txt"
     echo 'connection.username=openmrs' > "$BATS_FILE_TMPDIR/data/openmrs-runtime.properties"
+    chmod 750 "$BATS_FILE_TMPDIR/data"   # not what a new volume's root gets (root, 755)
     printf 'CREATE TABLE marker (id INT);\nINSERT INTO marker VALUES (7);\n' | gzip > "$ctx/dump.sql.gz"
     "$UTILS/backup-openmrs-data-directory.sh" --volume="$BATS_FILE_TMPDIR/data" --output="$ctx/data.tar.gz" 2>/dev/null
     cp "$REPO_ROOT/docker/seed-entrypoint.sh" "$UTILS/lib/in-container/extract.sh" "$ctx/"
@@ -23,6 +24,13 @@ setup_file() {
     docker build -q -t "$FLAT_SEED_IMAGE" -f "$REPO_ROOT/docker/Dockerfile.seed" "$flat" >/dev/null
 }
 SEED_DATA_TREE="$(printf '%s\n' ./complex_obs ./complex_obs/seed-only.txt ./openmrs-runtime.properties)"
+
+# The seeded openmrs-data's root has the backed-up folder's owner and mode, as OpenMRS's non-root
+# user needs to write there (e.g. to replace openmrs-runtime.properties).
+assert_seeded_root_owner() {
+    run docker run --rm -v "${NAME}_openmrs-data:/d:ro" alpine:3.21 stat -c %u:%g:%a /d
+    assert_output "$(stat -c %u:%g:%a "$BATS_FILE_TMPDIR/data")"
+}
 
 teardown_file() {
     docker rmi -f "$SEED_IMAGE" "$FLAT_SEED_IMAGE" >/dev/null 2>&1 || true
@@ -49,6 +57,7 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     assert_output 7
     run tree_of_volume "${NAME}_openmrs-data"
     assert_output "$SEED_DATA_TREE"
+    assert_seeded_root_owner
     # A seeded openmrs-data has its runtime properties, so OpenMRS knows the tables exist.
     run grep -c '^OPENMRS_CREATE_TABLES=' "$OPENMRS_DOCKER_HOME/$NAME/env"
     assert_output 0
@@ -60,6 +69,7 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     assert_success
     run tree_of_volume "${NAME}_openmrs-data"
     assert_output "$SEED_DATA_TREE"
+    assert_seeded_root_owner
 }
 
 @test "initialize takes db-data from the seed image and openmrs-data from a directory" {
