@@ -39,7 +39,7 @@ jobs:
     runs-on: [self-hosted, "${{ inputs.runner-label }}"]
     steps:
       # As in deploy-via-runner.yml: /etc/puppet/build-disabled pauses this host, and
-      # /etc/puppet/build-disabled-<instance> holds the instance (run-petl skips it too, for cron runs).
+      # /etc/puppet/build-disabled-<instance> holds the instance (puppet's cron entry for PETL checks it too).
       - name: Check for build-disabled flags
         id: gate
         env:
