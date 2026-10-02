@@ -122,3 +122,18 @@ assert_account_created() {
     assert_output 0
     assert_equal "$(docker inspect -f '{{.Id}}' "$NAME-openmrs-db")" "$before"
 }
+
+@test "a declared account can't be root or the OpenMRS user, and nothing changes" {
+    new_instance
+    declare_account PETL openmrs "$PW" 'ALL ON *.*'
+    declare_account ADMIN root "$PW" 'ALL ON *.*'
+    run start_and_wait_for_accounts
+    assert_output 1
+    run docker logs "$NAME-openmrs-db-accounts"
+    assert_output --partial "OPENMRS_DB_ACCOUNT_PETL_USER can't be openmrs"
+    assert_output --partial "OPENMRS_DB_ACCOUNT_ADMIN_USER can't be root"
+    assert_output --partial "nothing was changed"
+    # OpenMRS's own account still has its password
+    run docker exec -e MYSQL_PWD=openmrs "$NAME-openmrs-db" mysql -h127.0.0.1 -uopenmrs -N -e 'SELECT 1'
+    assert_output 1
+}

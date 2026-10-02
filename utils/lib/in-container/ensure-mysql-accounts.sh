@@ -9,7 +9,10 @@
 # it creates the account if missing, sets its password, creates the databases and applies the
 # grants. Everything is checked first: a bad declaration changes nothing. Accounts not declared,
 # and other hosts' accounts for the same user, are left alone.
-#   MYSQL_ROOT_PASSWORD  root's password (required); DB_HOST default openmrs-db
+# root and the OpenMRS account (OPENMRS_DB_USER) can't be declared: their passwords are the instance's
+# own (OPENMRS_DB_*), set by the image and reset-openmrs-db-accounts.
+#   MYSQL_ROOT_PASSWORD  root's password (required); OPENMRS_DB_USER (default openmrs);
+#   DB_HOST default openmrs-db
 set -euo pipefail
 source /mysql-accounts.sh
 
@@ -31,6 +34,10 @@ for id in $ids; do
     u="${p}_USER" pw="${p}_PASSWORD" g="${p}_GRANTS" d="${p}_DATABASES"
     [[ "$id" =~ $ident ]] || errors+=("$p: the id must be letters, digits and _")
     [[ "${!u:-}" =~ $ident ]] || errors+=("$u must be set, to letters, digits and _")
+    case "${!u:-}" in
+        root|"${OPENMRS_DB_USER:-openmrs}")
+            errors+=("$u can't be ${!u}: that account's password is the instance's own (OPENMRS_DB_*). Use an account of its own (for PETL, PETL_MYSQL_USER='petl')") ;;
+    esac
     [ -n "${!pw:-}" ] || errors+=("$pw must be set")
     [[ "${!pw:-}" != *\\* ]] || errors+=("$pw can't contain a backslash")
     [ -n "${!g:-}" ] || errors+=("$g must be set")

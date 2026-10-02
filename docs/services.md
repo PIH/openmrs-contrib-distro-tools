@@ -37,7 +37,7 @@ It creates `<user>@'%'` if missing, sets its password to the one in `env` (so a 
 restored database's old one, is replaced), creates the databases and applies the grants. It checks
 every declaration first and changes nothing if one is wrong; its log (`openmrs-docker <name> logs
 openmrs-db-accounts`) names it. Accounts that aren't declared, and the same user's accounts for other
-hosts, are left alone: removing one is up to you. If it fails, so do `start` and `update`, naming it,
+hosts, are left alone: removing one is up to you. `root` and the OpenMRS account (`OPENMRS_DB_USER`) can't be declared: their passwords are the instance's own (`OPENMRS_DB_*`). If it fails, so do `start` and `update`, naming it,
 and a lock-holding `run-service` (petl) doesn't run. A service can declare its own account in its
 `.env.defaults`, as petl does.
 
