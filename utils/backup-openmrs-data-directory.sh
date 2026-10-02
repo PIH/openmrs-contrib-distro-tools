@@ -13,9 +13,10 @@
 #                     it rebuilds: smaller, and no stale .omods restored beside a newer distro's
 #   --allow-running   backs up even while a container is using --volume (the copy may then be
 #                     inconsistent, e.g. the search index)
-#   Refuses a directory holding symbolic links (outside what --exclude-distribution-artifacts leaves
-#   out), listing them: one pointing outside the directory wouldn't be backed up, or work once
-#   restored. Delete the ones not needed, or replace them with what they point to.
+#   Refuses a directory holding symbolic links that point outside it (absolute, or climbing above
+#   it with ..), outside what --exclude-distribution-artifacts leaves out, listing them: what they
+#   point to wouldn't be backed up, or found once restored. Delete the ones not needed, or replace
+#   them with what they point to. Links within the directory are backed up and restored as links.
 #   ARCHIVE_PASSWORD  password for a .7z (required for one)
 #   SKIP_DISK_SPACE_CHECK=true  skips the free-space check
 set -euo pipefail
@@ -64,12 +65,23 @@ if $EXCLUDE_DISTRIBUTION_ARTIFACTS; then
 fi
 
 # Paths relative to the source, as find prints them under /s. Left-out folders are skipped whole,
-# though the four distribution folders themselves are kept, empty.
+# though the four distribution folders themselves are kept, empty. A link's target is judged by its
+# text alone, from the link's folder (so one dangling is fine; one reaching .. through another link
+# is judged as written).
 LINKS=$(docker run --rm -v "$VOLUME:/s:ro" "$ALPINE_IMAGE" sh -c '
     cd /s && for d in "$@"; do set -- "$@" -path "./$d" -prune -o; shift; done
-    find . "$@" -type l -exec sh -c "for l; do echo \"\${l#./} -> \$(readlink \"\$l\")\"; done" sh {} +
+    find . "$@" -type l -exec sh -c "for l; do printf \"%s\t%s\n\" \"\${l#./}\" \"\$(readlink \"\$l\")\"; done" sh {} + |
+    awk -F "\t" "{
+        out = (substr(\$2, 1, 1) == \"/\")
+        depth = split(\$1, parts, \"/\") - 1
+        n = split(\$2, parts, \"/\")
+        for (i = 1; i <= n && !out; i++)
+            if (parts[i] == \"..\") out = (--depth < 0)
+            else if (parts[i] != \".\" && parts[i] != \"\") depth++
+        if (out) print \$1 \" -> \" \$2
+    }"
 ' sh ${LEAVE_OUT[@]+"${LEAVE_OUT[@]}"})
-[ -z "$LINKS" ] || die "symbolic links in $VOLUME, which a backup can't carry over (delete the ones not needed, or replace them with what they point to):
+[ -z "$LINKS" ] || die "symbolic links pointing outside $VOLUME, which a backup can't carry over (delete the ones not needed, or replace them with what they point to):
 $LINKS"
 
 # Uncompressed: an openmrs-data directory is mostly already-compressed files (images, PDFs).
