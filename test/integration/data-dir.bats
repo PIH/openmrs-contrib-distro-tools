@@ -133,11 +133,25 @@ env_file() { echo "$OPENMRS_DOCKER_HOME/$NAME/env"; }
 }
 
 @test "refuses a data directory holding a symbolic link, naming it and where it points (.tar.gz)" {
-    ln -s ../complex_obs/1.jpg "$BATS_TEST_TMPDIR/data/.hidden/img"
+    ln -s ../complex_obs/../../x "$BATS_TEST_TMPDIR/data/.hidden/img"
     run backup out.tar.gz
     assert_failure
-    assert_output --partial '.hidden/img -> ../complex_obs/1.jpg'
+    assert_output --partial '.hidden/img -> ../complex_obs/../../x'
     assert [ ! -e out.tar.gz ]
+}
+
+@test "backs up symbolic links within the data directory as links (.tar.gz, .7z)" {
+    # As in a distro's configuration: one file linked to another beside it.
+    ln -s h.csv "$BATS_TEST_TMPDIR/data/configuration/addresshierarchy/h-site.csv"
+    ln -s ../complex_obs/./1.jpg "$BATS_TEST_TMPDIR/data/.hidden/img"
+    for out in linked.tar.gz linked.7z; do
+        ARCHIVE_PASSWORD=pw backup "$out" >/dev/null 2>&1
+        ARCHIVE_PASSWORD=pw run --separate-stderr "$UTILS/extract-archive.sh" --path="$out" \
+            --output-dir="$BATS_TEST_TMPDIR/extracted-$out"
+        assert_success
+        assert_equal "$(readlink "$output/configuration/addresshierarchy/h-site.csv")" h.csv
+        assert_equal "$(readlink "$output/.hidden/img")" ../complex_obs/./1.jpg
+    done
 }
 
 @test "--exclude-distribution-artifacts ignores symbolic links in what it leaves out" {
