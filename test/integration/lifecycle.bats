@@ -62,6 +62,7 @@ running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.p
     run "$BIN/openmrs-docker" "$NAME" update
     assert_success
     refute_output --partial 'newer service definitions'
+    docker wait "$NAME-openmrs-db-accounts" >/dev/null   # the one-shot account setup, done once it exits
     assert_equal "$(running)" "$NAME-openmrs-db"
 }
 
@@ -70,4 +71,29 @@ running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.p
     run "$BIN/openmrs-docker" "$NAME" pull
     assert_success
     assert_equal "$(running)" ""
+}
+
+@test "wait shows only what OpenMRS logs from when it starts waiting, not the container's whole history" {
+    create_with_stub
+    "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
+    docker exec "$NAME-openmrs" sh -c 'echo OLD-LOG-LINE > /proc/1/fd/1'
+    sleep 1
+    run "$BIN/openmrs-docker" "$NAME" wait
+    assert_success
+    assert_output --partial 'OpenMRS is ready.'
+    refute_output --partial 'OLD-LOG-LINE'
+}
+
+@test "run-service petl doesn't need OpenMRS: it runs, and leaves OpenMRS stopped, on an instance that has it" {
+    PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=Pw-1 PETL_SQLSERVER_PASSWORD=Pw-1 \
+        OPENMRS_IMAGE_NAME="$STUB_OPENMRS_IMAGE" OPENMRS_IMAGE_TAG=latest SERVICES=openmrs-db,openmrs,petl create_instance "$NAME"
+    # The database running, OpenMRS stopped (e.g. PETL against a restored database).
+    "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
+    docker stop "$NAME-openmrs" >/dev/null
+    run "$BIN/openmrs-docker" "$NAME" run-service petl echo PETL-RAN
+    assert_success
+    assert_output --partial 'PETL-RAN'
+    refute_output --partial 'OpenMRS'
+    run docker ps -q --filter "name=^$NAME-openmrs$"
+    assert_output ''
 }

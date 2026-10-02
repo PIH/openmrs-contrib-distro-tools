@@ -16,7 +16,32 @@ compose_files() {
 
 compose() { docker compose "${COMPOSE_FILES[@]}" "$@"; }
 
-start_stack() { compose up -d; }
+# The one-shot setup services the instance's fragments declare ("# setup-services: <svc> ..." in a
+# .env.defaults), e.g. openmrs-db-accounts.
+setup_services() {
+    local f
+    for f in "$INSTANCE_DIR"/*.yaml; do
+        [ -e "$f" ] || continue
+        service_directive "$(basename "$f" .yaml)" setup-services
+    done | tr ' ' '\n' | sed '/^$/d'
+}
+
+# Waits for each setup service's container to exit, and fails naming the first that didn't succeed.
+# Compose itself only warns about an optional dependency that failed, and `up -d` doesn't wait.
+check_setup_services() {
+    local svc id code
+    for svc in $(setup_services); do
+        id=$(compose ps -a -q "$svc")
+        [ -n "$id" ] || continue
+        code=$(docker wait "$id")
+        if [ "$code" != 0 ]; then
+            docker logs --tail 20 "$id" >&2
+            die "$svc failed (exit $code; above, or '$0 $NAME logs $svc')"
+        fi
+    done
+}
+
+start_stack() { compose up -d; check_setup_services; }
 
 require_distro_source() {
     [ -n "${DISTRO_SOURCE_DIR:-}" ] || die "DISTRO_SOURCE_DIR must be set in $ENV_FILE for this command"
@@ -53,15 +78,22 @@ remove_restore_volumes() { # <project>
 
 # Commands that change the instance hold its lock until they exit, and refuse while another command
 # holds it: puppet runs `pull && start` on every apply, which mustn't happen part way through e.g.
-# an initialize. flock(1) releases the lock however its holder exits. Without flock (util-linux,
-# so not on macOS), commands run unlocked.
+# an initialize or a PETL run. With OPENMRS_DOCKER_LOCK_WAIT=<seconds> they wait that long for it
+# instead. flock(1) releases the lock however its holder exits. Without flock (util-linux, so not on
+# macOS), commands run unlocked.
 lock_instance() { # hold | check (refuse if held, without holding it)
     local lock="$INSTANCE_DIR/.lock"
     command -v flock >/dev/null || return 0
     # Opened read-only (all flock needs), so a lock file another user created still works.
     [ -e "$lock" ] || : >> "$lock"
     exec 9<"$lock"
-    flock -n 9 || die "$NAME is busy: $(cat "$lock" 2>/dev/null) -- run this again once that finishes."
+    local wait=${OPENMRS_DOCKER_LOCK_WAIT:-0}
+    [[ "$wait" =~ ^[0-9]+$ ]] || die "OPENMRS_DOCKER_LOCK_WAIT must be a number of seconds"
+    if ! flock -n 9; then
+        [ "$wait" -gt 0 ] || die "$NAME is busy: $(cat "$lock" 2>/dev/null) -- run this again once that finishes."
+        note "$NAME is busy: $(cat "$lock" 2>/dev/null) -- waiting up to ${wait}s"
+        flock -w "$wait" 9 || die "$NAME is still busy after ${wait}s: $(cat "$lock" 2>/dev/null)"
+    fi
     if [ "$1" = check ]; then
         exec 9>&-
     else

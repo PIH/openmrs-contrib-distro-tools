@@ -63,3 +63,24 @@ hold_lock() {
     run "$BIN/openmrs-docker" "$NAME" sync
     assert_success
 }
+
+@test "with OPENMRS_DOCKER_LOCK_WAIT a changing command waits for the holder, then runs" {
+    hold_lock
+    ( sleep 3; kill "$HOLDER" ) 3>&- &
+    run env OPENMRS_DOCKER_LOCK_WAIT=30 "$BIN/openmrs-docker" "$NAME" sync
+    assert_success
+    assert_output --partial "waiting up to 30s"
+}
+
+@test "with OPENMRS_DOCKER_LOCK_WAIT a command that waits too long fails, naming the holder" {
+    hold_lock
+    run env OPENMRS_DOCKER_LOCK_WAIT=2 "$BIN/openmrs-docker" "$NAME" sync
+    assert_failure
+    assert_output --partial "$NAME is still busy after 2s: initialize (pid"
+}
+
+@test "OPENMRS_DOCKER_LOCK_WAIT must be a number of seconds" {
+    run env OPENMRS_DOCKER_LOCK_WAIT=soon "$BIN/openmrs-docker" "$NAME" sync
+    assert_failure
+    assert_output --partial "OPENMRS_DOCKER_LOCK_WAIT must be a number of seconds"
+}

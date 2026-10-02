@@ -1,0 +1,52 @@
+name: ${SERVICE_NAME:?SERVICE_NAME must be set}
+
+services:
+  sqlserver:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-sqlserver
+    image: mcr.microsoft.com/mssql/server:${SQLSERVER_IMAGE_TAG?}
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SQLSERVER_SA_PASSWORD?}
+      MSSQL_MEMORY_LIMIT_MB: ${SQLSERVER_MEMORY_MB?}
+      # For sqlcmd (healthcheck), so the password isn't on its command line.
+      SQLCMDPASSWORD: ${SQLSERVER_SA_PASSWORD?}
+      TZ: ${TZ?}
+    ports:
+      - ${SQLSERVER_PUBLISHED_PORT?}:1433
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      # -C: 2022+ images encrypt by default, with a self-signed certificate.
+      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-C", "-S", "localhost", "-U", "sa", "-Q", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${SQLSERVER_MEMORY_LIMIT?}
+
+  # Server settings, databases and logins (utils/lib/in-container/sqlserver-setup.sh). Runs on every
+  # start, and first for any service that depends on it.
+  sqlserver-setup:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-sqlserver-setup
+    image: mcr.microsoft.com/mssql/server:${SQLSERVER_IMAGE_TAG?}
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    entrypoint: ["bash", "/sqlserver-setup.sh"]
+    # Env's SQLSERVER_LOGIN_* lines only (see "# container-env:" in .env.defaults).
+    env_file: sqlserver.env
+    environment:
+      SQLCMDPASSWORD: ${SQLSERVER_SA_PASSWORD?}
+      SQLSERVER_DATABASES: ${SQLSERVER_DATABASES?}
+      SQLSERVER_MEMORY_MB: ${SQLSERVER_MEMORY_MB?}
+      SQLSERVER_TEMPDB_FILES: ${SQLSERVER_TEMPDB_FILES?}
+    volumes:
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/sqlserver-setup.sh:/sqlserver-setup.sh:ro
+    restart: "no"
+
+volumes:
+  sqlserver-data:

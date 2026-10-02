@@ -1,0 +1,81 @@
+name: Run PETL via self-hosted runner
+
+# Runs PETL for an openmrs_docker instance on the runner's host (/home/<instance>/bin/run-petl,
+# installed by puppet's openmrs_docker::service::petl). No use of the GitHub API or GITHUB_TOKEN.
+permissions: {}
+
+on:
+  workflow_call:
+    inputs:
+      runner-label:
+        description: 'Label of the self-hosted runner on the target host'
+        required: true
+        type: string
+      instance:
+        description: 'The openmrs_docker instance to run PETL for'
+        required: true
+        type: string
+      notify_ci_dashboard:
+        description: Notify PIH/ci-dashboard via repository_dispatch when this job starts and finishes
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  notify-started:
+    if: inputs.notify_ci_dashboard == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify ci-dashboard (run started)
+        continue-on-error: true
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/notify-ci-dashboard@main
+        with:
+          token: ${{ secrets.GHA_WRITE_TOKEN }}
+          phase: started
+
+  run-petl:
+    needs: notify-started
+    if: always()
+    runs-on: [self-hosted, "${{ inputs.runner-label }}"]
+    steps:
+      # As in deploy-via-runner.yml: /etc/puppet/build-disabled pauses this host.
+      - name: Check for build-disabled flag
+        id: gate
+        run: |
+          FLAG=/etc/puppet/build-disabled
+          if [ -e "$FLAG" ]; then
+            REASON=$(cat "$FLAG" 2>/dev/null | tr '\n' ' ')
+            SINCE=$(date -r "$FLAG" '+%Y-%m-%d %H:%M %Z')
+            echo "::warning::PETL run skipped: $FLAG present on ${{ inputs.runner-label }} since ${SINCE}. ${REASON:-No reason given.} Delete the file to resume."
+            echo "disabled=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Output isn't streamed: PETL's errors can include data, and this job runs in the calling repo's
+      # context (often public). run-petl writes the full log under /home/<instance>/logs on the host.
+      - name: Run PETL
+        if: steps.gate.outputs.disabled != 'true'
+        # Above run-petl's own waits (up to an hour for another openmrs-docker command, then for
+        # OpenMRS), so a run that waits too long fails with run-petl's message rather than a kill.
+        timeout-minutes: 150
+        env:
+          INSTANCE: ${{ inputs.instance }}
+        run: |
+          [[ "$INSTANCE" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "::error::bad instance name"; exit 1; }
+          MSG="run-petl: full log is under /home/$INSTANCE/logs on the host (VPN access required); not shown here since it may contain data."
+          if sudo -n -u "$INSTANCE" "/home/$INSTANCE/bin/run-petl" > /dev/null 2>&1; then
+            echo "Succeeded. ${MSG}"
+          else
+            echo "::error::Failed. ${MSG}"
+            exit 1
+          fi
+
+  notify-ci-dashboard:
+    needs: run-petl
+    if: always() && inputs.notify_ci_dashboard == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify ci-dashboard (run finished)
+        continue-on-error: true
+        uses: PIH/openmrs-contrib-distro-tools/.github/actions/notify-ci-dashboard@main
+        with:
+          token: ${{ secrets.GHA_WRITE_TOKEN }}
+          phase: finished

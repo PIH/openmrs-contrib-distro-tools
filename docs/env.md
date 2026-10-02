@@ -17,7 +17,7 @@ Compose, differently).
   itself (`TZ`, `DISTRO_SOURCE_DIR`, `SEED_IMAGE_*`), and `docker/services/<svc>.env.defaults` for each
   service. The fragments require their variables (`${VAR?}`) rather than repeating a default.
 - **`create`** writes each of them, taking a value already set in your shell instead of its default.
-  A variable with no usable default (e.g. `PETL_SQLSERVER_PASSWORD`) has to be set, or `create` and
+  A variable with no usable default (e.g. `PETL_MYSQL_PASSWORD`) has to be set, or `create` and
   `add-service` refuse.
 - **`sync`** adds any variable the instance's fragments now require that `env` lacks, with its
   default. Until then, every other command refuses, naming it.
@@ -30,11 +30,22 @@ Compose, differently).
 Containers don't get the whole file. A service whose container takes variables from `env` declares
 their name prefixes in its `.env.defaults`, as a `# container-env: PREFIX_ ...` line: `OMRS_` for
 openmrs (`OMRS_EXTRA_*` runtime properties, `OMRS_JAVA_SERVER_OPTS`), `OPENMRS_DB_OPT_` for
-openmrs-db. On every command, `openmrs-docker` copies the matching lines of `env` into `<svc>.env`
+openmrs-db, `PETL_`, `DATASOURCES_`, `SPRING_` and `LOGGING_` for petl, `SQLSERVER_LOGIN_` for
+sqlserver-setup. Another container in the same fragment gets its own file from a
+`# container-env <file>: PREFIX_ ...` line (`<file>.env`): openmrs-db-accounts gets the
+`OPENMRS_DB_ACCOUNT_` lines that way, so changing an account doesn't recreate (restart) openmrs-db. On every command, `openmrs-docker` copies the matching lines of `env` into `<svc>.env`
 (mode 600) in the instance directory, which is that fragment's `env_file`. Without the directive
 nothing from `env` is passed: the container gets only what its fragment names under `environment:`,
 which is how every secret it needs (DB passwords, OpenHIM and mediator settings) reaches it. Edit
 `env`, not the generated files.
+
+A `# run-service: holds-lock` line in a service's `.env.defaults` makes it a job against the running
+instance (petl has it): `run-service` holds the instance's lock for the run
+([One command at a time](instances.md#one-command-at-a-time)), runs the setup services first, and
+starts, stops or recreates none of the instance's containers. A `# setup-services: <svc> ...` line
+names a fragment's one-shot setup services (`openmrs-db-accounts`, `sqlserver-setup`): `start` and
+`update` wait for them and fail, naming the one that didn't succeed; a lock-holding `run-service`
+runs each as a one-off with the current env, and doesn't run the service if one fails.
 
 ## Variables
 
@@ -54,6 +65,8 @@ which is how every secret it needs (DB passwords, OpenHIM and mediator settings)
 | `OPENMRS_DB_OPT_<option>` | Optional | MySQL/MariaDB server options ([below](#database-server-options-openmrs_db_opt_)) |
 | `SERVICES` | Optional (`openmrs-db,openmrs`), at `create` | The fragments in `docker/services/` to copy into the instance |
 | `OMRS_EXTRA_*` | Optional | Extra OpenMRS runtime properties, taken from your shell at `create` ([below](#runtime-properties-omrs_extra_)) |
+| `OPENMRS_DB_ACCOUNT_<ID>_*` | Optional | MySQL accounts that openmrs-db-accounts makes sure exist ([MySQL accounts](services.md#mysql-accounts)) |
+| `OPENMRS_DOCKER_LOCK_WAIT` | Optional (`0`), in your shell, not `env` | Seconds a command waits for another one holding the instance's lock, instead of refusing at once ([One command at a time](instances.md#one-command-at-a-time)) |
 
 The optional services' variables are in [Optional services](services.md).
 

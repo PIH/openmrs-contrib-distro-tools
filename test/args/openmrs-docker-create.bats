@@ -269,22 +269,22 @@ teardown() {
     assert [ -d "$OPENMRS_DOCKER_HOME/$NAME" ]
 }
 
-@test "petl-sqlserver needs PETL_SQLSERVER_PASSWORD: create and add-service refuse without it, changing nothing" {
+@test "sqlserver needs SQLSERVER_SA_PASSWORD: create and add-service refuse without it, changing nothing" {
     NAME="$(instance)"
-    run env -u PETL_SQLSERVER_PASSWORD SERVICES=openmrs-db,petl-sqlserver "$BIN/openmrs-docker" create "$NAME"
+    run env -u SQLSERVER_SA_PASSWORD SERVICES=openmrs-db,sqlserver "$BIN/openmrs-docker" create "$NAME"
     assert_failure
-    assert_output --partial 'PETL_SQLSERVER_PASSWORD: must be set'
+    assert_output --partial 'SQLSERVER_SA_PASSWORD: must be set'
     assert [ ! -e "$OPENMRS_DOCKER_HOME/$NAME" ]
     SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
     cp "$OPENMRS_DOCKER_HOME/$NAME/env" "$BATS_TEST_TMPDIR/env.before"
-    run env -u PETL_SQLSERVER_PASSWORD "$BIN/openmrs-docker" "$NAME" add-service petl-sqlserver
+    run env -u SQLSERVER_SA_PASSWORD "$BIN/openmrs-docker" "$NAME" add-service sqlserver
     assert_failure
-    assert_output --partial 'PETL_SQLSERVER_PASSWORD: must be set'
-    assert [ ! -e "$OPENMRS_DOCKER_HOME/$NAME/petl-sqlserver.yaml" ]
+    assert_output --partial 'SQLSERVER_SA_PASSWORD: must be set'
+    assert [ ! -e "$OPENMRS_DOCKER_HOME/$NAME/sqlserver.yaml" ]
     cmp "$BATS_TEST_TMPDIR/env.before" "$OPENMRS_DOCKER_HOME/$NAME/env"
-    PETL_SQLSERVER_PASSWORD='Pw-1234x' run "$BIN/openmrs-docker" "$NAME" add-service petl-sqlserver
+    SQLSERVER_SA_PASSWORD='Pw-1234x' run "$BIN/openmrs-docker" "$NAME" add-service sqlserver
     assert_success
-    run grep -c "^PETL_SQLSERVER_PASSWORD='Pw-1234x'$" "$OPENMRS_DOCKER_HOME/$NAME/env"
+    run grep -c "^SQLSERVER_SA_PASSWORD='Pw-1234x'$" "$OPENMRS_DOCKER_HOME/$NAME/env"
     assert_output 1
 }
 
@@ -303,4 +303,62 @@ teardown() {
     assert_output --partial "Added to env: TZ"
     run grep '^TZ=' "$env"
     assert_output "TZ='UTC'"
+}
+
+@test "a default can refer to a variable an earlier line of the same .env.defaults sets" {
+    NAME="$(instance)"   # for teardown
+    printf '%s\n' 'A_USER="${A_USER:-petl}"' 'B_USER="${B_USER:-${A_USER}}"' > "$BATS_TEST_TMPDIR/x.env.defaults"
+    run bash -c "source '$REPO_ROOT/utils/lib/common.sh'; source '$REPO_ROOT/lib/openmrs-docker/env.sh';
+        render_env_defaults '$BATS_TEST_TMPDIR/x.env.defaults'"
+    assert_success
+    assert_line "A_USER='petl'"
+    assert_line "B_USER='petl'"
+}
+
+@test "adding petl declares its MySQL account and SQL Server login from its own variables" {
+    NAME="$(instance)"
+    PETL_MYSQL_PASSWORD='My-pw-1' PETL_SQLSERVER_PASSWORD='Sql-pw-1' SQLSERVER_SA_PASSWORD='Sa-pw-1' \
+        SERVICES=openmrs-db,petl,sqlserver create_instance "$NAME"
+    run cat "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_line "OPENMRS_DB_ACCOUNT_PETL_USER='petl'"
+    assert_line "OPENMRS_DB_ACCOUNT_PETL_PASSWORD='My-pw-1'"
+    assert_line "OPENMRS_DB_ACCOUNT_PETL_GRANTS='ALL ON *.*'"
+    assert_line "SQLSERVER_LOGIN_PETL_USER='petl'"
+    assert_line "SQLSERVER_LOGIN_PETL_PASSWORD='Sql-pw-1'"
+    assert_line "SQLSERVER_LOGIN_PETL_DATABASES='openmrs_reporting'"
+    refute_output --partial '# run-service:'
+}
+
+@test "petl needs PETL_MYSQL_PASSWORD" {
+    NAME="$(instance)"
+    run env -u PETL_MYSQL_PASSWORD PETL_SQLSERVER_PASSWORD=x SERVICES=openmrs-db,petl "$BIN/openmrs-docker" create "$NAME"
+    assert_failure
+    assert_output --partial 'PETL_MYSQL_PASSWORD: must be set'
+}
+
+@test "account declarations go to openmrs-db-accounts' own env file, not openmrs-db's" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db create_instance "$NAME"
+    local dir="$OPENMRS_DOCKER_HOME/$NAME"
+    printf "OPENMRS_DB_ACCOUNT_RPT_USER='reports'\nOPENMRS_DB_ACCOUNT_RPT_PASSWORD='Pw-1'\n" >> "$dir/env"
+    "$BIN/openmrs-docker" "$NAME" status >/dev/null 2>&1 || true
+    run grep -c '^OPENMRS_DB_ACCOUNT_' "$dir/openmrs-db.env"
+    assert_output 0
+    run grep -c '^OPENMRS_DB_ACCOUNT_' "$dir/openmrs-db-accounts.env"
+    assert_output 2
+    run grep -c '^OPENMRS_DB_OPT_' "$dir/openmrs-db-accounts.env"
+    assert_output 0
+}
+
+@test "petl works without sqlserver: add-service petl, and remove-service sqlserver from an instance with petl" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db create_instance "$NAME"
+    run env PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 PETL_SQLSERVER_HOST=reports.example.org \
+        "$BIN/openmrs-docker" "$NAME" add-service petl
+    assert_success
+    destroy_instance "$NAME"
+    PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 SQLSERVER_SA_PASSWORD=Sa-pw-1 \
+        SERVICES=openmrs-db,petl,sqlserver create_instance "$NAME"
+    run "$BIN/openmrs-docker" "$NAME" remove-service sqlserver
+    assert_success
 }

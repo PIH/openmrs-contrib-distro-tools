@@ -326,6 +326,39 @@ Run `wait` before `run-service`: it streams the logs and returns once OpenMRS's 
 
 Once done, tear the instance down with `openmrs-docker myinstance destroy --force`.
 
+## Deploys and PETL runs on self-hosted runners
+
+Both run on a server's own self-hosted runner (`runner-label`), skip with a warning while
+`/etc/puppet/build-disabled` exists there, and keep their output on the host: it can contain secrets
+or data, and the job runs in the calling repo's context, often a public one. A runner runs one job at
+a time, so jobs for the same host queue whichever repo they come from.
+
+- **`deploy-via-runner.yml`** (`runner-label`, `puppet-manifest`, `run-etl`): `git pull` and
+  `puppet-apply.sh <manifest>` in `/etc/puppet`; with `run-etl`, the legacy host-installed PETL
+  (`/opt/petl/bin/execute-full.sh`). For `openmrs_docker` instances, puppet runs `pull && start`.
+- **`run-petl-via-runner.yml`** (`runner-label`, `instance`): runs PETL for an `openmrs_docker`
+  instance, as `sudo -u <instance> /home/<instance>/bin/run-petl`. Puppet's
+  `openmrs_docker::service::petl` installs that script and, with `ci_runner => true`, the one sudoers
+  rule allowing it. The script runs `openmrs-docker <instance> run-service --pull petl`, which holds
+  the instance's lock (a deploy waits for it), and logs to `/home/<instance>/logs/petl-*.log`. The job
+  fails when PETL does, so the author of the change that triggered it is notified.
+
+An ETL project calls it after building its image:
+
+```yaml
+  run-petl-on-ces-ci:
+    needs: build-and-publish
+    concurrency:
+      group: run-petl-on-ces-ci-${{ github.ref }}
+      cancel-in-progress: true
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/run-petl-via-runner.yml@main
+    with:
+      runner-label: appclstr-01
+      instance: ces-ci
+      notify_ci_dashboard: true
+    secrets: inherit
+```
+
 ## Vulnerability scanning
 
 `.github/workflows/scan-docker-image.yml` is a [reusable
