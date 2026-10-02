@@ -77,15 +77,15 @@ assert_account_created() {
     assert_output $'petl@%\npetl@127.0.0.1\nreports@%'
 }
 
-@test "a bad declaration fails the run, naming it, and changes nothing" {
+@test "a declaration missing a value fails the run, naming it, and changes nothing" {
     new_instance
     declare_account PETL petl "$PW" 'ALL ON *.*' 'ok_db'
-    declare_account BAD 'bad user' x 'DROP DATABASE openmrs'
+    declare_account BAD reports '' ''
     run start_and_wait_for_accounts
     assert_output 1
     run docker logs "$NAME-openmrs-db-accounts"
-    assert_output --partial "OPENMRS_DB_ACCOUNT_BAD_USER"
-    assert_output --partial "OPENMRS_DB_ACCOUNT_BAD_GRANTS"
+    assert_output --partial "OPENMRS_DB_ACCOUNT_BAD_PASSWORD must be set"
+    assert_output --partial "OPENMRS_DB_ACCOUNT_BAD_GRANTS must be set"
     assert_output --partial "nothing was changed"
     run mysql_exec "$NAME-openmrs-db" openmrs "SELECT COUNT(*) FROM mysql.user WHERE user='petl'"
     assert_output 0
@@ -103,11 +103,20 @@ assert_account_created() {
 
 @test "start fails, naming openmrs-db-accounts, when the account setup fails" {
     new_instance
-    declare_account BAD 'bad user' x 'ALL ON *.*'
+    declare_account BAD reports '' 'ALL ON *.*'
     run "$BIN/openmrs-docker" "$NAME" start
     assert_failure
     assert_output --partial "openmrs-db-accounts failed"
-    assert_output --partial "OPENMRS_DB_ACCOUNT_BAD_USER"
+    assert_output --partial "OPENMRS_DB_ACCOUNT_BAD_PASSWORD"
+}
+
+@test "an error from MySQL itself (e.g. a bad grant) fails start, with MySQL's message" {
+    new_instance
+    declare_account RPT reports "$PW" 'NOSUCHPRIVILEGE ON *.*'
+    run "$BIN/openmrs-docker" "$NAME" start
+    assert_failure
+    assert_output --partial "openmrs-db-accounts failed"
+    assert_output --partial "ERROR"
 }
 
 @test "changing an account's password doesn't recreate openmrs-db" {

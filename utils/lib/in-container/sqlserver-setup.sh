@@ -8,7 +8,8 @@
 #   - each login declared as SQLSERVER_LOGIN_<ID>_USER, _PASSWORD, _DATABASES, _ROLE (db_owner):
 #     created if missing, its password set on every run, a user in each of its databases with the role
 #     (an existing user remapped to the login, e.g. after a restore from another server).
-# Everything is checked first: a bad declaration changes nothing. Undeclared logins are left alone.
+# A declaration missing a value changes nothing; anything else wrong (e.g. a password SQL Server's
+# policy refuses) fails with SQL Server's own error. Undeclared logins are left alone.
 #   SQLCMDPASSWORD  sa's password (required)
 set -euo pipefail
 : "${SQLCMDPASSWORD:?}"
@@ -17,26 +18,15 @@ SQLCMD=/opt/mssql-tools18/bin/sqlcmd
 run_sql() { "$SQLCMD" -C -S sqlserver -U sa -b -x -h -1 -W -i /dev/stdin <<< "SET NOCOUNT ON; $1"; }
 q() { printf "N'%s'" "${1//\'/\'\'}"; }   # an N'...' string literal
 
-ident='^[A-Za-z0-9_]+$'
 errors=()
-[[ "${SQLSERVER_MEMORY_MB:-}" =~ ^[0-9]+$ ]] || errors+=("SQLSERVER_MEMORY_MB must be a number of MB")
-[[ "${SQLSERVER_TEMPDB_FILES:-}" =~ ^[1-9][0-9]?$ ]] || errors+=("SQLSERVER_TEMPDB_FILES must be 1-99")
-for db in ${SQLSERVER_DATABASES:-}; do [[ "$db" =~ $ident ]] || errors+=("SQLSERVER_DATABASES: '$db' isn't a plain database name"); done
 ids=$(compgen -v | sed -n 's/^SQLSERVER_LOGIN_\(.*\)_\(USER\|PASSWORD\|DATABASES\|ROLE\)$/\1/p' | sort -u)
 for id in $ids; do
-    p="SQLSERVER_LOGIN_${id}"; u="${p}_USER" pw="${p}_PASSWORD" d="${p}_DATABASES" r="${p}_ROLE"
-    [[ "$id" =~ $ident ]] || errors+=("$p: the id must be letters, digits and _")
-    [[ "${!u:-}" =~ $ident ]] || errors+=("$u must be set, to letters, digits and _")
-    # sa is the server's own admin (SQLSERVER_SA_PASSWORD), and already dbo everywhere.
-    [ "${!u:-}" != sa ] || errors+=("$u can't be sa: declare a login of its own")
+    p="SQLSERVER_LOGIN_${id}"; u="${p}_USER" pw="${p}_PASSWORD" d="${p}_DATABASES"
+    [ -n "${!u:-}" ] || errors+=("$u must be set")
     [ -n "${!pw:-}" ] || errors+=("$pw must be set")
-    [[ "${!pw:-}" != *\\* ]] || errors+=("$pw can't contain a backslash")
-    # SQL Server's password policy refuses one containing the login name, with a less clear message.
-    login=${!u:-} password=${!pw:-}
-    [ -n "$login" ] && [[ "${password,,}" == *"${login,,}"* ]] && errors+=("$pw can't contain the login name")
     [ -n "${!d:-}" ] || errors+=("$d must list at least one database")
-    for db in ${!d:-}; do [[ "$db" =~ $ident ]] || errors+=("$d: '$db' isn't a plain database name"); done
-    [[ "${!r:-db_owner}" =~ $ident ]] || errors+=("$r isn't a plain role name")
+    # sa is the server's admin (SQLSERVER_SA_PASSWORD): declaring it would change its password.
+    [ "${!u:-}" != sa ] || errors+=("$u can't be sa: declare a login of its own")
 done
 if [ ${#errors[@]} -gt 0 ]; then
     printf 'error: %s\n' "${errors[@]}" "nothing was changed" >&2
