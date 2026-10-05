@@ -36,6 +36,18 @@ binlog_files() { # <instance>
     assert_output $'utf8\t1073741824\t3600\t1\t0'
 }
 
+@test "openmrs-db uses the host's time zone data, not the image's" {
+    local name when=1782907200   # 2026-07-01 12:00 UTC
+    name="$(instance)"
+    TZ=America/Mexico_City SERVICES=openmrs-db create_instance "$name"
+    start_db "$name"
+    # Mexico City dropped daylight saving time in 2022; mysql:5.6's own data (2021) still has it.
+    run docker exec "$name-openmrs-db" date -d "@$when" +%z
+    assert_output "$(TZ=America/Mexico_City date -d "@$when" +%z)"
+    run mysql_exec "$name-openmrs-db" openmrs 'SELECT @@system_time_zone'
+    assert_output "$(TZ=America/Mexico_City date +%Z)"
+}
+
 @test "an OPENMRS_DB_OPT_* option with no default is passed, and an empty one as a bare flag" {
     local name
     name="$(instance)"

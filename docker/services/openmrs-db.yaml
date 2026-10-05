@@ -52,6 +52,9 @@ services:
       - ${OPENMRS_DB_PORT?}:3306
     volumes:
       - db-data:/var/lib/mysql
+      # The host's time zone data, which its OS keeps current, rather than the image's: mysql:5.6's
+      # (2021) still has daylight saving time for Mexico City, putting MySQL's clock an hour ahead.
+      - /usr/share/zoneinfo:/usr/share/zoneinfo:ro
     healthcheck:
       # The password from the container's own environment, in MYSQL_PWD, so it's on no command line
       # (the host's ps shows healthcheck processes). TCP, so it only passes once the real server runs.

@@ -60,7 +60,7 @@ runs each as a one-off with the current env, and doesn't run the service if one 
 | `SERVICE_NAME` | Optional (the instance name) | Docker Compose project name |
 | `OPENMRS_IMAGE_TAG`, `SEED_IMAGE_TAG` | Optional (`latest`) | Image tags |
 | `OPENMRS_HTTP_PORT`, `OPENMRS_DB_PORT`, `OPENMRS_DEBUG_PORT` | Optional | Published ports; set them differently to run more than one instance at once |
-| `TZ` | Optional (`UTC`) | Containers' time zone |
+| `TZ` | Optional (`UTC`) | Containers' time zone. `openmrs-db` reads the rules from the host's `/usr/share/zoneinfo`, since older images' are out of date (`mysql:5.6` still has daylight saving time for Mexico City) |
 | `OPENMRS_DB_IMAGE_NAME` (`mysql`), `OPENMRS_DB_IMAGE_TAG` (`5.6`), `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD`, `OPENMRS_ACTIVITYLOG_ENABLED`, `OPENMRS_DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS` | Optional | Database and memory settings. The DB passwords can't contain a backslash |
 | `OPENMRS_DB_OPT_<option>` | Optional | MySQL/MariaDB server options ([below](#database-server-options-openmrs_db_opt_)) |
 | `SERVICES` | Optional (`openmrs-db,openmrs`), at `create` | The fragments in `docker/services/` to copy into the instance |
