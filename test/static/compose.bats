@@ -12,7 +12,7 @@ setup_file() {
     export PETL_SQLSERVER_PASSWORD=Placeholder-1 SQLSERVER_SA_PASSWORD=Placeholder-1 PETL_MYSQL_PASSWORD=Placeholder-1
     export ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret
-     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
+    SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }
 
 teardown_file() {

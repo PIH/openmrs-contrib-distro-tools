@@ -1,7 +1,7 @@
 # Optional services
 
-Besides `openmrs-db` and `openmrs`, `docker/services/` has OpenHIM and its mediators, PETL and its
-SQL Server, and the smoke tests ([CI workflows](ci-workflows.md#running-smoke-tests-locally)).
+Besides `openmrs-db` and `openmrs`, `docker/services/` has OpenHIM and its mediators, the AdvaPACS
+gateway, PETL, SQL Server, and the smoke tests ([CI workflows](ci-workflows.md#running-smoke-tests-locally)).
 
 ## Attaching a service
 
@@ -149,32 +149,108 @@ openmrs-docker <name> add-service advapacs-gateway
 openmrs-docker <name> start
 ```
 
-## PETL and its SQL Server
+## SQL Server
 
-- **`petl`** runs the [petl](https://github.com/PIH/petl) ETL pipeline against the instance's
-  `openmrs-db`. It's a job, so run it with `run-service petl`; it needs `PETL_IMAGE_NAME`.
-- **`petl-sqlserver`** is the SQL Server petl writes to, from Microsoft's
-  `mcr.microsoft.com/mssql/server` image. A one-shot `petl-sqlserver-init` creates the
-  `PETL_SQLSERVER_DATABASE` database (default `openmrs_reporting`) once SQL Server is up.
+`sqlserver` is Microsoft's SQL Server (`mcr.microsoft.com/mssql/server:2025-latest`;
+`SQLSERVER_IMAGE_TAG`), with its data in the `sqlserver-data` volume. Its one-shot `sqlserver-setup`
+runs on every `start`, and first for any service that depends on it:
 
-```bash
-export OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr
-export PETL_IMAGE_NAME=partnersinhealth/petl
-export PETL_SQLSERVER_PASSWORD=<pick-a-password>
-export SERVICES=openmrs-db,openmrs,petl,petl-sqlserver
-openmrs-docker create <name>
-openmrs-docker <name> start
-openmrs-docker <name> run-service petl
+- server settings: SIMPLE recovery for new databases, cost threshold for parallelism 25, max degree
+  of parallelism 0, max server memory `SQLSERVER_MEMORY_MB` (2048), at least `SQLSERVER_TEMPDB_FILES`
+  (4) tempdb files;
+- each database in `SQLSERVER_DATABASES` (space-separated), created if missing;
+- each login declared in `env`, created if missing, its password kept to the one in `env`, and a user
+  with the role in each of its databases (created if missing; an existing user, e.g. in a database
+  restored from another server, is remapped to this server's login):
+
+```
+SQLSERVER_LOGIN_<ID>_USER='<login>'
+SQLSERVER_LOGIN_<ID>_PASSWORD='<password>'
+SQLSERVER_LOGIN_<ID>_DATABASES='<db> ...'
+SQLSERVER_LOGIN_<ID>_ROLE='db_owner'          # the default
 ```
 
-`PETL_SQLSERVER_PASSWORD` has no default: `create` and `add-service` refuse without it. SQL Server
-needs it to be at least 8 characters, with three of upper case, lower case, digits and symbols.
+As for MySQL accounts, logins that aren't declared are left alone, anything wrong fails with SQL
+Server's own error, and a failure stops `start`, `update` and a lock-holding `run-service`. SQL
+Server's policy also refuses a password containing its login's name. `sa` can't be declared (it's the
+server's admin, set by `SQLSERVER_SA_PASSWORD`). `SQLSERVER_SA_PASSWORD` has no default; SQL Server needs passwords of at least 8 characters,
+with three of upper case, lower case, digits and symbols. The instance's services reach it on 1433;
+`SQLSERVER_PUBLISHED_PORT` (default 1433, or `<address>:<port>`) is where it's reachable from outside
+Docker, e.g. for reporting tools. `SQLSERVER_MEMORY_LIMIT` (3g) is the container's memory limit.
 
-- **petl and petl-sqlserver together:** petl writes to `petl-sqlserver`, on 1433 inside the
-  instance. `PETL_SQLSERVER_PUBLISHED_PORT` (default 1433) is where it's reachable on this machine
-  from outside Docker, e.g. for reporting tools, like `OPENMRS_DB_PORT` for `openmrs-db`.
-- **petl alone:** petl writes to a SQL Server elsewhere: set `PETL_SQLSERVER_HOST` and
-  `PETL_SQLSERVER_PORT` to it (defaults: `petl-sqlserver`, 1433), and the user and password.
+`sqlserver` replaces `petl-sqlserver`. To move an instance that has it: `openmrs-docker <name>
+remove-service petl-sqlserver`, then with `SQLSERVER_SA_PASSWORD` and `PETL_MYSQL_PASSWORD` set in your
+shell, `openmrs-docker <name> add-service sqlserver` and `openmrs-docker <name> sync` (the newer petl
+fragment). Then, in `env`:
+
+- set `PETL_SQLSERVER_HOST='sqlserver'`;
+- set `PETL_SQLSERVER_USER='petl'` and `PETL_MYSQL_USER='petl'`: older instances have `sa` and the
+  OpenMRS account there, and `sa` can't be a declared login;
+- add the `OPENMRS_DB_ACCOUNT_PETL_*` and `SQLSERVER_LOGIN_PETL_*` lines from
+  `docker/services/petl.env.defaults`, with the same users and passwords.
+
+Then run PETL to rebuild the data (or copy it from the `petl-sqlserver-data` volume yourself).
+
+## PETL
+
+`petl` runs the [petl](https://github.com/PIH/petl) ETL pipeline against the instance's `openmrs-db`,
+writing to SQL Server. It's a job: run it with `openmrs-docker <name> run-service --pull petl`. Its
+image is an ETL project's (e.g. `partnersinhealth/ces-etl`, `partnersinhealth/apzu-etl`), built on
+`partnersinhealth/petl` with that project's jobs, datasources and `application.yml`; it runs
+`PETL_FULL_REFRESH_JOBS`, retrying up to `PETL_MAX_RETRIES` times, then exits.
+
+```bash
+export OPENMRS_IMAGE_NAME=partnersinhealth/ces-emr
+export PETL_IMAGE_NAME=partnersinhealth/ces-etl
+export PETL_FULL_REFRESH_JOBS="create-partitions.yml refresh-cesci-data.yml"
+export PETL_MYSQL_PASSWORD=<pick-a-password>
+export PETL_SQLSERVER_PASSWORD=<pick-a-password>
+export SQLSERVER_SA_PASSWORD=<pick-a-password>
+export PETL_SQLSERVER_DATABASE=openmrs_ces_ci
+export SERVICES=openmrs-db,openmrs,petl,sqlserver
+openmrs-docker create <name>
+openmrs-docker <name> start
+openmrs-docker <name> run-service --pull petl
+```
+
+- **Configuration:** the petl container gets `env`'s `PETL_*`, `DATASOURCES_*`, `SPRING_*` and
+  `LOGGING_*` lines. PETL reads any of its properties by its Spring environment-variable name (`.` and
+  `-` become `_`, uppercased), so e.g. `DATASOURCES_OPENMRS_CESCI_HOST` sets
+  `datasources.openmrs.cesci.host`, overriding the image's `application.yml`.
+- **Its accounts:** PETL connects to MySQL as `PETL_MYSQL_USER` (`petl`) and to SQL Server as
+  `PETL_SQLSERVER_USER` (`petl`). `PETL_MYSQL_PASSWORD` has no default and must be set.
+  `PETL_SQLSERVER_PASSWORD` is needed only by an ETL that writes to SQL Server (not, e.g., an
+  apzu-etl run filling only its MySQL reporting database); with `sqlserver` in the instance,
+  `sqlserver-setup` refuses to start without it (`SQLSERVER_LOGIN_PETL_PASSWORD must be set`).
+  ETL projects' datasource files paste these into YAML unquoted, so keep them to letters, digits
+  and `-`, `_`, `.`, `+`, `=`, `~` (a ` #` cuts one short; `: ` or a leading `"`, `!`, `&`, `*`,
+  `%`, `@`, `[`, `{` breaks the file). petl's defaults declare the matching MySQL account (`OPENMRS_DB_ACCOUNT_PETL_*`, `ALL ON
+  *.*`) and SQL Server login (`SQLSERVER_LOGIN_PETL_*`, `db_owner` on `PETL_SQLSERVER_DATABASE`,
+  default `openmrs_reporting`), and petl waits for both setups before it runs. If you change a PETL
+  user or password in `env`, change its `OPENMRS_DB_ACCOUNT_PETL_*` or `SQLSERVER_LOGIN_PETL_*` line
+  too.
+- **MySQL connection options:** `PETL_MYSQL_OPTIONS`, which ETL projects' `application-docker.yml`
+  uses for their MySQL datasources. The default (the legacy servers' options) ends with
+  `serverTimezone=${user.timezone}`, which PETL resolves to its JVM's zone, the instance's `TZ`.
+  Keep `serverTimezone` if you change the options: without it, PETL's MySQL driver goes by the
+  server's zone abbreviation, refusing some (e.g. `EDT`) and misreading others (`CST` as Chicago,
+  an hour off from Mexico City for part of the year).
+- **A MySQL reporting database:** only for an ETL with a MySQL reporting stage (apzu-etl):
+  `PETL_MYSQL_REPORTING_DATABASE` is created and granted to PETL's account.
+- **Job history:** by default PETL keeps it in H2, in the `petl-data` volume. To keep it in SQL Server
+  instead (tables `petl_database_change_log*` and `petl_job_execution` in its database, where reports
+  and monitoring can read them, as on the legacy test and production servers), add to `env`:
+
+  ```
+  SPRING_DATASOURCE_URL='jdbc:sqlserver://sqlserver:1433;databaseName=<PETL_SQLSERVER_DATABASE>'
+  SPRING_DATASOURCE_USERNAME='<PETL_SQLSERVER_USER>'
+  SPRING_DATASOURCE_PASSWORD='<PETL_SQLSERVER_PASSWORD>'
+  SPRING_DATASOURCE_DRIVER_CLASS_NAME='com.microsoft.sqlserver.jdbc.SQLServerDriver'
+  SPRING_DATASOURCE_PLATFORM='mssql'
+  SPRING_JPA_HIBERNATE_DIALECT='org.hibernate.dialect.SQLServer2012Dialect'
+  SPRING_LIQUIBASE_DATABASE_CHANGE_LOG_TABLE='petl_database_change_log'
+  SPRING_LIQUIBASE_DATABASE_CHANGE_LOG_LOCK_TABLE='petl_database_change_log_lock'
+  ```
 
   (puppet's `openmrs_docker::service::petl` writes these with `job_store => 'sqlserver'`).
 - **A remote SQL Server:** without the `sqlserver` service, set `PETL_SQLSERVER_HOST` and
