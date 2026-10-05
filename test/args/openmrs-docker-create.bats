@@ -288,6 +288,23 @@ teardown() {
     assert_output 1
 }
 
+@test "advapacs-gateway needs its region and access key: add-service refuses without them, changing nothing" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    cp "$OPENMRS_DOCKER_HOME/$NAME/env" "$BATS_TEST_TMPDIR/env.before"
+    run env -u ADVAPACS_GATEWAY_REGION -u ADVAPACS_GATEWAY_ACCESS_KEY_ID -u ADVAPACS_GATEWAY_ACCESS_KEY_SECRET \
+        "$BIN/openmrs-docker" "$NAME" add-service advapacs-gateway
+    assert_failure
+    assert_output --partial 'ADVAPACS_GATEWAY_REGION: must be set'
+    assert [ ! -e "$OPENMRS_DOCKER_HOME/$NAME/advapacs-gateway.yaml" ]
+    cmp "$BATS_TEST_TMPDIR/env.before" "$OPENMRS_DOCKER_HOME/$NAME/env"
+    ADVAPACS_GATEWAY_REGION=usa1 ADVAPACS_GATEWAY_ACCESS_KEY_ID=key-id ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=key-secret \
+        run "$BIN/openmrs-docker" "$NAME" add-service advapacs-gateway
+    assert_success
+    run grep -E '^ADVAPACS_GATEWAY_(REGION|ACCESS_KEY_ID|ACCESS_KEY_SECRET)=' "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_output $'ADVAPACS_GATEWAY_REGION=\'usa1\'\nADVAPACS_GATEWAY_ACCESS_KEY_ID=\'key-id\'\nADVAPACS_GATEWAY_ACCESS_KEY_SECRET=\'key-secret\''
+}
+
 @test "create writes the instance's own defaults, and sync puts back a required one deleted from env" {
     NAME="$(instance)"
     TZ=Africa/Maseru SERVICES=openmrs-db "$BIN/openmrs-docker" create "$NAME" >/dev/null
