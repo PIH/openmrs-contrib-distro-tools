@@ -102,8 +102,7 @@ mysql_exec() { # <container> <root password> <sql>
 
 # Starts a MySQL container with a named data volume (<name>-data) holding an `openmrs` database
 # (marker row 1) and a `malawi` database (marker row 2). Credentials match openmrs-docker's
-# defaults, so a physical restore of it is usable by an instance created with those defaults. It has
-# the host's time zone data, as openmrs-db does, so its time zone tables match a restore's.
+# defaults, so a physical restore of it is usable by an instance created with those defaults.
 start_source_db() { # <name>
     docker run -d --name "$1" -v "$1-data:/var/lib/mysql" -v /usr/share/zoneinfo:/usr/share/zoneinfo:ro \
         -e MYSQL_ROOT_PASSWORD=openmrs -e MYSQL_DATABASE=openmrs \
