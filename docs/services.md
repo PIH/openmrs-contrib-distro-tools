@@ -187,6 +187,12 @@ openmrs-docker <name> run-service --pull petl
   default `openmrs_reporting`), and petl waits for both setups before it runs. If you change a PETL
   user or password in `env`, change its `OPENMRS_DB_ACCOUNT_PETL_*` or `SQLSERVER_LOGIN_PETL_*` line
   too.
+- **MySQL connection options:** `PETL_MYSQL_OPTIONS`, which ETL projects' `application-docker.yml`
+  uses for their MySQL datasources. The default (the legacy servers' options) ends with
+  `serverTimezone=${user.timezone}`, which PETL resolves to its JVM's zone, the instance's `TZ`.
+  Keep `serverTimezone` if you change the options: without it, PETL's MySQL driver goes by the
+  server's zone abbreviation, refusing some (e.g. `EDT`) and misreading others (`CST` as Chicago,
+  an hour off from Mexico City for part of the year).
 - **A MySQL reporting database:** only for an ETL with a MySQL reporting stage (apzu-etl):
   `PETL_MYSQL_REPORTING_DATABASE` is created and granted to PETL's account.
 - **Job history:** by default PETL keeps it in H2, in the `petl-data` volume. To keep it in SQL Server

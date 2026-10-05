@@ -104,7 +104,7 @@ mysql_exec() { # <container> <root password> <sql>
 # (marker row 1) and a `malawi` database (marker row 2). Credentials match openmrs-docker's
 # defaults, so a physical restore of it is usable by an instance created with those defaults.
 start_source_db() { # <name>
-    docker run -d --name "$1" -v "$1-data:/var/lib/mysql" \
+    docker run -d --name "$1" -v "$1-data:/var/lib/mysql" -v /usr/share/zoneinfo:/usr/share/zoneinfo:ro \
         -e MYSQL_ROOT_PASSWORD=openmrs -e MYSQL_DATABASE=openmrs \
         -e MYSQL_USER=openmrs -e MYSQL_PASSWORD=openmrs \
         "$MYSQL_IMAGE" --log-bin=mysql-bin --server-id=1 >/dev/null

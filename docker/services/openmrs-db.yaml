@@ -52,6 +52,8 @@ services:
       - ${OPENMRS_DB_PORT?}:3306
     volumes:
       - db-data:/var/lib/mysql
+      # The host's current time zone data: mysql:5.6's is out of date (e.g. Mexico City).
+      - /usr/share/zoneinfo:/usr/share/zoneinfo:ro
     healthcheck:
       # The password from the container's own environment, in MYSQL_PWD, so it's on no command line
       # (the host's ps shows healthcheck processes). TCP, so it only passes once the real server runs.

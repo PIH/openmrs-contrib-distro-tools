@@ -329,6 +329,16 @@ teardown() {
     refute_output --partial '# run-service:'
 }
 
+@test "petl's MySQL options name the time zone, left for PETL to resolve as its JVM's" {
+    NAME="$(instance)"
+    PETL_MYSQL_PASSWORD='My-pw-1' SERVICES=openmrs-db,petl create_instance "$NAME"
+    local expected="PETL_MYSQL_OPTIONS='autoReconnect=true&sessionVariables=default_storage_engine%3DInnoDB&useUnicode=true&characterEncoding=UTF-8&useLegacyDatetimeCode=false&serverTimezone=\${user.timezone}'"
+    run grep '^PETL_MYSQL_OPTIONS=' "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_output "$expected"
+    run grep '^PETL_MYSQL_OPTIONS=' "$OPENMRS_DOCKER_HOME/$NAME/petl.env"
+    assert_output "$expected"
+}
+
 @test "petl needs PETL_MYSQL_PASSWORD" {
     NAME="$(instance)"
     run env -u PETL_MYSQL_PASSWORD PETL_SQLSERVER_PASSWORD=x SERVICES=openmrs-db,petl "$BIN/openmrs-docker" create "$NAME"
