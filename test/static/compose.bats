@@ -10,7 +10,9 @@ setup_file() {
     ALL_SERVICES=$(cd "$REPO_ROOT/docker/services" && ls ./*.yaml | xargs -n1 basename | sed 's/\.yaml$//' | paste -sd, -)
     export CONFIG_INSTANCE="$(file_res config)"
     export PETL_SQLSERVER_PASSWORD=Placeholder-1 SQLSERVER_SA_PASSWORD=Placeholder-1 PETL_MYSQL_PASSWORD=Placeholder-1
-    SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
+    export ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
+        ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret
+     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }
 
 teardown_file() {
