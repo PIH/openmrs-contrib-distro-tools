@@ -235,3 +235,24 @@ assert_valid() {
     run jq -r '.services.petl.volumes[] | "\(.source):\(.target)"' <<< "$json"
     assert_output "petl-data:/home/petl/data"
 }
+
+@test "advapacs-gateway uses the host's network, publishes nothing, and keeps its data directory in a volume" {
+    local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f config
+    for f in "$dir"/*.yaml; do args+=(-f "$f"); done
+    run docker compose --env-file "$dir/env" "${args[@]}" config --format json
+    assert_success
+    config=$output
+    # its DICOM and HL7 ports are whatever AdvaPACS is configured with
+    run jq -r '.services["advapacs-gateway"] | .network_mode, (.ports // [] | length)' <<< "$config"
+    assert_output $'host\n0'
+    # a release tag, as AdvaPACS recommends, not latest
+    run jq -r '.services["advapacs-gateway"].image' <<< "$config"
+    assert_output --regexp '^advahealthsolutions/advapacs-gateway:[0-9]'
+    # the instance's prefixed ADVAPACS_GATEWAY_* settings, under the names the gateway reads
+    run jq -r '.services["advapacs-gateway"].environment
+        | .ADVAPACS_REGION, .ADVAPACS_ACCESS_KEY_ID, .ADVAPACS_ACCESS_KEY_SECRET' <<< "$config"
+    assert_output $'placeholder-region\nplaceholder-id\nplaceholder-secret'
+    # the image's default data directory, which the gateway's Data Directory in AdvaPACS must stay at
+    run jq -r '.services["advapacs-gateway"].volumes[] | select(.type == "volume") | .target' <<< "$config"
+    assert_output /opt/AdvaHealthSolutions/AdvaPACSGateway
+}
