@@ -41,11 +41,6 @@ services:
     volumes:
       - mongo-data:/data/db
     restart: unless-stopped
-    logging:
-      driver: local
-      options:
-        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
-        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
 
   openhim-core:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-core
@@ -79,11 +74,6 @@ services:
       interval: 30s
       timeout: 30s
       retries: 3
-    logging:
-      driver: local
-      options:
-        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
-        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
 
   openhim-setup:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-setup
@@ -128,11 +118,6 @@ services:
         curl -sf -K /tmp/auth -X PUT "$$base/users/$$email" \
           -H 'Content-Type: application/json' -d @/tmp/body
         echo "OpenHIM admin password set to OPENHIM_PASSWORD."
-    logging:
-      driver: local
-      options:
-        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
-        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
 
   openhim-console:
     container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-openhim-console
@@ -153,11 +138,6 @@ services:
       interval: 30s
       timeout: 30s
       retries: 3
-    logging:
-      driver: local
-      options:
-        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
-        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
 
 volumes:
   mongo-data:

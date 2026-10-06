@@ -39,11 +39,6 @@ services:
       resources:
         limits:
           memory: ${OPENMRS_MEMORY_LIMIT?}
-    logging:
-      driver: local
-      options:
-        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
-        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
 
 volumes:
   openmrs-data:

@@ -25,11 +25,6 @@ services:
       ADVAPACS_ACCESS_KEY_SECRET: ${ADVAPACS_GATEWAY_ACCESS_KEY_SECRET?}
     volumes:
       - advapacs-gateway-data:/opt/AdvaHealthSolutions/AdvaPACSGateway
-    logging:
-      driver: local
-      options:
-        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
-        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
 
 volumes:
   advapacs-gateway-data:

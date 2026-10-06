@@ -20,8 +20,3 @@ services:
     volumes:
       - ${SMOKE_TESTS_OUTPUT_DIR:-./smoke-test-output}:/smoketests/target
       - ${SMOKE_TESTS_SCREENSHOTS_DIR:-./smoke-test-screenshots}:/smoketests/screenshots
-    logging:
-      driver: local
-      options:
-        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
-        max-file: ${CONTAINER_LOG_MAX_FILE:-5}

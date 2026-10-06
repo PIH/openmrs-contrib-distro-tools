@@ -15,10 +15,7 @@ Compose, differently).
 
 - **Defaults** are only in `.env.defaults` files: `docker/instance.env.defaults` for the instance
   itself (`TZ`, `DISTRO_SOURCE_DIR`, `SEED_IMAGE_*`), and `docker/services/<svc>.env.defaults` for each
-  service. The fragments require their variables (`${VAR?}`) rather than repeating a default. The
-  exceptions are a few that are rarely set and stay out of `env` unless they are (`OPENMRS_CREATE_TABLES`,
-  `CONTAINER_LOG_*`): their default is in the fragment (`${VAR:-default}`), so an existing instance
-  needs no `sync` for them.
+  service. The fragments require their variables (`${VAR?}`) rather than repeating a default.
 - **`create`** writes each of them, taking a value already set in your shell instead of its default.
   A variable with no usable default (e.g. `PETL_MYSQL_PASSWORD`) has to be set, or `create` and
   `add-service` refuse.
@@ -65,7 +62,6 @@ runs each as a one-off with the current env, and doesn't run the service if one 
 | `OPENMRS_HTTP_PORT`, `OPENMRS_DB_PORT`, `OPENMRS_DEBUG_PORT` | Optional | Published ports; set them differently to run more than one instance at once |
 | `TZ` | Optional (`UTC`) | Containers' time zone. `openmrs-db` reads the rules from the host's `/usr/share/zoneinfo`, since older images' are out of date (`mysql:5.6` still has daylight saving time for Mexico City) |
 | `OPENMRS_DB_IMAGE_NAME` (`mysql`), `OPENMRS_DB_IMAGE_TAG` (`5.6`), `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD`, `OPENMRS_ACTIVITYLOG_ENABLED`, `OPENMRS_DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS` | Optional | Database and memory settings. The DB passwords can't contain a backslash |
-| `CONTAINER_LOG_MAX_SIZE`, `CONTAINER_LOG_MAX_FILE` | Optional (`20m`, `5`, Docker's own defaults for it) | Every container logs with Docker's `local` driver, which Docker recommends over its `json-file` default: it rotates and compresses. These set the size at which a container's log is rotated and how many files are kept, so `logs` and `docker logs` go back at most that far. The files are Docker's own format: a log shipper reads them through the Docker API (`docker logs`), not from disk. A change applies when `update` or `start` recreates the containers |
 | `OPENMRS_DB_OPT_<option>` | Optional | MySQL/MariaDB server options ([below](#database-server-options-openmrs_db_opt_)) |
 | `SERVICES` | Optional (`openmrs-db,openmrs`), at `create` | The fragments in `docker/services/` to copy into the instance |
 | `OMRS_EXTRA_*` | Optional | Extra OpenMRS runtime properties, taken from your shell at `create` ([below](#runtime-properties-omrs_extra_)) |
