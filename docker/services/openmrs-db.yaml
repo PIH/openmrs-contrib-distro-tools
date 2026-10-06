@@ -68,6 +68,11 @@ services:
       resources:
         limits:
           memory: ${OPENMRS_DB_MEMORY_LIMIT?}
+    logging:
+      driver: local
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
+        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
 
   # Makes sure the MySQL accounts declared in env as OPENMRS_DB_ACCOUNT_<ID>_* exist, with those
   # passwords, grants and databases (utils/lib/in-container/ensure-mysql-accounts.sh). Runs on every
@@ -89,6 +94,11 @@ services:
       - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/ensure-mysql-accounts.sh:/ensure-mysql-accounts.sh:ro
       - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/mysql-accounts.sh:/mysql-accounts.sh:ro
     restart: "no"
+    logging:
+      driver: local
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
+        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
 
 volumes:
   db-data:

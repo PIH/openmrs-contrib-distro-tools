@@ -15,7 +15,9 @@ cmd_update() {
     start_stack
 }
 
-cmd_stop() { compose down --remove-orphans; }
+# All profiles: a lock-holding service's kept container (run-service) would otherwise outlive the
+# network it's attached to, and its next run fail.
+cmd_stop() { compose --profile '*' down --remove-orphans; }
 cmd_restart() { compose restart; }
 cmd_build() { build_image; }
 cmd_pull() { compose pull; }
@@ -50,7 +52,17 @@ cmd_run_service() { # [--pull] <svc> [command...]
     for setup in $(setup_services); do
         compose run --rm --no-deps "$setup" || die "$setup failed (above), so $svc didn't run -- is $NAME running ('$0 $NAME start')?"
     done
-    compose run --rm --no-deps "$svc" "$@"
+    # A command of its own (e.g. a shell to look around) runs in a one-off container.
+    if [ $# -gt 0 ]; then
+        compose run --rm --no-deps "$svc" "$@"
+        return
+    fi
+    # The job's own runs share one kept container, recreated only when its image or config changed
+    # and otherwise started again: its log builds up across runs in Docker's log, as a running
+    # service's does ('logs <svc>'), and docker inspect shows the last run's exit code and time.
+    # start -a streams the run's output, forwards signals, and exits with the run's exit code.
+    compose up --no-start --no-deps "$svc"
+    docker start -a "$(compose ps -aq "$svc")"
 }
 
 cmd_wait() {

@@ -18,6 +18,11 @@ services:
       TZ: ${TZ?}
     volumes:
       - petl-data:/home/petl/data
+    logging:
+      driver: local
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
+        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
 
 volumes:
   petl-data:

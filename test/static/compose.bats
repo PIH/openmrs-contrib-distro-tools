@@ -233,3 +233,19 @@ assert_valid() {
     run jq -r '.services.petl.volumes[] | "\(.source):\(.target)"' <<< "$json"
     assert_output "petl-data:/home/petl/data"
 }
+
+@test "every service's container log is rotated: the local driver (rotated and compressed), with a max-size and max-file, overridable from env" {
+    local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f json
+    for f in "$dir"/*.yaml; do args+=(-f "$f"); done
+    run docker compose --env-file "$dir/env" "${args[@]}" --profile '*' config --format json
+    assert_success
+    json=$output
+    run jq -r '.services | to_entries[] | select(.value.logging.driver != "local"
+        or .value.logging.options["max-size"] != "20m" or .value.logging.options["max-file"] != "5") | .key' <<< "$json"
+    assert_success
+    assert_output ''
+    run env CONTAINER_LOG_MAX_SIZE=10m CONTAINER_LOG_MAX_FILE=2 docker compose --env-file "$dir/env" "${args[@]}" config --format json openmrs
+    assert_success
+    run jq -c '.services.openmrs.logging.options' <<< "$output"
+    assert_output '{"max-file":"2","max-size":"10m"}'
+}

@@ -27,6 +27,11 @@ services:
       resources:
         limits:
           memory: ${SQLSERVER_MEMORY_LIMIT?}
+    logging:
+      driver: local
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
+        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
 
   # Server settings, databases and logins (utils/lib/in-container/sqlserver-setup.sh). Runs on every
   # start, and first for any service that depends on it.
@@ -47,6 +52,11 @@ services:
     volumes:
       - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/sqlserver-setup.sh:/sqlserver-setup.sh:ro
     restart: "no"
+    logging:
+      driver: local
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
+        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
 
 volumes:
   sqlserver-data:

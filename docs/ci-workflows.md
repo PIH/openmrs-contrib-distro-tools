@@ -346,7 +346,8 @@ a time, so jobs for the same host queue whichever repo they come from.
   instance, as `sudo -u <instance> /home/<instance>/bin/run-petl`. Puppet's
   `openmrs_docker::service::petl` installs that script and, with `ci_runner => true`, the one sudoers
   rule allowing it. The script runs `openmrs-docker <instance> run-service --pull petl`, which holds
-  the instance's lock (a deploy waits for it), and logs to `/home/<instance>/logs/petl-*.log`. The job
+  the instance's lock (a deploy waits for it); PETL's output is in the job's log, and in the
+  instance's `petl` container log ([PETL](services.md#petl)). The job
   fails when PETL does, so the author of the change that triggered it is notified.
 
 An ETL project calls it after building its image:

@@ -48,3 +48,8 @@ services:
       ADVAPACS_CLIENT_ID: ${ADVAPACS_CLIENT_ID?}
       ADVAPACS_CLIENT_SECRET: ${ADVAPACS_CLIENT_SECRET?}
       ADVAPACS_WEBHOOK_SECRET: ${ADVAPACS_WEBHOOK_SECRET?}
+    logging:
+      driver: local
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
+        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
