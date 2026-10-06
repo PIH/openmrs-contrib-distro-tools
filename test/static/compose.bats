@@ -12,6 +12,7 @@ setup_file() {
     export PETL_SQLSERVER_PASSWORD=Placeholder-1 SQLSERVER_SA_PASSWORD=Placeholder-1 PETL_MYSQL_PASSWORD=Placeholder-1
     export ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret
+    export MODALITY_SIMULATOR_GATEWAY_AE=PLACEHOLDER_GW
     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }
 
@@ -255,4 +256,31 @@ assert_valid() {
     # the image's default data directory, which the gateway's Data Directory in AdvaPACS must stay at
     run jq -r '.services["advapacs-gateway"].volumes[] | select(.type == "volume") | .target' <<< "$config"
     assert_output /opt/AdvaHealthSolutions/AdvaPACSGateway
+}
+
+@test "modality-simulator reaches the gateway through the host, keeps its log in a volume, and mounts its image library read-only" {
+    local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f config
+    for f in "$dir"/*.yaml; do args+=(-f "$f"); done
+    run docker compose --env-file "$dir/env" "${args[@]}" config --format json
+    assert_success
+    config=$output
+    # the gateway uses the host's network, so it's reached through the host; no hard dependency,
+    # since the gateway may be outside the instance and opens its port only once configured
+    run jq -c '.services["modality-simulator"].extra_hosts' <<< "$config"
+    assert_output --partial 'host.docker.internal'
+    assert_output --partial 'host-gateway'
+    run jq -r '.services["modality-simulator"].depends_on // {} | has("advapacs-gateway")' <<< "$config"
+    assert_output false
+    run jq -r '.services["modality-simulator"].ports[] | "\(.published):\(.target)"' <<< "$config"
+    assert_output '8095:8080'
+    # the instance's MODALITY_SIMULATOR_* settings, under the same names; Compose-only ones not passed
+    run jq -r '.services["modality-simulator"].environment
+        | .MODALITY_SIMULATOR_GATEWAY_AE, .MODALITY_SIMULATOR_GATEWAY_HOST, .MODALITY_SIMULATOR_GATEWAY_PORT,
+          has("MODALITY_SIMULATOR_IMAGE_DIR")' <<< "$config"
+    assert_output $'PLACEHOLDER_GW\nhost.docker.internal\n11112\nfalse'
+    run jq -r '.services["modality-simulator"].volumes[] | "\(.type) \(.target) \(.read_only // false)"' <<< "$config"
+    assert_output $'volume /data false\nbind /images true'
+    # the image library defaults to a directory in the instance
+    run jq -r '.services["modality-simulator"].volumes[] | select(.target == "/images") | .source' <<< "$config"
+    assert_output "$dir/modality-simulator-images"
 }
