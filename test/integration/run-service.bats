@@ -20,7 +20,7 @@ setup() {
         SERVICES=openmrs-db,petl create_instance "$NAME"
     DIR="$OPENMRS_DOCKER_HOME/$NAME"
 }
-teardown() { destroy_instance "$NAME"; common_teardown; }
+teardown() { destroy_instance "$NAME"; remove_images "$NAME-"; common_teardown; }
 
 running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.project=$NAME" | sort; }
 
@@ -101,4 +101,20 @@ petl_container() { docker ps -aq --filter "name=^$NAME-petl$"; }
     run docker volume ls -q --filter "name=^${NAME}_petl-data$"
     assert_output ''
     assert_equal "$(petl_container)" ""
+}
+
+@test "a petl run on a new image under the same tag removes the one it replaced" {
+    local ref="$NAME-etl:latest" old_id
+    printf 'FROM alpine:3.21\nRUN echo %s > /marker\nCMD ["true"]\n' "$NAME-one" | docker build -q -t "$ref" - >/dev/null
+    sed -i "s|^PETL_IMAGE_NAME=.*|PETL_IMAGE_NAME='$NAME-etl'|; s|^PETL_IMAGE_TAG=.*|PETL_IMAGE_TAG='latest'|" "$DIR/env"
+    "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
+    run "$BIN/openmrs-docker" "$NAME" run-service petl
+    assert_success
+    old_id=$(image_id "$ref")
+    printf 'FROM alpine:3.21\nRUN echo %s > /marker\nCMD ["true"]\n' "$NAME-two" | docker build -q -t "$ref" - >/dev/null
+    run "$BIN/openmrs-docker" "$NAME" run-service petl
+    assert_success
+    assert_output --partial "Removed the replaced image ${old_id#sha256:}"
+    run docker image inspect "$old_id"
+    assert_failure
 }

@@ -32,6 +32,9 @@ command line, not in `env`.
 or `SEED_IMAGE_NAME`, OpenMRS builds it up on its first start, as on a fresh install (e.g. for a
 database backup with no matching data directory backup).
 
+A seed image is used once, and carries a whole database: `initialize` removes it once the volumes
+are filled if it pulled it, and keeps one that was already on the host (e.g. built locally).
+
 Archives are extracted into a volume, never onto the host. A dump archive must hold exactly one dump
 (`.sql` or `.sql.gz`). An `openmrs-data` archive with a single top-level folder (as
 `backup-openmrs-data-directory` makes) has that folder's contents restored; otherwise its top level

@@ -1,18 +1,24 @@
 # Commands that run, stop and inspect an instance's containers. Sourced by openmrs-docker.
 
 cmd_start() {
+    local before
     if $DEV || $BUILD; then require_distro_source; fi
     warn_on_drift
+    before=$(instance_images)
     if $BUILD; then build_image; fi
     start_stack
+    remove_replaced_images "$before"
 }
 
 cmd_update() {
+    local before
     if $DEV || $BUILD; then require_distro_source; fi
     warn_on_drift
+    before=$(instance_images)
     if $BUILD; then build_image; fi
     compose pull
     start_stack
+    remove_replaced_images "$before"
 }
 
 # All profiles: a lock-holding service's kept container (run-service) would otherwise outlive the
@@ -61,7 +67,10 @@ cmd_run_service() { # [--pull] <svc> [command...]
     # and otherwise started again: its log builds up across runs in Docker's log, as a running
     # service's does ('logs <svc>'), and docker inspect shows the last run's exit code and time.
     # start -a streams the run's output, forwards signals, and exits with the run's exit code.
+    local before
+    before=$(instance_images)
     compose up --no-start --no-deps "$svc"
+    remove_replaced_images "$before"
     docker start -a "$(compose ps -aq "$svc")"
 }
 

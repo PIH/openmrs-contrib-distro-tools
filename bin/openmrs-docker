@@ -12,7 +12,8 @@
 #   restart                 Restart the running containers in place (no rebuild, no recreate)
 #   status                  Show the state of this instance's containers
 #   update [--build] [--dev]
-#                           Pull latest images and reconcile the stack (recreates only what changed)
+#                           Pull latest images and reconcile the stack (recreates only what changed),
+#                           then remove the images that recreated containers no longer use
 #   sync                    Refresh this instance's copied service fragments from the tool's current templates
 #   reset-openmrs-db-accounts
 #                           Set openmrs-db's MySQL accounts and OpenMRS's connection settings to the

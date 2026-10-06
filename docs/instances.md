@@ -81,6 +81,12 @@ setting), start it over. Keeping logs longer means shipping them off the host.
 openmrs-docker <name> update    # pulls the latest images, and recreates the containers that changed
 ```
 
+`update` and `start` then remove the images the recreated containers were made from, so repeated
+deploys don't pile them up: one a pull of the same tag replaced (left untagged), or one a registry
+has (it can be pulled again), e.g. the previous version after a tag change. Never a local build
+still tagged, which no registry may have, nor an image another container is made from (another
+instance on the same version): Docker refuses those, and they're left quietly.
+
 An instance keeps its own copy of each service's fragment, so a newer version of this tool doesn't
 change it by itself. `start` and `update` say when a fragment differs from the tool's (without
 changing anything), and `sync` brings them up to date:

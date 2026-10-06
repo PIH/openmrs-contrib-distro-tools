@@ -43,6 +43,38 @@ check_setup_services() {
 
 start_stack() { compose up -d; check_setup_services; }
 
+# The images the instance's containers, running or stopped, are made from (image IDs).
+instance_images() {
+    local containers
+    containers=$(docker ps -aq --filter "label=com.docker.compose.project=$SERVICE_NAME")
+    [ -z "$containers" ] || docker inspect -f '{{.Image}}' $containers | sort -u
+}
+
+# After containers were recreated: removes the images in <before> (instance_images from before) that
+# none of the instance's containers is made from any more, so a deploy doesn't leave the image it
+# replaced behind. Only images that can't be lost: one no tag points to any more (a pull of the same
+# tag replaced it) or one a registry has (pulled), never a local build still tagged. docker image rm
+# refuses an image any other container is made from (another instance on the same version), or
+# that has more than one tag; either is left, quietly.
+remove_replaced_images() { # <before>
+    local after id
+    after=$(instance_images)
+    for id in $1; do
+        grep -qxF "$id" <<< "$after" && continue
+        if [ -n "$(docker image inspect -f '{{join .RepoTags " "}}' "$id" 2>/dev/null)" ] \
+                && [ -z "$(docker image inspect -f '{{join .RepoDigests " "}}' "$id" 2>/dev/null)" ]; then
+            continue
+        fi
+        if docker image rm "$id" >/dev/null 2>&1; then note "Removed the replaced image ${id#sha256:}"; fi
+    done
+}
+
+# Removes <image> if it wasn't on the host before (<was_present> false), i.e. this command pulled it.
+remove_if_pulled() { # <image> <was_present>
+    $2 && return 0
+    if docker image rm "$1" >/dev/null 2>&1; then note "Removed $1, pulled for this command"; fi
+}
+
 require_distro_source() {
     [ -n "${DISTRO_SOURCE_DIR:-}" ] || die "DISTRO_SOURCE_DIR must be set in $ENV_FILE for this command"
 }
