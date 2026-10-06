@@ -45,7 +45,12 @@ PARALLEL_VERSION=20240922
 PARALLEL_SHA256=63210715e8b7c5e129e098f333cd7cdd5fc7a2f325e8e0fb9ed6edba9f1acbc4
 if [ ! -x "$DEPS_DIR/parallel/parallel" ] || [ "$(cat "$DEPS_DIR/parallel/VERSION" 2>/dev/null)" != "$PARALLEL_VERSION" ]; then
     rm -rf "$DEPS_DIR/parallel" && mkdir -p "$DEPS_DIR/parallel"
-    curl -fsSL -o "$DEPS_DIR/parallel/parallel.tar.bz2" "https://ftp.gnu.org/gnu/parallel/parallel-$PARALLEL_VERSION.tar.bz2"
+    # GNU's own servers are sometimes unreachable for hours; the checksum makes any mirror safe.
+    for gnu in https://ftp.gnu.org/gnu https://mirrors.kernel.org/gnu https://mirrors.ocf.berkeley.edu/gnu; do
+        curl -fsSL --connect-timeout 15 -o "$DEPS_DIR/parallel/parallel.tar.bz2" \
+            "$gnu/parallel/parallel-$PARALLEL_VERSION.tar.bz2" && break
+        echo "couldn't fetch GNU parallel from $gnu, trying the next mirror" >&2
+    done
     echo "$PARALLEL_SHA256  $DEPS_DIR/parallel/parallel.tar.bz2" | { sha256sum -c --quiet - 2>/dev/null || shasum -a 256 -c --quiet -; }
     tar xjf "$DEPS_DIR/parallel/parallel.tar.bz2" -C "$DEPS_DIR/parallel" --strip-components=2 "parallel-$PARALLEL_VERSION/src/parallel"
     rm "$DEPS_DIR/parallel/parallel.tar.bz2"
