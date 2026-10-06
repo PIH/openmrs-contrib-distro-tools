@@ -153,7 +153,7 @@ openmrs-docker <name> start
 
 `modality-simulator` is a fake CR, US and CT imaging room, for testing the order → worklist →
 images flow without real equipment, from
-[`partnersinhealth/modality-simulator`](https://github.com/PIH/modality-simulator). It reads the
+[PIH/modality-simulator](https://github.com/PIH/modality-simulator). It reads the
 AdvaPACS gateway's DICOM worklist; click **Acquire** in its console (`http://<host>:8095`) and it
 sends images stamped with that entry's patient and accession number back to the gateway.
 
