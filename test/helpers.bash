@@ -265,3 +265,32 @@ assert_not_in_ps_while() { # <secret> <command...>
     wait "$pid" || fail "command failed: $*"
     [ ! -s "$seen" ] || fail "secret appeared in a command line: $(sort -u "$seen")"
 }
+
+# --- Images ----------------------------------------------------------------------------------------
+
+# A throwaway registry on 127.0.0.1, which Docker allows without TLS: an image pushed there has a
+# registry digest, like a pulled one. Sets REGISTRY to its host:port.
+start_registry() { # <container name>
+    docker run -d --name "$1" -p 127.0.0.1::5000 registry:2 >/dev/null
+    REGISTRY="127.0.0.1:$(docker port "$1" 5000/tcp | head -1 | sed 's/.*://')"
+    export REGISTRY
+}
+
+# Builds a small image <ref> that sleeps, different for each <marker>.
+build_test_image() { # <ref> <marker>
+    docker build -q -t "$1" - >/dev/null <<DOCKERFILE
+FROM alpine:3.21
+RUN echo "$2" > /marker
+CMD ["sleep", "3600"]
+DOCKERFILE
+}
+
+image_id() { docker image inspect -f '{{.Id}}' "$1" 2>/dev/null; }
+
+# Untags the images whose repository starts with <prefix> (a test's), deleting each once it has no
+# other tag. By name, not ID: another test's identical image shares the ID.
+remove_images() { # <prefix>
+    local refs
+    refs=$(docker images --format '{{.Repository}}:{{.Tag}}' | awk -v p="$1" 'index($0, p) == 1')
+    [ -z "$refs" ] || docker rmi $refs >/dev/null 2>&1 || true
+}

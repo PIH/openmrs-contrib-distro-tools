@@ -58,9 +58,26 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     run tree_of_volume "${NAME}_openmrs-data"
     assert_output "$SEED_DATA_TREE"
     assert_seeded_root_owner
+    # A seed image that was here before initialize is kept.
+    refute_output --partial 'pulled for this command'
+    [ -n "$(image_id "$SEED_IMAGE")" ] || fail "the seed image, here before initialize, was removed"
     # A seeded openmrs-data has its runtime properties, so OpenMRS knows the tables exist.
     run grep -c '^OPENMRS_CREATE_TABLES=' "$OPENMRS_DOCKER_HOME/$NAME/env"
     assert_output 0
+}
+
+@test "initialize removes a seed image it pulled" {
+    local seed
+    start_registry "$NAME-registry"
+    seed="$REGISTRY/$NAME-seed:t"
+    docker tag "$SEED_IMAGE" "$seed" && docker push -q "$seed" >/dev/null && docker rmi "$seed" >/dev/null
+    SEED_IMAGE_NAME="${seed%:t}" SEED_IMAGE_TAG=t SERVICES=openmrs-db,openmrs create_instance "$NAME"
+    run_initialize "$NAME"
+    assert_success
+    assert_output --partial "Removed $seed, pulled for this command"
+    [ -z "$(image_id "$seed")" ] || fail "$seed, pulled by initialize, is still there"
+    run db_marker_in_volume "${NAME}_db-data"
+    assert_output 7
 }
 
 @test "a seed image with a flat data.tar.gz still fills openmrs-data" {

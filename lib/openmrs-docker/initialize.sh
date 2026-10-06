@@ -7,14 +7,20 @@ cmd_initialize() {
     require_new_instance
     # For the overlays: the images they run (openmrs-docker exports the utils dir they mount from).
     export P7ZIP_IMAGE PERCONA_IMAGE
+    SEED_USED=false
     select_db_source
     select_data_source
     check_restore_space
     resolve_data_owner
+    # A seed image is used once: removed afterwards if this run pulled it, kept if it was here already
+    # (e.g. built locally, and maybe in no registry).
+    local seed="${SEED_IMAGE_NAME:-}:${SEED_IMAGE_TAG:-latest}" seed_present=true
+    if $SEED_USED && ! docker image inspect "$seed" >/dev/null 2>&1; then seed_present=false; fi
     run_restore
     # The volumes are filled from here on, so a failure leaves the instance half-initialized.
     on_failure 'echo "error: initialize failed -- run '"'$0 $NAME destroy'"' before retrying." >&2'
     finish_restore
+    if $SEED_USED; then remove_if_pulled "$seed" "$seed_present"; fi
     echo "Initialized $NAME."
 }
 
@@ -87,6 +93,7 @@ select_db_source() {
     if $DB_PHYSICAL_RESTORE; then overlay reset-mysql-accounts; fi
     if [ "$sources" -eq 0 ] && [ -n "${SEED_IMAGE_NAME:-}" ]; then
         overlay restore-mysql-volume-from-seed
+        SEED_USED=true
         sources=1
     fi
     [ "$sources" -eq 1 ] || die "set exactly one of RESTORE_MYSQL_DUMP_PATH, RESTORE_MYSQL_DATA_PATH, RESTORE_MYSQL_PERCONA_PATH, or SEED_IMAGE_NAME to initialize the mysql/db-data volume"
@@ -113,6 +120,7 @@ select_data_source() {
         DATA_SOURCE=restore
     elif [ -n "${SEED_IMAGE_NAME:-}" ]; then
         overlay restore-openmrs-data-volume-from-seed
+        SEED_USED=true
         DATA_SOURCE=seed
     fi
 }

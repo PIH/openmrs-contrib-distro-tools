@@ -203,7 +203,9 @@ Its runs reuse one container, `<name>-petl`, kept between them and recreated onl
 settings change, so its log builds up across runs like a running service's: `openmrs-docker <name>
 logs petl` (it follows: Ctrl-C), or `docker logs <name>-petl`. `docker inspect -f '{{.State.ExitCode}}
 {{.State.FinishedAt}}' <name>-petl` gives the last run's result. `stop` removes the container (and
-its log). `run-service petl <command...>` runs that command in a one-off container instead.
+its log). When a run recreates it, the image it was made from is removed, as `update` does
+([Updating](instances.md#updating)). `run-service petl <command...>` runs that command in a one-off
+container instead.
 
 ```bash
 export OPENMRS_IMAGE_NAME=partnersinhealth/ces-emr
