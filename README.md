@@ -83,7 +83,7 @@ Run `openmrs-docker` or `openmrs-utils` with no arguments for every command and 
 | [The env file](docs/env.md) | An instance's settings: where they come from, every variable, database server options, runtime properties |
 | [Initializing an instance](docs/restore.md) | Filling a new instance from a seed image, dumps, data directories or Percona backups, and checking the result |
 | [Utilities](docs/utilities.md) | `openmrs-utils`: backups, restores and checks |
-| [Optional services](docs/services.md) | OpenHIM and its mediators, PETL and its SQL Server |
+| [Optional services](docs/services.md) | OpenHIM and its mediators, the AdvaPACS gateway, PETL and its SQL Server |
 | [CI workflows](docs/ci-workflows.md) | The reusable workflows: build and release, base image variants, seed images, smoke tests, scanning |
 | [The openmrs-sdk wrapper](docs/sdk.md) | `openmrs-sdk` commands |
 | [Developing this tool](docs/development.md) | Code layout and the test suite |

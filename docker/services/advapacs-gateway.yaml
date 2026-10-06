@@ -1,0 +1,35 @@
+name: ${SERVICE_NAME:?SERVICE_NAME must be set}
+
+# AdvaPACS's on-premises gateway: receives DICOM (and optionally HL7) from local modalities and
+# uploads it to the AdvaPACS cloud, over outbound HTTPS only. Independent of openhim.
+#
+# Its listening ports (Local AEs, HL7 inbound services) are set in the AdvaPACS UI and pushed to the
+# gateway, not set here, so it uses the host's network, as AdvaPACS recommends: there's nothing to
+# publish, and a port configured in AdvaPACS works without changing this instance.
+#
+# The data directory (received studies, the upload queue, the embedded database) is the image's
+# default, /opt/AdvaHealthSolutions/AdvaPACSGateway. Leave the gateway's Data Directory in AdvaPACS
+# at that path, or the data lands outside the volume.
+services:
+  advapacs-gateway:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-advapacs-gateway
+    image: ${ADVAPACS_GATEWAY_IMAGE_NAME?}:${ADVAPACS_GATEWAY_IMAGE_TAG?}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: ${TZ?}
+      # Prefixed ADVAPACS_GATEWAY_* in the instance's env, passed to the gateway under the names it
+      # reads.
+      ADVAPACS_REGION: ${ADVAPACS_GATEWAY_REGION?}
+      ADVAPACS_ACCESS_KEY_ID: ${ADVAPACS_GATEWAY_ACCESS_KEY_ID?}
+      ADVAPACS_ACCESS_KEY_SECRET: ${ADVAPACS_GATEWAY_ACCESS_KEY_SECRET?}
+    volumes:
+      - advapacs-gateway-data:/opt/AdvaHealthSolutions/AdvaPACSGateway
+    logging:
+      driver: local
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:-20m}
+        max-file: ${CONTAINER_LOG_MAX_FILE:-5}
+
+volumes:
+  advapacs-gateway-data:
