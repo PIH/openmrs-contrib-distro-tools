@@ -70,7 +70,7 @@ jobs:
           INSTANCE: ${{ inputs.instance }}
         run: |
           [[ "$INSTANCE" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "::error::bad instance name"; exit 1; }
-          MSG="run-petl: full log is under /home/$INSTANCE/logs on the host (VPN access required); not shown here since it may contain data."
+          MSG="PETL's log is in its container on the host, docker logs $INSTANCE-petl (VPN access required); not shown here since it may contain data."
           if sudo -n -u "$INSTANCE" "/home/$INSTANCE/bin/run-petl" > /dev/null 2>&1; then
             echo "Succeeded. ${MSG}"
           else
