@@ -141,7 +141,8 @@ cmd_destroy() {
     fi
     # An instance whose fragments don't interpolate (e.g. a required variable unset) must still be
     # destroyable, so its containers and volumes are then found by Compose's project label.
-    if ! compose down -v --remove-orphans; then
+    # All profiles, so a profiled service's volumes (petl-data) and kept container go too.
+    if ! compose --profile '*' down -v --remove-orphans; then
         warn "'docker compose down' failed -- removing this instance's containers and volumes by their Compose project label instead."
         docker ps -aq --filter "label=com.docker.compose.project=$project" | xargs -r docker rm -f >/dev/null 2>&1 || true
         docker volume ls -q --filter "label=com.docker.compose.project=$project" | xargs -r docker volume rm >/dev/null 2>&1 || true

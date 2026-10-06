@@ -199,6 +199,12 @@ image is an ETL project's (e.g. `partnersinhealth/ces-etl`, `partnersinhealth/ap
 `partnersinhealth/petl` with that project's jobs, datasources and `application.yml`; it runs
 `PETL_FULL_REFRESH_JOBS`, retrying up to `PETL_MAX_RETRIES` times, then exits.
 
+Its runs reuse one container, `<name>-petl`, kept between them and recreated only when its image or
+settings change, so its log builds up across runs like a running service's: `openmrs-docker <name>
+logs petl` (it follows: Ctrl-C), or `docker logs <name>-petl`. `docker inspect -f '{{.State.ExitCode}}
+{{.State.FinishedAt}}' <name>-petl` gives the last run's result. `stop` removes the container (and
+its log). `run-service petl <command...>` runs that command in a one-off container instead.
+
 ```bash
 export OPENMRS_IMAGE_NAME=partnersinhealth/ces-emr
 export PETL_IMAGE_NAME=partnersinhealth/ces-etl

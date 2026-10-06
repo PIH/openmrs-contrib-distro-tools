@@ -21,7 +21,9 @@
 #   remove-service <svc>    Detach a service fragment and remove its containers (its volumes are kept)
 #   run-service [--pull] <svc> [cmd...]
 #                           Run a one-off container for an attached service via 'docker compose run'
-#                           (--pull: pull its image first)
+#                           (--pull: pull its image first). A lock-holding service's (petl's) own
+#                           runs, without [cmd...], reuse one kept container, so its log builds up
+#                           across runs ('logs <svc>')
 #   wait                    Block until OpenMRS finishes initializing (up to 60 minutes)
 #   fingerprint [--data-dir] [--exclude-distribution-artifacts] [--output=<file>]
 #                           Summarize the stopped instance's database (and openmrs-data) to diff against

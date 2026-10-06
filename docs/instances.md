@@ -70,6 +70,11 @@ openmrs-docker <name> destroy          # removes the containers, the volumes and
 
 `restart` restarts the containers in place, so it doesn't pick up changes to `env`; `start` does.
 
+Each container's log is Docker's, kept and rotated as the host's Docker is set up to (Docker's own
+default, `json-file`, doesn't rotate; servers set the `local` driver, which does). It lasts as long as
+the container: `stop`, and a `start` or `update` that recreates a container (a new image, a changed
+setting), start it over. Keeping logs longer means shipping them off the host.
+
 ## Updating
 
 ```bash
