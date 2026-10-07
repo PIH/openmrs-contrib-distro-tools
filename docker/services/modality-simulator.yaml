@@ -1,0 +1,36 @@
+name: ${SERVICE_NAME:?SERVICE_NAME must be set}
+
+# A fake CR/US/CT modality for testing: it reads the AdvaPACS gateway's DICOM worklist and sends
+# images for the entries picked in its console (or all of them, with auto-acquire). Its code and
+# README: https://github.com/PIH/modality-simulator.
+#
+# No depends_on advapacs-gateway: the gateway may be outside this instance, and it opens its DICOM
+# port only once AdvaPACS has sent it its configuration. The simulator shows why it can't connect
+# and retries. The gateway uses the host's network, so it's reached through host.docker.internal.
+services:
+  modality-simulator:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-modality-simulator
+    image: ${MODALITY_SIMULATOR_IMAGE_NAME?}:${MODALITY_SIMULATOR_IMAGE_TAG?}
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${MODALITY_SIMULATOR_HOST_PORT?}:8080"
+    environment:
+      TZ: ${TZ?}
+      MODALITY_SIMULATOR_GATEWAY_HOST: ${MODALITY_SIMULATOR_GATEWAY_HOST?}
+      MODALITY_SIMULATOR_GATEWAY_PORT: ${MODALITY_SIMULATOR_GATEWAY_PORT?}
+      MODALITY_SIMULATOR_GATEWAY_AE: ${MODALITY_SIMULATOR_GATEWAY_AE?}
+      MODALITY_SIMULATOR_CALLING_AE: ${MODALITY_SIMULATOR_CALLING_AE?}
+      MODALITY_SIMULATOR_MODALITIES: ${MODALITY_SIMULATOR_MODALITIES?}
+      MODALITY_SIMULATOR_STATION_AE_FILTER: ${MODALITY_SIMULATOR_STATION_AE_FILTER?}
+      MODALITY_SIMULATOR_INSTITUTION: ${MODALITY_SIMULATOR_INSTITUTION?}
+      MODALITY_SIMULATOR_AUTO_ACQUIRE: ${MODALITY_SIMULATOR_AUTO_ACQUIRE?}
+      MODALITY_SIMULATOR_POLL_SECONDS: ${MODALITY_SIMULATOR_POLL_SECONDS?}
+    volumes:
+      - modality-simulator-data:/data
+      # De-identified DICOM files to send instead of generated images; with none, it generates them.
+      - ${MODALITY_SIMULATOR_IMAGE_DIR?}:/images:ro
+
+volumes:
+  modality-simulator-data:
