@@ -26,6 +26,12 @@ on:
       - '.github/workflows/test.yml'
       - '.github/workflows/*-via-runner.yml'
 
+# A newer commit to a PR cancels that PR's run in progress. Each push to main gets its own group, so
+# every commit to main is tested (a shared group would hold only one queued run and drop the rest).
+concurrency:
+  group: test-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   static-and-args:
     runs-on: ubuntu-latest
