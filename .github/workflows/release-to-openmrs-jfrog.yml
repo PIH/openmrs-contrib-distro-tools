@@ -1,4 +1,4 @@
-name: Release new version
+name: Release new version (OpenMRS JFrog)
 
 on:
   workflow_call:
