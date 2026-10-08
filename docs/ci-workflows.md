@@ -89,6 +89,36 @@ Requires `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `SONATYPE_GPG_PASSPHRASE`, an
 `SONATYPE_GPG_PRIVATE_KEY` secrets available to the caller (passed via `secrets: inherit`); also
 `DOCKERHUB_PASSWORD` if `image_name` is set.
 
+The workflow runs on Maven 3.9.16, installed by the `.github/actions/setup-maven` composite action,
+rather than the runner image's Maven (setup-java installs only the JDK). Under Maven 3.10,
+`central-publishing-maven-plugin` 0.11.0 leaves local-repository files (`maven-metadata-local.xml`,
+`_remote.repositories`) in the release bundle, and the Central Portal rejects it ("Bundle has
+content that does NOT have a .pom file"). Drop the step once a plugin release fixes this. Snapshot
+deploys aren't affected, so `build-and-deploy-to-sonatype.yml` uses the runner's Maven.
+
+If `release:prepare` pushed its tag but `release:perform` then failed, pass that tag as
+`publish_existing_tag` to publish it without preparing a new release. The workflow then runs only
+`release:perform`, from the tag, followed by the usual next-snapshot deploy. It is not a way to
+choose the next release's version: the workflow fails straight away if the tag doesn't already
+exist. A caller exposes it as a `workflow_dispatch` input:
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      publish_existing_tag:
+        description: Leave empty for a normal release. Only to publish a tag that a failed release already pushed but never published (release:prepare pushed the tag, release:perform failed) - runs release:perform alone, from that tag.
+        required: false
+        default: ''
+
+jobs:
+  release:
+    uses: PIH/openmrs-contrib-distro-tools/.github/workflows/release-to-sonatype.yml@main
+    with:
+      publish_existing_tag: ${{ inputs.publish_existing_tag }}
+    secrets: inherit
+```
+
 `.github/workflows/release-to-openmrs-jfrog.yml` is a [reusable
 workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs `mvn
 release:prepare release:perform` (no signing profile) against the calling repo's root `pom.xml`,
