@@ -32,17 +32,17 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: 8
           cache: 'maven'
           server-id: openmrs-repo-modules-pih
-          server-username: MAVEN_DEPLOY_USERNAME
-          server-password: MAVEN_DEPLOY_PASSWORD
+          server-username-env-var: MAVEN_DEPLOY_USERNAME
+          server-password-env-var: MAVEN_DEPLOY_PASSWORD
 
       - name: Setup Git Config
         run: |

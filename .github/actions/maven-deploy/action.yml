@@ -7,10 +7,10 @@ inputs:
     required: false
     default: ''
   username:
-    description: Maven repository username, as configured via the setup-java server-username env var name
+    description: Maven repository username, as configured via the setup-java server-username-env-var
     required: true
   password:
-    description: Maven repository password, as configured via the setup-java server-password env var name
+    description: Maven repository password, as configured via the setup-java server-password-env-var
     required: true
 
 outputs:
