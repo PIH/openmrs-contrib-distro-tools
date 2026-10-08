@@ -39,8 +39,12 @@ satisfies all of these):
   SSH. `release:perform` re-clones the repo via this URL, and only HTTPS picks up the credential
   `actions/checkout` persists into `.git/config` — an SSH `scm:git:git@github.com:...` URL has no
   credential configured and the clone fails.
-- **`distributionManagement`/publishing must use server id `central`**, matching the `server-id:
-  central` configured in the workflow's `setup-java` step.
+- **Publishing must use server id `sonatype-central`**, matching the `server-id:
+  sonatype-central` configured in the workflow's `setup-java` step: the
+  `central-publishing-maven-plugin`'s `<publishingServerId>`, plus a `distributionManagement`
+  `<snapshotRepository>` with that id and url `https://central.sonatype.com/repository/maven-snapshots/`.
+  The id can't be `central`: Maven 3.10+ ties that id to Maven Central and won't send its
+  credentials to central.sonatype.com.
 
 Optionally builds and pushes a Docker image of the released version too, the same way
 `build-and-deploy-to-sonatype.yml` does for snapshots (below) — pass `image_name` to enable this;
