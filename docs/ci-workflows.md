@@ -97,16 +97,17 @@ content that does NOT have a .pom file"). Drop the step once a plugin release fi
 deploys aren't affected, so `build-and-deploy-to-sonatype.yml` uses the runner's Maven.
 
 If `release:prepare` pushed its tag but `release:perform` then failed, pass that tag as
-`release_tag` to publish it without preparing a new release. The workflow then runs only
-`release:perform`, from the tag, followed by the usual next-snapshot deploy. A caller exposes it as
-a `workflow_dispatch` input:
+`republish_existing_tag` to publish it without preparing a new release. The workflow then runs only
+`release:perform`, from the tag, followed by the usual next-snapshot deploy. It is not a way to
+choose the next release's version: the workflow fails straight away if the tag doesn't already
+exist. A caller exposes it as a `workflow_dispatch` input:
 
 ```yaml
 on:
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: Existing tag to publish (only to recover a failed release)
+      republish_existing_tag:
+        description: Leave empty for a normal release. Only to re-publish a tag that a failed release already pushed (release:prepare pushed the tag, release:perform failed) - runs release:perform alone, from that tag.
         required: false
         default: ''
 
@@ -114,7 +115,7 @@ jobs:
   release:
     uses: PIH/openmrs-contrib-distro-tools/.github/workflows/release-to-sonatype.yml@main
     with:
-      release_tag: ${{ inputs.release_tag }}
+      republish_existing_tag: ${{ inputs.republish_existing_tag }}
     secrets: inherit
 ```
 
