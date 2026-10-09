@@ -286,7 +286,7 @@ assert_valid() {
     assert_output "$dir/modality-simulator-images"
 }
 
-@test "biometrics publishes nothing, keeps a stable hostname and its data in a volume, and passes its settings under the image's names" {
+@test "biometrics publishes nothing, keeps a stable hostname and its data and license identity in volumes, and passes its settings under the image's names" {
     local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f config
     for f in "$dir"/*.yaml; do args+=(-f "$f"); done
     run docker compose --env-file "$dir/env" "${args[@]}" config --format json
@@ -295,7 +295,8 @@ assert_valid() {
     # OpenMRS reaches it on the instance's network as http://biometrics:9000
     run jq -r '.services.biometrics.ports // [] | length' <<< "$config"
     assert_output 0
-    # the Neurotechnology license must see the same computer when the container is recreated
+    # the Neurotechnology license follows the hostname and the identity it keeps in /var/tmp, so both
+    # must survive the container being recreated
     run jq -r '.services.biometrics.hostname' <<< "$config"
     assert_output "$CONFIG_INSTANCE-biometrics"
     # the instance's BIOMETRICS_* settings, under the image's PIH_BIOMETRICS_* names; unset ones empty
@@ -303,5 +304,5 @@ assert_valid() {
         | .PIH_BIOMETRICS_LICENSE_BASE64, (.PIH_BIOMETRICS_MATCHING_SPEED == ""), has("BIOMETRICS_LICENSE_BASE64")' <<< "$config"
     assert_output $'cGxhY2Vob2xkZXI=\ntrue\nfalse'
     run jq -r '.services.biometrics.volumes[] | "\(.type) \(.source) \(.target)"' <<< "$config"
-    assert_output 'volume biometrics-data /opt/pih-biometrics/data'
+    assert_output $'volume biometrics-data /opt/pih-biometrics/data\nvolume biometrics-licensing /var/tmp'
 }

@@ -205,7 +205,11 @@ OMRS_EXTRA_pihcore_biometrics_matchurl='http://biometrics:9000/match'
 
 The image is private (it contains Neurotechnology's libraries), so `pull` needs the host's Docker
 credentials for `ghcr.io`, for the user that runs `openmrs-docker`. The license is an internet
-license: it needs outbound HTTPS at least once every 7 days, and runs on one computer at a time.
+license: it checks in with Neurotechnology over outbound HTTP (port 80) every few minutes, and runs on
+one machine at a time. The container keeps the same machine identity when it's recreated because its
+hostname is fixed and the identity Neurotechnology's library keeps in `/var/tmp` is on the
+`biometrics-licensing` volume. Losing that volume, or moving the instance to another host, makes it a
+new machine: it can't get the license until the old activation expires (about 30–40 minutes).
 The `biometrics-data` volume holds the fingerprint templates, which are patient data: back it up
 wherever the instance's data matters. To check the server can enroll and match:
 `docker exec <name>-biometrics pih-biometrics-selftest`.

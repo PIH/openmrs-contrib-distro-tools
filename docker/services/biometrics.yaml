@@ -16,6 +16,9 @@ services:
       PIH_BIOMETRICS_TEMPLATE_SIZE: ${BIOMETRICS_TEMPLATE_SIZE?}
     volumes:
       - biometrics-data:/opt/pih-biometrics/data
+      # The Neurotechnology license follows the hostname and an identity kept here: see docs/services.md.
+      - biometrics-licensing:/var/tmp
 
 volumes:
   biometrics-data:
+  biometrics-licensing:
