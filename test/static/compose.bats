@@ -13,7 +13,7 @@ setup_file() {
     export ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret
     export MODALITY_SIMULATOR_GATEWAY_AE=PLACEHOLDER_GW
-    export BIOMETRICS_LICENSE_BASE64=cGxhY2Vob2xkZXI= BIOMETRICS_IMAGE_TAG=placeholder-tag
+    export BIOMETRICS_LICENSE_BASE64=cGxhY2Vob2xkZXI=
     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }
 
@@ -305,7 +305,7 @@ assert_valid() {
           .PIH_BIOMETRICS_TEMPLATE_SIZE, has("BIOMETRICS_LICENSE_BASE64")' <<< "$config"
     assert_output $'cGxhY2Vob2xkZXI=\n72\nLOW\nLARGE\nfalse'
     run jq -r '.services.biometrics.image' <<< "$config"
-    assert_output 'ghcr.io/pih/pih-biometrics:placeholder-tag'
+    assert_output 'ghcr.io/pih/pih-biometrics:latest'
     run jq -r '.services.biometrics.volumes[] | "\(.type) \(.source) \(.target)"' <<< "$config"
     assert_output $'volume biometrics-data /opt/pih-biometrics/data\nvolume biometrics-licensing /var/tmp'
 }
