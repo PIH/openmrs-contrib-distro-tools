@@ -13,6 +13,7 @@ setup_file() {
     export ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret
     export MODALITY_SIMULATOR_GATEWAY_AE=PLACEHOLDER_GW
+    export BIOMETRICS_LICENSE_BASE64=cGxhY2Vob2xkZXI=
     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }
 
@@ -283,4 +284,28 @@ assert_valid() {
     # the image library defaults to a directory in the instance
     run jq -r '.services["modality-simulator"].volumes[] | select(.target == "/images") | .source' <<< "$config"
     assert_output "$dir/modality-simulator-images"
+}
+
+@test "biometrics publishes nothing, keeps a stable hostname and its data and license identity in volumes, and passes its settings under the image's names" {
+    local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f config
+    for f in "$dir"/*.yaml; do args+=(-f "$f"); done
+    run docker compose --env-file "$dir/env" "${args[@]}" config --format json
+    assert_success
+    config=$output
+    # OpenMRS reaches it on the instance's network as http://biometrics:9000
+    run jq -r '.services.biometrics.ports // [] | length' <<< "$config"
+    assert_output 0
+    # the Neurotechnology license follows the hostname and the identity it keeps in /var/tmp, so both
+    # must survive the container being recreated
+    run jq -r '.services.biometrics.hostname' <<< "$config"
+    assert_output "$CONFIG_INSTANCE-biometrics"
+    # the instance's BIOMETRICS_* settings, under the image's PIH_BIOMETRICS_* names, with the app's own defaults
+    run jq -r '.services.biometrics.environment
+        | .PIH_BIOMETRICS_LICENSE_BASE64, .PIH_BIOMETRICS_MATCHING_THRESHOLD, .PIH_BIOMETRICS_MATCHING_SPEED,
+          .PIH_BIOMETRICS_TEMPLATE_SIZE, has("BIOMETRICS_LICENSE_BASE64")' <<< "$config"
+    assert_output $'cGxhY2Vob2xkZXI=\n72\nLOW\nLARGE\nfalse'
+    run jq -r '.services.biometrics.image' <<< "$config"
+    assert_output 'ghcr.io/pih/pih-biometrics:latest'
+    run jq -r '.services.biometrics.volumes[] | "\(.type) \(.source) \(.target)"' <<< "$config"
+    assert_output $'volume biometrics-data /opt/pih-biometrics/data\nvolume biometrics-licensing /var/tmp'
 }

@@ -1,0 +1,24 @@
+name: ${SERVICE_NAME:?SERVICE_NAME must be set}
+
+# The pih-biometrics fingerprint server, for OpenMRS (pihcore): https://github.com/PIH/pih-biometrics.
+# Nothing is published: OpenMRS reaches it as http://biometrics:9000. See docs/services.md.
+services:
+  biometrics:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-biometrics
+    image: ${BIOMETRICS_IMAGE_NAME?}:${BIOMETRICS_IMAGE_TAG?}
+    restart: unless-stopped
+    hostname: ${SERVICE_NAME:?SERVICE_NAME must be set}-biometrics
+    environment:
+      TZ: ${TZ?}
+      PIH_BIOMETRICS_LICENSE_BASE64: ${BIOMETRICS_LICENSE_BASE64?}
+      PIH_BIOMETRICS_MATCHING_THRESHOLD: ${BIOMETRICS_MATCHING_THRESHOLD?}
+      PIH_BIOMETRICS_MATCHING_SPEED: ${BIOMETRICS_MATCHING_SPEED?}
+      PIH_BIOMETRICS_TEMPLATE_SIZE: ${BIOMETRICS_TEMPLATE_SIZE?}
+    volumes:
+      - biometrics-data:/opt/pih-biometrics/data
+      # The Neurotechnology license follows the hostname and an identity kept here: see docs/services.md.
+      - biometrics-licensing:/var/tmp
+
+volumes:
+  biometrics-data:
+  biometrics-licensing:
