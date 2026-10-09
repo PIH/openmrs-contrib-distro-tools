@@ -13,7 +13,7 @@ setup_file() {
     export ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret
     export MODALITY_SIMULATOR_GATEWAY_AE=PLACEHOLDER_GW
-    export BIOMETRICS_LICENSE_BASE64=cGxhY2Vob2xkZXI=
+    export BIOMETRICS_LICENSE_BASE64=cGxhY2Vob2xkZXI= BIOMETRICS_IMAGE_TAG=placeholder-tag
     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }
 
@@ -299,10 +299,13 @@ assert_valid() {
     # must survive the container being recreated
     run jq -r '.services.biometrics.hostname' <<< "$config"
     assert_output "$CONFIG_INSTANCE-biometrics"
-    # the instance's BIOMETRICS_* settings, under the image's PIH_BIOMETRICS_* names; unset ones empty
+    # the instance's BIOMETRICS_* settings, under the image's PIH_BIOMETRICS_* names, with the app's own defaults
     run jq -r '.services.biometrics.environment
-        | .PIH_BIOMETRICS_LICENSE_BASE64, (.PIH_BIOMETRICS_MATCHING_SPEED == ""), has("BIOMETRICS_LICENSE_BASE64")' <<< "$config"
-    assert_output $'cGxhY2Vob2xkZXI=\ntrue\nfalse'
+        | .PIH_BIOMETRICS_LICENSE_BASE64, .PIH_BIOMETRICS_MATCHING_THRESHOLD, .PIH_BIOMETRICS_MATCHING_SPEED,
+          .PIH_BIOMETRICS_TEMPLATE_SIZE, has("BIOMETRICS_LICENSE_BASE64")' <<< "$config"
+    assert_output $'cGxhY2Vob2xkZXI=\n72\nLOW\nLARGE\nfalse'
+    run jq -r '.services.biometrics.image' <<< "$config"
+    assert_output 'ghcr.io/pih/pih-biometrics:placeholder-tag'
     run jq -r '.services.biometrics.volumes[] | "\(.type) \(.source) \(.target)"' <<< "$config"
     assert_output $'volume biometrics-data /opt/pih-biometrics/data\nvolume biometrics-licensing /var/tmp'
 }

@@ -200,8 +200,9 @@ OMRS_EXTRA_pihcore_biometrics_matchurl='http://biometrics:9000/match'
 | Variable | Default | |
 |---|---|---|
 | `BIOMETRICS_LICENSE_BASE64` | must be set | the Neurotechnology license file, base64-encoded: `base64 -w0 <file>.lic` |
-| `BIOMETRICS_MATCHING_THRESHOLD`, `BIOMETRICS_MATCHING_SPEED`, `BIOMETRICS_TEMPLATE_SIZE` | empty (the app's: `72`, `LOW`, `LARGE`) | |
-| `BIOMETRICS_IMAGE_NAME`, `BIOMETRICS_IMAGE_TAG` | `ghcr.io/pih/pih-biometrics`, `1.0.0` | |
+| `BIOMETRICS_IMAGE_TAG` | must be set | a pih-biometrics image tag, e.g. `1.0.0-SNAPSHOT` |
+| `BIOMETRICS_MATCHING_THRESHOLD`, `BIOMETRICS_MATCHING_SPEED`, `BIOMETRICS_TEMPLATE_SIZE` | `72`, `LOW`, `LARGE` (the app's own defaults) | speed: `LOW`, `MEDIUM` or `HIGH`; size: `COMPACT`, `SMALL`, `MEDIUM` or `LARGE` |
+| `BIOMETRICS_IMAGE_NAME` | `ghcr.io/pih/pih-biometrics` | |
 
 The image is private (it contains Neurotechnology's libraries), so `pull` needs the host's Docker
 credentials for `ghcr.io`, for the user that runs `openmrs-docker`. The license is an internet
@@ -215,7 +216,7 @@ wherever the instance's data matters. To check the server can enroll and match:
 `docker exec <name>-biometrics pih-biometrics-selftest`.
 
 ```bash
-export BIOMETRICS_LICENSE_BASE64=$(base64 -w0 <file>.lic)
+export BIOMETRICS_LICENSE_BASE64=$(base64 -w0 <file>.lic) BIOMETRICS_IMAGE_TAG=1.0.0-SNAPSHOT
 openmrs-docker <name> add-service biometrics
 openmrs-docker <name> start
 ```
