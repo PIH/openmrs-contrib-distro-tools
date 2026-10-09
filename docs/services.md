@@ -1,7 +1,7 @@
 # Optional services
 
 Besides `openmrs-db` and `openmrs`, `docker/services/` has OpenHIM and its mediators, the AdvaPACS
-gateway, a modality simulator, PETL, SQL Server, and the smoke tests ([CI workflows](ci-workflows.md#running-smoke-tests-locally)).
+gateway, a modality simulator, a biometrics (fingerprint) server, PETL, SQL Server, and the smoke tests ([CI workflows](ci-workflows.md#running-smoke-tests-locally)).
 
 ## Attaching a service
 
@@ -181,6 +181,38 @@ images; any files you add there must be de-identified.
 ```bash
 export MODALITY_SIMULATOR_GATEWAY_AE=PIH_KOL-CI_GW
 openmrs-docker <name> add-service modality-simulator
+openmrs-docker <name> start
+```
+
+## Biometrics
+
+`biometrics` is the [pih-biometrics](https://github.com/PIH/pih-biometrics) fingerprint server: it
+stores fingerprint templates and enrolls and matches them for OpenMRS (pihcore). Scanning happens on
+the user's workstation, through the fingerprint client there; this server never sees a scanner. It
+publishes nothing: OpenMRS reaches it on the instance's network, so set these two runtime properties
+on the instance (pihcore reads them in lowercase from the release with UHM-9581 on):
+
+```bash
+OMRS_EXTRA_pihcore_biometrics_subjecturl='http://biometrics:9000/subject'
+OMRS_EXTRA_pihcore_biometrics_matchurl='http://biometrics:9000/match'
+```
+
+| Variable | Default | |
+|---|---|---|
+| `BIOMETRICS_LICENSE_BASE64` | must be set | the Neurotechnology license file, base64-encoded: `base64 -w0 <file>.lic` |
+| `BIOMETRICS_MATCHING_THRESHOLD`, `BIOMETRICS_MATCHING_SPEED`, `BIOMETRICS_TEMPLATE_SIZE` | empty (the app's: `72`, `LOW`, `LARGE`) | |
+| `BIOMETRICS_IMAGE_NAME`, `BIOMETRICS_IMAGE_TAG` | `ghcr.io/pih/pih-biometrics`, `1.0.0` | |
+
+The image is private (it contains Neurotechnology's libraries), so `pull` needs the host's Docker
+credentials for `ghcr.io`, for the user that runs `openmrs-docker`. The license is an internet
+license: it needs outbound HTTPS at least once every 7 days, and runs on one computer at a time.
+The `biometrics-data` volume holds the fingerprint templates, which are patient data: back it up
+wherever the instance's data matters. To check the server can enroll and match:
+`docker exec <name>-biometrics pih-biometrics-selftest`.
+
+```bash
+export BIOMETRICS_LICENSE_BASE64=$(base64 -w0 <file>.lic)
+openmrs-docker <name> add-service biometrics
 openmrs-docker <name> start
 ```
 
