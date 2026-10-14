@@ -1,0 +1,15 @@
+name: TMP bad tag test (UHM-9577, do not merge)
+
+on:
+  pull_request:
+
+jobs:
+  bad-tag:
+    uses: ./.github/workflows/release-to-sonatype.yml
+    with:
+      publish_existing_tag: does-not-exist-uhm-9577
+    secrets:
+      SONATYPE_USERNAME: dummy
+      SONATYPE_PASSWORD: dummy
+      SONATYPE_GPG_PASSPHRASE: dummy
+      SONATYPE_GPG_PRIVATE_KEY: dummy
