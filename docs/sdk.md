@@ -82,13 +82,13 @@ build. This is intended to be fast to allow for rapid iteration and testing of c
 openmrs-sdk update-config <server-id>
 ```
 
-NOTE: This will not automatically include updates made to openmrs-config-pihemr.  One first needs to
+NOTE: This will not automatically include updates made to pihemr.  One first needs to
 run a `mvn clean install` on that project before running this command to incorporate any local
 changes made to that project.  One could combine these commands as follows, assuming the
-openmrs-config-pihemr project is checked out in the same directory as the distribution repo:
+pihemr project is checked out in the same directory as the distribution repo:
 
 ```bash
-mvn clean install -f ../openmrs-config-pihemr/pom.xml && openmrs-sdk update-config <server-id>
+mvn clean install -f ../pihemr/pom.xml && openmrs-sdk update-config <server-id>
 ```
 
 ## `run`

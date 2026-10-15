@@ -28,7 +28,7 @@ No secrets required.
 workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) that runs `mvn
 release:prepare release:perform -Prelease` against the calling repo's root `pom.xml`. Requires the
 calling repo to define a `release` Maven profile that GPG-signs artifacts, plus a few other things
-the workflow silently depends on (see `openmrs-config-pihemr`'s root `pom.xml` for a reference that
+the workflow silently depends on (see `pihemr`'s root `pom.xml` for a reference that
 satisfies all of these):
 
 - **`maven-gpg-plugin` >= 3.2.0, configured with `<signer>bc</signer>`.** The workflow passes the
