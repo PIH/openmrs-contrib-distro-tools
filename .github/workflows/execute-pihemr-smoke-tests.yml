@@ -8,11 +8,11 @@ on:
         required: true
         type: string
       instance_name:
-        description: Clean identifier for the openmrs-docker instance and artifact naming (e.g. the real CI server's own name, like "kouka" or "kgh-ci"). Independent of pih_config, which may be a comma-separated chain that isn't a valid instance/image-tag name on its own.
+        description: Clean identifier for the openmrs-docker instance and artifact naming (e.g. the real CI server's own name, like "jjd-ci" or "kgh-ci"). Independent of pih_config, which may be a comma-separated chain that isn't a valid instance/image-tag name on its own.
         required: true
         type: string
       pih_config:
-        description: Full PIH config chain to test, matching what the site's real CI server actually runs (e.g. "liberia,liberia-harper,liberia-harper-kouka") -- not just the site's base seed-build profile.
+        description: Full PIH config chain to test, matching what the site's real CI server actually runs (e.g. "liberia,liberia-harper,liberia-harper-jjd-ci") -- not just the site's base seed-build profile.
         required: true
         type: string
       suite:
