@@ -124,7 +124,7 @@ key; the secret is shown only once.
 | `ADVAPACS_GATEWAY_REGION` | must be set | the gateway's region |
 | `ADVAPACS_GATEWAY_ACCESS_KEY_ID` | must be set | the gateway's access key ID |
 | `ADVAPACS_GATEWAY_ACCESS_KEY_SECRET` | must be set | the gateway's access key secret |
-| `ADVAPACS_GATEWAY_IMAGE_NAME`, `ADVAPACS_GATEWAY_IMAGE_TAG` | `advahealthsolutions/advapacs-gateway`, `1.21.1` | to upgrade, change the tag in the instance's `env` and run `update` |
+| `ADVAPACS_GATEWAY_IMAGE_NAME`, `ADVAPACS_GATEWAY_IMAGE_TAG` | `advahealthsolutions/advapacs-gateway`, `1.22.1` | to upgrade, change the tag in the instance's `env` and run `update` |
 
 Everything else is configured in AdvaPACS, and the gateway picks it up within a few minutes of
 starting, when it shows as Online:
