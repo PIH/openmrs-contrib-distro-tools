@@ -132,6 +132,19 @@ lock. `status`, `logs` and `wait` never wait for it. The lock is released howeve
 so there's nothing to clean up after a crash. It uses `flock(1)` (util-linux, on every Linux host);
 where `flock` isn't installed (e.g. macOS), commands run unlocked.
 
+## Backing up an instance
+
+```bash
+ARCHIVE_PASSWORD=... openmrs-docker <name> backup --output-dir=<dir>
+```
+
+For a DHIS2 instance, writes `<name>_<YYYYMMDD-HHMMSS>.sql.7z` (the database, by
+`openmrs-utils backup-pgdump`) and `<name>_data_<same>.7z` (the DHIS2 home, by
+`backup-openmrs-data-directory`), both encrypted, taken while DHIS2 runs. `initialize` restores them
+as `RESTORE_PGDUMP_PATH` and `RESTORE_DHIS2_DATA_PATH` ([Initializing an instance](restore.md#dhis2-instances)).
+For an OpenMRS instance it isn't implemented yet: use `openmrs-utils backup-mysqldump` and
+`backup-openmrs-data-directory` ([Utilities](utilities.md)).
+
 ## Changing the database passwords
 
 `OPENMRS_DB_PASSWORD` can't contain a backslash, and neither can `OPENMRS_DB_ROOT_PASSWORD` with a

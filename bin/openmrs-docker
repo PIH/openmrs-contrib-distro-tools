@@ -29,6 +29,9 @@
 #   fingerprint [--data-dir] [--exclude-distribution-artifacts] [--output=<file>]
 #                           Summarize the stopped instance's database (and openmrs-data) to diff against
 #                           its source -- see utils/fingerprint.sh
+#   backup --output-dir=<dir>
+#                           A DHIS2 instance's database and DHIS2 home, encrypted with ARCHIVE_PASSWORD,
+#                           as files initialize restores from (not yet for OpenMRS instances)
 #   build                   Build the distribution and Docker image from source
 #   pull                    Pull the images this instance would use, without starting anything
 #   logs [service]          Tail the container logs; defaults to every service
@@ -92,6 +95,8 @@ MODES_DIR="$TOOL_DIR/docker/modes"
 . "$TOOL_DIR/lib/openmrs-docker/initialize-dhis2.sh"
 # shellcheck source=../lib/openmrs-docker/db.sh
 . "$TOOL_DIR/lib/openmrs-docker/db.sh"
+# shellcheck source=../lib/openmrs-docker/backup.sh
+. "$TOOL_DIR/lib/openmrs-docker/backup.sh"
 
 BUILD=false
 DEV=false
@@ -135,6 +140,7 @@ case "$COMMAND" in
         [ -n "$RUN_SERVICE" ] || die "usage: $0 $NAME run-service [--pull] <service> [command...]" ;;
     logs) [ $# -le 1 ] && [[ "${1:-}" != -* ]] || die "usage: $0 $NAME logs [service]" ;;
     fingerprint) ;;
+    backup) [ $# -eq 1 ] && [[ "$1" == --output-dir=?* ]] || die "usage: $0 $NAME backup --output-dir=<dir>" ;;
     build) parse_options "" "$@"; set --; BUILD=true ;;
     initialize|stop|restart|status|sync|reset-openmrs-db-accounts|wait|pull) parse_options "" "$@"; set -- ;;
     *) die "unknown command '$COMMAND' (run '$0' for usage)" ;;
