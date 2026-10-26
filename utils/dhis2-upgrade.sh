@@ -51,6 +51,14 @@ env_value() { sed -n "s/^$1='\(.*\)'$/\1/p" "$DIR/env"; }
 
 CURRENT=$(env_value DHIS2_VERSION)
 FROM=$(index_of "$CURRENT")
+# Names the version env was set to until it has come up: if it's still there and names the version
+# env is on, that version didn't come up (it failed, or the run was interrupted), so it's retried.
+PENDING="$DIR/dhis2-upgrade.pending"
+if [ "$FROM" -gt 0 ] && [ "$(cat "$PENDING" 2>/dev/null)" = "$CURRENT" ]; then
+    FROM=$((FROM - 1))
+    note "DHIS2 $CURRENT didn't come up last time: retrying it, with its SQL."
+    CURRENT=${VERSIONS[$FROM]}   # the step's from, as the log and messages show it
+fi
 LAST=$(index_of "${TO:-${VERSIONS[-1]}}")
 if [ "$LAST" -le "$FROM" ]; then
     note "$INSTANCE is on DHIS2 $CURRENT: nothing to do."
@@ -89,6 +97,7 @@ for ((i = FROM + 1; i <= LAST; i++)); do
             die "$f failed: DHIS2 is stopped and still on $CURRENT. Fix it (or add a fix with --extra-sql-dir), then run this again."
         fi
     done
+    echo "$v" > "$PENDING"
     set_env DHIS2_VERSION "$v"
     set_env DHIS2_IMAGE_TAG "$tag"
     since=$(date +%s)
@@ -104,6 +113,7 @@ for ((i = FROM + 1; i <= LAST; i++)); do
     errors=$(docker logs --since "$since" "$INSTANCE-dhis2" 2>&1 | grep -i -E 'flyway.*(error|fail)|migration.*fail' || true)
     [ -z "$errors" ] || { note "Migration errors in DHIS2 $v's log:"; note "$errors"; }
     log_step "$v" "$tag" "${files[*]}" $(($(date +%s) - start)) ok
+    rm -f "$PENDING"
     note "DHIS2 $v is up ($(($(date +%s) - start))s)."
     CURRENT=$v
     if [ "$i" -lt "$LAST" ]; then

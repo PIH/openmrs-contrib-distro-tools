@@ -89,6 +89,43 @@ DOCKERFILE
     assert [ "$SECONDS" -lt 120 ]
 }
 
+@test "run again after a version failed to come up, retries it, SQL and all" {
+    docker build -q -t "$STUB_DHIS2_IMAGE:stepfail" - >/dev/null <<DOCKERFILE
+FROM $STUB_DHIS2_IMAGE
+CMD ["sh", "-c", "echo 'SEVERE Context [/dhis] startup failed due to previous errors'; exec sleep 300"]
+DOCKERFILE
+    sed -i 's/^2.0 step2 /2.0 stepfail /' path
+    run "$UTILS/dhis2-upgrade.sh" --instance="$NAME" --to=2.0 </dev/null
+    assert_failure
+    assert_equal "$(env_value DHIS2_VERSION)" 2.0
+    sed -i 's/^2.0 stepfail /2.0 step2 /' path   # the fix
+    run "$UTILS/dhis2-upgrade.sh" --instance="$NAME" --to=2.0 </dev/null
+    assert_success
+    assert_output --partial 'DHIS2 2.0 is up'
+    assert_equal "$(markers)" 2.0,2.0   # its SQL ran again
+    run tail -n 1 "$DIR/dhis2-upgrade.log"
+    assert_output --regexp ' 1\.0 -> 2\.0 .* ok$'
+    run docker inspect -f '{{.Config.Image}}' "$NAME-dhis2"
+    assert_output "$STUB_DHIS2_IMAGE:step2"
+}
+
+@test "run again after it was interrupted while a version was starting, retries that version" {
+    sed -i 's/^2.0 step2 /2.0 stepfail /' path
+    docker build -q -t "$STUB_DHIS2_IMAGE:stepfail" - >/dev/null <<DOCKERFILE
+FROM $STUB_DHIS2_IMAGE
+CMD ["sleep", "300"]
+DOCKERFILE
+    DHIS2_UPGRADE_STEP_TIMEOUT=300 timeout -s TERM 30 "$UTILS/dhis2-upgrade.sh" --instance="$NAME" --to=2.0 \
+        </dev/null >/dev/null 2>&1 || true
+    assert_equal "$(env_value DHIS2_VERSION)" 2.0
+    sed -i 's/^2.0 stepfail /2.0 step2 /' path
+    run "$UTILS/dhis2-upgrade.sh" --instance="$NAME" --to=2.0 </dev/null
+    assert_success
+    assert_output --partial 'DHIS2 2.0 is up'
+    run "$UTILS/dhis2-upgrade.sh" --instance="$NAME" --to=2.0 </dev/null
+    assert_output --partial 'nothing to do'
+}
+
 @test "stops on a WAR it can't fetch before changing anything" {
     sed -i "s|^2.0 step2 \(file://[^ ]*\) .*|2.0 step2 \1 $(printf '0%.0s' {1..64})|" path
     run "$UTILS/dhis2-upgrade.sh" --instance="$NAME" </dev/null

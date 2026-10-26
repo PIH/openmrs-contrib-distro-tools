@@ -56,9 +56,10 @@ After a failed migration, Flyway may refuse to start again until its failed row 
 DELETE FROM flyway_schema_history WHERE success = false;
 ```
 
-Then run `dhis2-upgrade` again: `env` already names the failed version, so it starts that version
-again. To redo its SQL as well, set `DHIS2_VERSION` and `DHIS2_IMAGE_TAG` back to the previous
-version first.
+Then run `dhis2-upgrade` again. `env` already names the failed version (its migrations may have
+partly run), and `<instance dir>/dhis2-upgrade.pending` records that it hasn't come up yet, so it
+retries that version: its SQL, including what you added with `--extra-sql-dir`, then the start. The
+same goes for a run that was interrupted while a version was starting.
 
 Known warnings that don't stop a step: from 2.34, *Could not perform upgrade of table
 'trackedentityattributevalue'. Column 'value' should be altered to data type varchar(1200) and receive
