@@ -1,0 +1,69 @@
+name: ${SERVICE_NAME:?SERVICE_NAME must be set}
+
+services:
+  # Before every start of dhis2: writes dhis.conf into the DHIS2 home from env
+  # (utils/lib/in-container/dhis2-setup.sh). Same image as dhis2, so nothing more is pulled.
+  dhis2-setup:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-dhis2-setup
+    image: ${DHIS2_IMAGE_NAME?}:${DHIS2_IMAGE_TAG?}
+    entrypoint: ["sh", "/dhis2-setup.sh"]
+    # Env's DHIS2_* lines (see "# container-env dhis2-setup:" in .env.defaults): the passwords stay
+    # out of the dhis2 container's environment.
+    env_file: dhis2-setup.env
+    environment:
+      DHIS2_HOME: /opt/dhis2
+    volumes:
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/dhis2-setup.sh:/dhis2-setup.sh:ro
+      - dhis2-data:/opt/dhis2
+    restart: "no"
+
+  # DHIS2 in Tomcat: the release WAR for DHIS2_VERSION (in the instance's wars/ directory, fetched by
+  # `openmrs-utils dhis2-war`) deployed as dhis.war, so it serves at /dhis. DHIS2_IMAGE_TAG is the
+  # Tomcat with the Java that version needs (docker/dhis2/upgrade-path).
+  dhis2:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-dhis2
+    image: ${DHIS2_IMAGE_NAME?}:${DHIS2_IMAGE_TAG?}
+    depends_on:
+      dhis2-setup:
+        condition: service_completed_successfully
+      dhis2-db:
+        condition: service_healthy
+        restart: true
+    environment:
+      DHIS2_HOME: /opt/dhis2
+      CATALINA_OPTS: ${DHIS2_JAVA_OPTS?}
+      TZ: ${TZ?}
+    ports:
+      - ${DHIS2_HTTP_PORT?}:8080
+    # Java 8 (DHIS2 up to 2.37) fails at startup ("unable to allocate file descriptor table") under
+    # Docker's default open-files limit, which is far higher than it can handle.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - dhis2-data:/opt/dhis2
+      # A missing WAR fails the start, naming it, rather than Docker creating a directory there.
+      - type: bind
+        source: ./wars/dhis2-${DHIS2_VERSION?}.war
+        target: /usr/local/tomcat/webapps/dhis.war
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/dhis2-server.xml:/usr/local/tomcat/conf/server.xml:ro
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/dhis2-healthcheck.sh:/dhis2-healthcheck.sh:ro
+    healthcheck:
+      test: ["CMD", "bash", "/dhis2-healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      # An upgrade's database migrations run before Tomcat answers at all.
+      start_period: 2h
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${DHIS2_MEMORY_LIMIT?}
+
+volumes:
+  dhis2-data:

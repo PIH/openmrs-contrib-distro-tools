@@ -1,0 +1,17 @@
+# The DHIS2 versions an upgrade steps through, in order, one per line:
+#   <DHIS2 version> <tomcat image tag> <release WAR URL> <WAR SHA-256>
+# Each is the final patch of its minor version. DHIS2's database migrations can't skip versions, and
+# each version needs its Java (dhis2-releases notes): 8 to 2.37, 11 for 2.38-40, 17 for 2.41.
+# URLs and checksums are from https://releases.dhis2.org/v1/versions/stable.json (2026-10-26).
+# Used by dhis2-war (to fetch a WAR) and dhis2-upgrade (to step an instance through them).
+2.31.9 9-jdk8 https://releases.dhis2.org/2.31/dhis2-stable-2.31.9.war 3e371eb8022d8d07f5fdd879558a55008206e69eb0b7bb91dd6944494ad92ee0
+2.32.7 9-jdk8 https://releases.dhis2.org/2.32/dhis2-stable-2.32.7.war 7d3150f2f9e45f84a77663f5879fccbf49cfbc6e0a95846f2b6ae0330d866cc9
+2.33.9 9-jdk8 https://releases.dhis2.org/2.33/dhis2-stable-2.33.9.war f2d790e4f58b65064c1a6576db033b8816338eac829325659cff24bee67bf92d
+2.34.9 9-jdk8 https://releases.dhis2.org/2.34/dhis2-stable-2.34.9.war 081521f3a8aa4a08eda9b9bc2c449087057a06ca94fea30a344c9219b6afe9b9
+2.35.14 9-jdk8 https://releases.dhis2.org/2.35/dhis2-stable-2.35.14.war 39d3dcc55de6920c6fe90af00233db4d2ced14f5ac560026d18de0fe6862d39e
+2.36.13.2 9-jdk8 https://releases.dhis2.org/2.36/dhis2-stable-2.36.13.2.war d1da8f915ba172486a5348d3945217212784573835ce918ea802fc86382b5b80
+2.37.10 9-jdk8 https://releases.dhis2.org/2.37/dhis2-stable-2.37.10.war 5049f10af5385f09c3932cd00e47649eb5baede2aace2ec693c12b4f5b40855c
+2.38.7 9-jdk11 https://releases.dhis2.org/2.38/dhis2-stable-2.38.7.war cb9d956731454babd57df4d50dab6f5eaca5ef33af14ffde1e99d6aa2b27dd5b
+2.39.10.1 9-jdk11 https://releases.dhis2.org/39/dhis2-stable-39.10.1.war be7b157a34eff18a5e7130bd64d51c4805537015b0303727b6863d78064c8d7b
+2.40.12 9-jdk11 https://releases.dhis2.org/40/dhis2-stable-40.12.0.war 764c5c523862f59bf8ffd6cce4326de3b2723ed0f6367707d9f3faf11bcbbb13
+2.41.8.1 9-jdk17 https://releases.dhis2.org/41/dhis2-stable-41.8.1.war 8a0f51bb5a96b577dd692725e9440f84ae41201b791c6d7ddf6b270d93c8192c

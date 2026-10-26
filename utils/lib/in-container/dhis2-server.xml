@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Tomcat's server.xml for DHIS2 (dhis2.yaml mounts it over the image's): one HTTP connector, with
+     the characters DHIS2's API puts in query strings allowed (DHIS2's installation guide), no AJP,
+     and no shutdown port. DHIS2 is webapps/dhis.war, so it serves at /dhis. -->
+<Server port="-1" shutdown="SHUTDOWN">
+  <Listener className="org.apache.catalina.startup.VersionLoggerListener" />
+  <Listener className="org.apache.catalina.core.JreMemoryLeakPreventionListener" />
+  <Listener className="org.apache.catalina.core.ThreadLocalLeakPreventionListener" />
+  <Service name="Catalina">
+    <Connector port="8080" protocol="HTTP/1.1" connectionTimeout="20000" relaxedQueryChars="\ { } | [ ]" />
+    <Engine name="Catalina" defaultHost="localhost">
+      <Host name="localhost" appBase="webapps" unpackWARs="true" autoDeploy="false" />
+    </Engine>
+  </Service>
+</Server>

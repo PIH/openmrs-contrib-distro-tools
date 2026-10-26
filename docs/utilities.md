@@ -46,3 +46,4 @@ Run one as `openmrs-utils <name> [options]` (a passthrough to `utils/<name>.sh`)
 | `runtime-properties` | Sets aside, or sets keys in, a data directory's `openmrs-runtime.properties` (values on stdin) |
 | `clear-configuration-checksums` | Removes openmrs-module-initializer's `configuration_checksums`, so the next start reprocesses all configuration |
 | `wait-for-healthy` | Waits until a container's healthcheck reports healthy, failing at once if it stops |
+| `dhis2-war` | Fetches a DHIS2 release WAR as `dhis2-<version>.war`, verified against the SHA-256 pinned for that version in `docker/dhis2/upgrade-path` (or given with `--url` and `--sha256`), into an instance's `wars/` directory (`--instance`) or `--output-dir`. Keeps a file already there that verifies, and never leaves one that doesn't. Runs `curl` on the host ([DHIS2](services.md#dhis2)) |

@@ -360,3 +360,35 @@ DHIS2's recommended settings (e.g. `max_locks_per_transaction=96`, `jit=off`); s
 `shared_buffers`, `effective_cache_size`, `work_mem` and `maintenance_work_mem` to the host. Like
 `OPENMRS_DB_OPT_*`, any `DHIS2_DB_OPT_*` set in your shell at `create` is written to `env`, and one
 deleted from `env` is left at the server's default.
+
+### `dhis2`
+
+DHIS2 runs in a stock Tomcat image (`DHIS2_IMAGE_NAME`, default `tomcat`; `DHIS2_IMAGE_TAG`, e.g.
+`9-jdk17`) with the release WAR for `DHIS2_VERSION` deployed as `dhis.war`, so it serves at `/dhis`
+on `DHIS2_HTTP_PORT` (`8080`). Each version needs its Java: `docker/dhis2/upgrade-path` lists the
+versions an upgrade steps through, each with its Tomcat tag and its WAR's URL and SHA-256. Fetch the
+WAR into the instance's `wars/` directory before the first start, and after changing `DHIS2_VERSION`:
+
+```bash
+SERVICES=dhis2-db,dhis2 DHIS2_VERSION=2.41.8.1 DHIS2_IMAGE_TAG=9-jdk17 openmrs-docker create lsdata-test
+openmrs-utils dhis2-war --instance=lsdata-test --version=2.41.8.1
+openmrs-docker lsdata-test start
+```
+
+A start without the WAR fails, naming `wars/dhis2-<version>.war`.
+
+The DHIS2 home (`DHIS2_HOME=/opt/dhis2`: uploaded files, installed apps, `dhis.conf`) is the
+`dhis2-data` volume. Before every start, the one-shot `dhis2-setup` writes `dhis.conf` from `env`:
+the connection to `dhis2-db`, `server.base.url` from `DHIS2_BASE_URL` (default
+`http://localhost:<DHIS2_HTTP_PORT>/dhis`; set it to the public URL), `encryption.password` from
+`DHIS2_ENCRYPTION_PASSWORD` when set (it must match the one the database was encrypted with), and one
+line per `DHIS2_CONF_<key>` (`_` in the key is `.`, `__` is `_`, as for `OMRS_EXTRA_*`). The passwords
+reach only `dhis2-setup`, not the `dhis2` container. Edit `env`, not `dhis.conf`: it's rewritten.
+
+Tomcat gets distro-tools' own `server.xml` (`utils/lib/in-container/dhis2-server.xml`: one HTTP
+connector allowing the characters DHIS2's API puts in query strings, no AJP), `CATALINA_OPTS` from
+`DHIS2_JAVA_OPTS` (`-Xms1g -Xmx3g`), a memory limit of `DHIS2_MEMORY_LIMIT` (`4g`), and an open-files
+limit Java 8 can start under. The healthcheck asks for the login page, using only `bash`, and allows
+two hours before counting failures, since an upgrade's database migrations run before Tomcat answers.
+`openmrs-docker wait` is for OpenMRS; for DHIS2, run
+`openmrs-utils wait-for-healthy --container=<instance>-dhis2`.

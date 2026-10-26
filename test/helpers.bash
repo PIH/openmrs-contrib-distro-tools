@@ -169,6 +169,19 @@ CMD ["sh", "-c", "[ -z \"$OMRS_EXTRA_stub_exit\" ] || exit 1; touch /tmp/started
 DOCKERFILE
 }
 
+# A stand-in for the Tomcat image dhis2.yaml runs, so the dhis2 service can start without DHIS2:
+# busybox httpd answers dhis2.yaml's healthcheck (bash, at /dhis/.../login.action). It has the sh and
+# bash that dhis2-setup and the healthcheck run.
+STUB_DHIS2_IMAGE=distro-tools-test/stub-dhis2
+build_stub_dhis2_image() {
+    docker build -q -t "$STUB_DHIS2_IMAGE" - >/dev/null <<'DOCKERFILE'
+FROM alpine:3.21
+RUN apk add --no-cache bash busybox-extras >/dev/null && mkdir -p /www/dhis/dhis-web-commons/security && \
+    echo login > /www/dhis/dhis-web-commons/security/login.action
+CMD ["httpd", "-f", "-p", "8080", "-h", "/www"]
+DOCKERFILE
+}
+
 # --- openmrs-data fixtures -------------------------------------------------------------------------
 
 # Builds a data directory covering every case the backup/restore scripts treat specially: a dotfile,

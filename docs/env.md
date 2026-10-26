@@ -71,7 +71,7 @@ runs each as a one-off with the current env, and doesn't run the service if one 
 | `OPENMRS_DB_ACCOUNT_<ID>_*` | Optional | MySQL accounts that openmrs-db-accounts makes sure exist ([MySQL accounts](services.md#mysql-accounts)) |
 | `OPENMRS_DOCKER_LOCK_WAIT` | Optional (`0`), in your shell, not `env` | Seconds a command waits for another one holding the instance's lock, instead of refusing at once ([One command at a time](instances.md#one-command-at-a-time)) |
 
-The optional services' variables are in [Optional services](services.md).
+The optional services' variables, and a DHIS2 instance's (`DHIS2_*`), are in [Optional services](services.md).
 
 ## Database server options (`OPENMRS_DB_OPT_*`)
 
