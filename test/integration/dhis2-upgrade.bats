@@ -74,6 +74,21 @@ env_value() { sed -n "s/^$1='\(.*\)'$/\1/p" "$DIR/env"; }
     assert_output --partial failed
 }
 
+@test "stops as soon as Tomcat fails to deploy DHIS2, rather than waiting out the step timeout" {
+    # Logs what Tomcat does when DHIS2's context fails (e.g. a Flyway error), and never answers.
+    docker build -q -t "$STUB_DHIS2_IMAGE:stepfail" - >/dev/null <<DOCKERFILE
+FROM $STUB_DHIS2_IMAGE
+CMD ["sh", "-c", "echo 'SEVERE Context [/dhis] startup failed due to previous errors'; exec sleep 300"]
+DOCKERFILE
+    sed -i 's/^2.0 step2 /2.0 stepfail /' path
+    SECONDS=0
+    DHIS2_UPGRADE_STEP_TIMEOUT=600 run "$UTILS/dhis2-upgrade.sh" --instance="$NAME" </dev/null
+    assert_failure
+    assert_output --partial 'startup failed due to previous errors'
+    assert_output --partial "DHIS2 2.0 didn't come up"
+    assert [ "$SECONDS" -lt 120 ]
+}
+
 @test "stops on a WAR it can't fetch before changing anything" {
     sed -i "s|^2.0 step2 \(file://[^ ]*\) .*|2.0 step2 \1 $(printf '0%.0s' {1..64})|" path
     run "$UTILS/dhis2-upgrade.sh" --instance="$NAME" </dev/null
@@ -99,6 +114,23 @@ env_value() { sed -n "s/^$1='\(.*\)'$/\1/p" "$DIR/env"; }
     assert_equal "$(markers)" 2.0
     run docker inspect -f '{{.State.Running}} {{.Config.Image}}' "$NAME-dhis2"
     assert_output "true $STUB_DHIS2_IMAGE:step2"
+}
+
+@test "the legacy trackedentityaudit fix renames only the old table, before 2.41 renames its own" {
+    docker exec -i "$NAME-dhis2-db" psql -U dhis -d dhis -q <<'SQL'
+CREATE TABLE trackedentityaudit (trackedentityauditid int, visitor varchar(255), accessedmodule varchar(255));
+INSERT INTO trackedentityaudit VALUES (1, 'admin', 'tracker');
+CREATE TABLE trackedentityinstanceaudit (trackedentityinstanceauditid int);
+SQL
+    local fix="$REPO_ROOT/docker/dhis2/known-fixes/2.41.8.1/10-rename-legacy-trackedentityaudit.sql"
+    docker exec -i "$NAME-dhis2-db" psql -U dhis -d dhis -q -v ON_ERROR_STOP=1 < "$fix"
+    run docker exec "$NAME-dhis2-db" psql -U dhis -d dhis -tAc "SELECT visitor FROM trackedentityaudit_legacy"
+    assert_output admin
+    # After 2.41's own rename, trackedentityaudit is the new table: left alone.
+    docker exec "$NAME-dhis2-db" psql -U dhis -d dhis -qc 'ALTER TABLE trackedentityinstanceaudit RENAME TO trackedentityaudit'
+    docker exec -i "$NAME-dhis2-db" psql -U dhis -d dhis -q -v ON_ERROR_STOP=1 < "$fix"
+    run docker exec "$NAME-dhis2-db" psql -U dhis -d dhis -tAc "SELECT to_regclass('trackedentityaudit') IS NOT NULL"
+    assert_output t
 }
 
 @test "the built-in and known fixes are idempotent" {

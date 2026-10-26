@@ -93,8 +93,10 @@ for ((i = FROM + 1; i <= LAST; i++)); do
     set_env DHIS2_IMAGE_TAG "$tag"
     since=$(date +%s)
     "$TOOL_DIR/bin/openmrs-docker" "$INSTANCE" start
+    # A failed migration leaves Tomcat running without DHIS2: it logs this, and is never healthy.
     if ! "$UTILS_DIR/wait-for-healthy.sh" --container="$INSTANCE-dhis2" \
-            --timeout="${DHIS2_UPGRADE_STEP_TIMEOUT:-7200}" --fail-on-unhealthy=true; then
+            --timeout="${DHIS2_UPGRADE_STEP_TIMEOUT:-7200}" --fail-on-unhealthy=true \
+            --fail-on-log='startup failed due to previous errors'; then
         log_step "$v" "$tag" "${files[*]}" $(($(date +%s) - start)) failed
         docker logs --since "$since" "$INSTANCE-dhis2" 2>&1 | grep -i -E 'flyway|migration' | tail -20 >&2 || true
         die "DHIS2 $v didn't come up. Its env now says $v: fix the cause and run this again to retry $v, or see docs/dhis2-upgrade.md."

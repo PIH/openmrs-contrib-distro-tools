@@ -36,6 +36,26 @@ start() { # <health command> [docker run args...]
     assert [ "$SECONDS" -lt 30 ]
 }
 
+@test "with --fail-on-log, fails as soon as the container logs a matching line, and shows it" {
+    docker run -d --name "$(res c)" --health-cmd false --health-start-period 300s alpine:3.21 \
+        sh -c 'sleep 2; echo "context startup failed due to previous errors"; sleep 300' >/dev/null
+    SECONDS=0
+    run "$UTILS/wait-for-healthy.sh" --container="$(res c)" --timeout=120 --fail-on-log='startup failed'
+    assert_failure
+    assert_output --partial 'context startup failed due to previous errors'
+    assert [ "$SECONDS" -lt 30 ]
+}
+
+@test "--fail-on-log only looks at what the container logged since its current start" {
+    # The first run logs the pattern and exits; started again, it runs on quietly and is healthy.
+    docker run -d --name "$(res c)" --health-cmd true --health-interval 1s alpine:3.21 \
+        sh -c '[ -e /started ] || { touch /started; echo "startup failed"; exit 0; }; sleep 300' >/dev/null
+    docker wait "$(res c)" >/dev/null
+    docker start "$(res c)" >/dev/null
+    run "$UTILS/wait-for-healthy.sh" --container="$(res c)" --timeout=60 --fail-on-log='startup failed'
+    assert_success
+}
+
 @test "by default keeps waiting through unhealthy, then times out" {
     start false
     run "$UTILS/wait-for-healthy.sh" --container="$(res c)" --timeout=10

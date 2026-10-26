@@ -48,6 +48,7 @@ runs unless you add it, since some drop tables a later migration would otherwise
 | 2.35.14 | `20-drop-color-translations.sql` | The step can't drop `colorsettranslations` / `colortranslations` |
 | 2.37.10 | `10-drop-old-translation-tables.sql` | The step can't drop `charttranslations`, `reporttabletranslations`, `dashboarditem_*` or `objecttranslation`. Try without it first: the 2.37 migration reads `objecttranslation` |
 | 2.39.10.1 | `10-recreate-program-attribute-group.sql` | The step fails on `program_attribute_group` |
+| 2.41.8.1 | `10-rename-legacy-trackedentityaudit.sql` | The step fails on `V2_41_24__TrackedEntityInstanceToTrackedEntity.sql`: `relation "trackedentityaudit" already exists` (a leftover from much older versions; kept as `trackedentityaudit_legacy`) |
 
 After a failed migration, Flyway may refuse to start again until its failed row is gone:
 

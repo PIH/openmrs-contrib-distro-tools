@@ -46,6 +46,6 @@ Run one as `openmrs-utils <name> [options]` (a passthrough to `utils/<name>.sh`)
 | `purge-binlogs` | Has a server delete its binary logs except the current one; run it before turning binary logging off |
 | `runtime-properties` | Sets aside, or sets keys in, a data directory's `openmrs-runtime.properties` (values on stdin) |
 | `clear-configuration-checksums` | Removes openmrs-module-initializer's `configuration_checksums`, so the next start reprocesses all configuration |
-| `wait-for-healthy` | Waits until a container's healthcheck reports healthy, failing at once if it stops |
+| `wait-for-healthy` | Waits until a container's healthcheck reports healthy, failing at once if it stops (or, with `--fail-on-log=<pattern>`, logs a matching line) |
 | `dhis2-upgrade` | Steps a DHIS2 instance through `docker/dhis2/upgrade-path` to a newer version, one version at a time, with each version's SQL fixes, asking before each next step ([Upgrading DHIS2](dhis2-upgrade.md)) |
 | `dhis2-war` | Fetches a DHIS2 release WAR as `dhis2-<version>.war`, verified against the SHA-256 pinned for that version in `docker/dhis2/upgrade-path` (or given with `--url` and `--sha256`), into an instance's `wars/` directory (`--instance`) or `--output-dir`. Keeps a file already there that verifies, and never leaves one that doesn't. Runs `curl` on the host ([DHIS2](services.md#dhis2)) |
