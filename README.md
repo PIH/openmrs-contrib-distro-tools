@@ -84,6 +84,7 @@ Run `openmrs-docker` or `openmrs-utils` with no arguments for every command and 
 | [Initializing an instance](docs/restore.md) | Filling a new instance from a seed image, dumps, data directories or Percona backups, and checking the result |
 | [Utilities](docs/utilities.md) | `openmrs-utils`: backups, restores and checks |
 | [Optional services](docs/services.md) | OpenHIM and its mediators, the AdvaPACS gateway, PETL and its SQL Server |
+| [Upgrading DHIS2](docs/dhis2-upgrade.md) | Stepping a DHIS2 instance through each version to a newer one, with the known fixes; rehearsing on a test instance |
 | [CI workflows](docs/ci-workflows.md) | The reusable workflows: build and release, base image variants, seed images, smoke tests, scanning |
 | [The openmrs-sdk wrapper](docs/sdk.md) | `openmrs-sdk` commands |
 | [Developing this tool](docs/development.md) | Code layout and the test suite |
