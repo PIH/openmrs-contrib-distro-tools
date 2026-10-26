@@ -18,7 +18,10 @@ Compose, differently).
   service. The fragments require their variables (`${VAR?}`) rather than repeating a default.
 - **`create`** writes each of them, taking a value already set in your shell instead of its default.
   A variable with no usable default (e.g. `PETL_MYSQL_PASSWORD`) has to be set, or `create` and
-  `add-service` refuse.
+  `add-service` refuse. A service can also take every variable with a given prefix from your shell
+  (`# capture-env: <PREFIX>` in its `.env.defaults`): `OMRS_EXTRA_*` for `openmrs`,
+  `OPENMRS_DB_OPT_*` for `openmrs-db` and `DHIS2_DB_OPT_*` for `dhis2-db`, each only when that service
+  is one of the instance's.
 - **`sync`** adds any variable the instance's fragments now require that `env` lacks, with its
   default. Until then, every other command refuses, naming it.
 - **When a command runs**, `env` is sourced and wins over your shell. A variable meant only for one

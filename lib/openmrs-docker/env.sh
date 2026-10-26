@@ -26,7 +26,7 @@ render_env_defaults() { # <file>
     [ -f "$template" ] || return 0
     while IFS= read -r line || [ -n "$line" ]; do
         # Rules for write_container_env_files and run-service, not lines for env.
-        [[ "$line" == "# container-env"* || "$line" == "# run-service:"* || "$line" == "# setup-services:"* ]] && continue
+        [[ "$line" == "# container-env"* || "$line" == "# run-service:"* || "$line" == "# setup-services:"* || "$line" == "# capture-env:"* ]] && continue
         if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
             name=${BASH_REMATCH[1]}
             eval "resolved=${BASH_REMATCH[2]}"

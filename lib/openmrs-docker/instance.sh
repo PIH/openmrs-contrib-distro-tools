@@ -1,7 +1,7 @@
 # Commands that create, change and remove an instance's directory. Sourced by openmrs-docker.
 
 cmd_create() { # <name>
-    local name=$1 dir="$OPENMRS_DOCKER_HOME/$1" svc var env_content services needs_openmrs=false
+    local name=$1 dir="$OPENMRS_DOCKER_HOME/$1" svc var prefix env_content services needs_openmrs=false
     valid_name "$name" || die "instance name '$name' $NAME_RULE (it's the Compose project name)"
     [ ! -e "$dir" ] || die "instance directory already exists: $dir"
     IFS=',' read -ra services <<< "${SERVICES:-openmrs-db,openmrs}"
@@ -21,13 +21,14 @@ cmd_create() { # <name>
         for svc in "${services[@]}"; do
             render_service_env_defaults "$svc"
         done
-        # openmrs-core's startup-init.sh turns any OMRS_EXTRA_* into a runtime property.
-        for var in "${!OMRS_EXTRA_@}"; do
-            env_line "$var" "${!var}"
-        done
-        # Server options (see openmrs-db.yaml) that openmrs-db.env.defaults doesn't already write.
-        for var in "${!OPENMRS_DB_OPT_@}"; do
-            [ -n "${ENV_LINES_WRITTEN[$var]:-}" ] || env_line "$var" "${!var}"
+        # Variables a service takes by prefix ("# capture-env: PREFIX_ ..." in its .env.defaults),
+        # e.g. OMRS_EXTRA_* runtime properties or server options, that its defaults don't already write.
+        for svc in "${services[@]}"; do
+            for prefix in $(service_directive "$svc" capture-env); do
+                for var in $(compgen -v "$prefix"); do
+                    [ -n "${ENV_LINES_WRITTEN[$var]:-}" ] || env_line "$var" "${!var}"
+                done
+            done
         done
     ) || exit 1
     mkdir -p "$dir"

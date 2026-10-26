@@ -1,0 +1,48 @@
+name: ${SERVICE_NAME:?SERVICE_NAME must be set}
+
+services:
+  dhis2-db:
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-dhis2-db
+    image: ${DHIS2_DB_IMAGE_NAME?}:${DHIS2_DB_IMAGE_TAG?}
+    # Every DHIS2_DB_OPT_<parameter> variable becomes a -c <parameter>=<value> server flag. Anything
+    # not set is the server's own default. The defaults written into a new instance's env file are in
+    # dhis2-db.env.defaults. The image's own entrypoint then does its usual first-boot setup,
+    # including the PostGIS extension.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        args=()
+        for var in $${!DHIS2_DB_OPT_@}; do
+          args+=(-c "$${var#DHIS2_DB_OPT_}=$${!var}")
+        done
+        [ $${#args[@]} -gt 0 ] || echo "No DHIS2_DB_OPT_* variables set: starting with the server's own defaults" >&2
+        exec docker-entrypoint.sh postgres "$${args[@]}"
+    # Env's DHIS2_DB_OPT_* lines only, written by openmrs-docker (see "# container-env:" in .env.defaults).
+    env_file: dhis2-db.env
+    environment:
+      POSTGRES_DB: ${DHIS2_DB_NAME?}
+      POSTGRES_USER: ${DHIS2_DB_USER?}
+      POSTGRES_PASSWORD: ${DHIS2_DB_PASSWORD?}
+      TZ: ${TZ?}
+    ports:
+      - ${DHIS2_DB_PORT?}:5432
+    volumes:
+      - dhis2-db-data:/var/lib/postgresql/data
+    healthcheck:
+      # The password from the container's own environment, in PGPASSWORD, so it's on no command line.
+      # TCP, so it only passes once the real server runs: during first-boot setup (and a restore's
+      # import) the image's entrypoint runs a temporary server that listens on the socket only.
+      test: ["CMD-SHELL", "PGPASSWORD=\"$$POSTGRES_PASSWORD\" psql -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -tAc 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${DHIS2_DB_MEMORY_LIMIT?}
+
+volumes:
+  dhis2-db-data:

@@ -1,7 +1,8 @@
 # Optional services
 
 Besides `openmrs-db` and `openmrs`, `docker/services/` has OpenHIM and its mediators, the AdvaPACS
-gateway, a modality simulator, a biometrics (fingerprint) server, PETL, SQL Server, and the smoke tests ([CI workflows](ci-workflows.md#running-smoke-tests-locally)).
+gateway, a modality simulator, a biometrics (fingerprint) server, PETL, SQL Server, the smoke tests ([CI workflows](ci-workflows.md#running-smoke-tests-locally)),
+and the services of a DHIS2 instance ([DHIS2](#dhis2)).
 
 ## Attaching a service
 
@@ -339,3 +340,23 @@ openmrs-docker <name> run-service --pull petl
   deploy (`pull`, `start`, ...) waits for it or refuses. It runs against the running instance:
   `openmrs-db` (and `sqlserver`, if the instance has it) must be up, OpenMRS needn't be
   ([One command at a time](instances.md#one-command-at-a-time)).
+
+## DHIS2
+
+A DHIS2 instance is an instance with DHIS2's services instead of OpenMRS's:
+`SERVICES=dhis2-db,dhis2`. The rest of the tool (env, ports, the instance lock, `start`, `stop`,
+`update`, `logs`) works on it the same way.
+
+### `dhis2-db`
+
+PostgreSQL with PostGIS (`postgis/postgis`, `DHIS2_DB_IMAGE_TAG`), container `<instance>-dhis2-db`,
+data in the `dhis2-db-data` volume. The database and its owner are `DHIS2_DB_NAME` and
+`DHIS2_DB_USER` (both `dhis` by default, as on PIH's older DHIS2 servers, so their dumps' `OWNER TO
+dhis` statements still apply), with `DHIS2_DB_PASSWORD`. Published on `DHIS2_DB_PORT` (`5432`); memory
+limit `DHIS2_DB_MEMORY_LIMIT` (`2g`).
+
+Each `DHIS2_DB_OPT_<parameter>` becomes a `-c <parameter>=<value>` server flag. The defaults are
+DHIS2's recommended settings (e.g. `max_locks_per_transaction=96`, `jit=off`); size
+`shared_buffers`, `effective_cache_size`, `work_mem` and `maintenance_work_mem` to the host. Like
+`OPENMRS_DB_OPT_*`, any `DHIS2_DB_OPT_*` set in your shell at `create` is written to `env`, and one
+deleted from `env` is left at the server's default.

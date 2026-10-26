@@ -30,6 +30,8 @@ export OPENMRS_DB_PORT=0
 export DISTRO_TOOLS_UTILS_DIR="$REPO_ROOT/utils"
 export OPENMRS_HTTP_PORT=0
 export OPENMRS_DB_OPT_innodb_buffer_pool_size=256M
+export DHIS2_DB_PORT=0
+export DHIS2_HTTP_PORT=0
 # initialize would otherwise run the (placeholder) OpenMRS image to find the owner for a restored
 # openmrs-data. The test runner's own ids keep restored fixtures readable by the tests.
 OPENMRS_DATA_OWNER="$(id -u):$(id -g)"

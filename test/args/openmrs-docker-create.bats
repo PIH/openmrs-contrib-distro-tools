@@ -397,3 +397,20 @@ teardown() {
     run "$BIN/openmrs-docker" "$NAME" remove-service sqlserver
     assert_success
 }
+
+@test "captures DHIS2_DB_OPT_* variables for a dhis2-db instance" {
+    NAME="$(instance)"
+    SERVICES=dhis2-db DHIS2_DB_OPT_work_mem=64MB "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    run cat "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_output --partial "DHIS2_DB_OPT_work_mem='64MB'"
+    assert_output --partial "DHIS2_DB_OPT_max_locks_per_transaction='96'"
+    run grep -c '^DHIS2_DB_OPT_work_mem=' "$OPENMRS_DOCKER_HOME/$NAME/env"
+    assert_output 1
+}
+
+@test "doesn't capture DHIS2_DB_OPT_* for an instance without dhis2-db" {
+    NAME="$(instance)"
+    SERVICES=openmrs-db DHIS2_DB_OPT_work_mem=64MB "$BIN/openmrs-docker" create "$NAME" >/dev/null
+    run cat "$OPENMRS_DOCKER_HOME/$NAME/env"
+    refute_output --partial 'DHIS2_DB_OPT_'
+}
