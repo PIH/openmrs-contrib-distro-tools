@@ -29,6 +29,7 @@ dhis_conf() { docker run --rm -v "${NAME}_dhis2-data:/home" "$ALPINE_IMAGE" cat 
     run dhis_conf
     assert_output --partial 'connection.url = jdbc:postgresql://dhis2-db/dhis'
     assert_output --partial 'connection.username = dhis'
+    assert_output --partial 'connection.schema = update'
     assert_output --regexp 'server.base.url = http://localhost:[0-9]+/dhis'
     refute_output --partial 'encryption.password'
     run docker run --rm -v "${NAME}_dhis2-data:/home" "$ALPINE_IMAGE" stat -c '%a' /home/dhis.conf
@@ -53,6 +54,13 @@ dhis_conf() { docker run --rm -v "${NAME}_dhis2-data:/home" "$ALPINE_IMAGE" cat 
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
     run dhis_conf
     assert_output --partial 'connection.pool.max_size = 40'
+}
+
+@test "DHIS2_CONF_connection_schema comes after the default, so it's the one DHIS2 reads" {
+    DHIS2_CONF_connection_schema=validate create_dhis2
+    "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
+    run sh -c "$(declare -f dhis_conf); NAME=$NAME ALPINE_IMAGE=$ALPINE_IMAGE dhis_conf | grep '^connection.schema' | tail -1"
+    assert_output 'connection.schema = validate'
 }
 
 @test "dhis2 becomes healthy behind dhis2-setup" {

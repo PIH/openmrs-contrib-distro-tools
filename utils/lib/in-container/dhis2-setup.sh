@@ -19,6 +19,8 @@ umask 077
     prop connection.url "jdbc:postgresql://dhis2-db/${DHIS2_DB_NAME:?DHIS2_DB_NAME must be set}"
     prop connection.username "${DHIS2_DB_USER:?DHIS2_DB_USER must be set}"
     prop connection.password "${DHIS2_DB_PASSWORD:?DHIS2_DB_PASSWORD must be set}"
+    # Without it, 2.30 falls back to its test default, create-drop, and empties the database on start.
+    prop connection.schema update
     prop server.base.url "${DHIS2_BASE_URL:?DHIS2_BASE_URL must be set}"
     [ -z "${DHIS2_ENCRYPTION_PASSWORD:-}" ] || prop encryption.password "$DHIS2_ENCRYPTION_PASSWORD"
     # DHIS2_CONF_<key>: '_' in <key> is '.', and '__' is '_' (as OMRS_EXTRA_* runtime properties).

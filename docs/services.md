@@ -379,7 +379,8 @@ A start without the WAR fails, naming `wars/dhis2-<version>.war`.
 
 The DHIS2 home (`DHIS2_HOME=/opt/dhis2`: uploaded files, installed apps, `dhis.conf`) is the
 `dhis2-data` volume. Before every start, the one-shot `dhis2-setup` writes `dhis.conf` from `env`:
-the connection to `dhis2-db`, `server.base.url` from `DHIS2_BASE_URL` (default
+the connection to `dhis2-db`, `connection.schema = update` (2.30's default without it empties the
+database on start), `server.base.url` from `DHIS2_BASE_URL` (default
 `http://localhost:<DHIS2_HTTP_PORT>/dhis`; set it to the public URL), `encryption.password` from
 `DHIS2_ENCRYPTION_PASSWORD` when set (it must match the one the database was encrypted with), and one
 line per `DHIS2_CONF_<key>` (`_` in the key is `.`, `__` is `_`, as for `OMRS_EXTRA_*`). The passwords
