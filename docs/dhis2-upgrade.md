@@ -4,7 +4,10 @@ DHIS2's database migrations can't skip versions, and each version needs its own 
 steps through the final patch of every version in between. `docker/dhis2/upgrade-path` lists them,
 each with the Tomcat image that has its Java and its release WAR's URL and SHA-256. It replaces the
 procedure on the Confluence page "Malawi DHIS2 Upgrade" (MLW-1563), which it's based on, and
-starts at 2.31.9 (there's no release WAR for 2.30 or earlier).
+starts at 2.30. DHIS2 publishes 2.30 only as a rolling build of its branch, so the path's 2.30 can be
+a later build than a server runs (lsdata's is older; see the comment in `upgrade-path`). Check a
+server's build before relying on that: `build.revision` in `build.properties` inside the WAR's
+`WEB-INF/lib/dhis-service-core-*.jar`.
 
 `openmrs-utils dhis2-upgrade --instance=<name>` does the stepping: for each version it fetches the WAR,
 stops DHIS2, runs that version's SQL, sets `DHIS2_VERSION` and `DHIS2_IMAGE_TAG` in `env`, starts the
@@ -71,7 +74,7 @@ expression* in the log4j setup defaults to daily.
 ## Rehearsing
 
 Rehearse an upgrade of a production server on a test instance first, until it runs clean, restoring
-a fresh production backup each round (`openmrs-docker <name> destroy`, `create`, `dhis2-war`,
-`initialize`, start on the production server's version, then the steps above). Add each fix it needs
+a fresh production backup each round (`openmrs-docker <name> destroy`, `create` with the production
+server's version, `dhis2-war`, `initialize`, start, then the steps above). Add each fix it needs
 to the site's own SQL directory, so the production upgrade runs the same ones. The step durations in
 `dhis2-upgrade.log` tell you how long a window the production upgrade needs.

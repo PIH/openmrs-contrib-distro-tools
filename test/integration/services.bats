@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Attaching and removing fragments, run-service, and destroy, with small alpine fragments in place of the real services.
+# Attaching and removing fragments, starting one service, run-service, and destroy, with small alpine fragments in place of the real services.
 
 load ../helpers
 
@@ -30,6 +30,20 @@ teardown() {
 }
 
 running() { docker ps -q --filter "label=com.docker.compose.project=$NAME"; }
+
+@test "start <service> starts only that service" {
+    run "$BIN/openmrs-docker" "$NAME" start keep
+    assert_success
+    assert_equal "$(running)" "$(docker ps -q --filter "name=^$NAME-keep$")"
+    assert_equal "$(docker ps -aq --filter "name=^$NAME-gone$")" ""
+}
+
+@test "start takes at most one service" {
+    run "$BIN/openmrs-docker" "$NAME" start keep gone
+    assert_failure
+    assert_output --partial 'start [--build] [--dev] [service]'
+    assert_equal "$(running)" ""
+}
 
 @test "remove-service on a stopped instance leaves it stopped" {
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1

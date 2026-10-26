@@ -7,7 +7,8 @@
 # Commands (for an existing instance):
 #   initialize              Pre-load a brand-new instance's data volumes (refuses to run if any data
 #                           volume already exists) -- see 'initialize' below
-#   start [--build] [--dev] Start the stack
+#   start [--build] [--dev] [service]
+#                           Start the stack, or only <service> and what it depends on
 #   stop                    Stop the running stack
 #   restart                 Restart the running containers in place (no rebuild, no recreate)
 #   status                  Show the state of this instance's containers
@@ -131,7 +132,20 @@ ENV_FILE="$INSTANCE_DIR/env"
 
 # Each command's arguments; any other is refused.
 case "$COMMAND" in
-    start|update) parse_options "--build --dev" "$@"; set -- ;;
+    start)
+        START_SERVICE=""
+        OPTIONS=()
+        for arg in "$@"; do
+            if [[ "$arg" == -* ]]; then
+                OPTIONS+=("$arg")
+            elif [ -z "$START_SERVICE" ]; then
+                START_SERVICE=$arg
+            else
+                die "usage: $0 $NAME start [--build] [--dev] [service]"
+            fi
+        done
+        parse_options "--build --dev" "${OPTIONS[@]}"; set -- ;;
+    update) parse_options "--build --dev" "$@"; set -- ;;
     destroy) parse_options --force "$@"; set -- ;;
     add-service|remove-service) [ $# -eq 1 ] || die "usage: $0 $NAME $COMMAND <service>" ;;
     run-service)

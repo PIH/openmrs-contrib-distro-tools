@@ -6,7 +6,7 @@ cmd_start() {
     warn_on_drift
     before=$(instance_images)
     if $BUILD; then build_image; fi
-    start_stack
+    start_stack ${START_SERVICE:+"$START_SERVICE"}
     remove_replaced_images "$before"
 }
 

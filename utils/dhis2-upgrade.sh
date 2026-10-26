@@ -9,8 +9,9 @@
 # Usage: openmrs-utils dhis2-upgrade --instance=<name> [--to=<version>] [--extra-sql-dir=<dir>]
 #   --extra-sql-dir   <dir>/<version>/*.sql run after the built-in docker/dhis2/upgrade-sql files for
 #                     that version: a site's own fixes, or known fixes from docker/dhis2/known-fixes
-#   The instance must have been started once (dhis2-db exists). Take a backup first, and hold a
-#   puppet-managed instance (/etc/puppet/build-disabled-<instance>), or puppet puts its version back.
+#   The instance needn't have been started: one just restored with initialize can be upgraded. Take
+#   a backup first, and hold a puppet-managed instance (/etc/puppet/build-disabled-<instance>), or
+#   puppet puts its version back.
 #   DHIS2_UPGRADE_STEP_TIMEOUT  seconds to wait for each version to come up (default 7200)
 #   DHIS2_UPGRADE_PATH, DHIS2_UPGRADE_SQL_DIR  replace the built-in path and SQL directory (tests)
 set -euo pipefail
@@ -57,7 +58,6 @@ if [ "$LAST" -le "$FROM" ]; then
 fi
 note "Upgrading $INSTANCE from DHIS2 $CURRENT to ${VERSIONS[$LAST]}, one version at a time."
 note "If puppet manages it, hold it first (/etc/puppet/build-disabled-$INSTANCE), or puppet puts its version back."
-docker inspect "$INSTANCE-dhis2-db" >/dev/null 2>&1 || die "$INSTANCE-dhis2-db doesn't exist: start $INSTANCE once first"
 
 log_step() { # <to> <tag> <files> <seconds> <outcome>
     printf '%s %s -> %s %s sql=[%s] %ss %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$CURRENT" "$@" >> "$LOG"
@@ -77,7 +77,8 @@ for ((i = FROM + 1; i <= LAST; i++)); do
     note ""
     note "=== DHIS2 $CURRENT -> $v (Tomcat $tag)"
     "$UTILS_DIR/dhis2-war.sh" --instance="$INSTANCE" --version="$v"
-    docker start "$INSTANCE-dhis2-db" >/dev/null
+    # Through Compose, not docker start: an instance just restored has no containers yet.
+    "$TOOL_DIR/bin/openmrs-docker" "$INSTANCE" start dhis2-db >/dev/null
     "$UTILS_DIR/wait-for-healthy.sh" --container="$INSTANCE-dhis2-db" --timeout=600
     docker stop "$INSTANCE-dhis2" >/dev/null 2>&1 || true
     for f in "$SQL_DIR/$v"/*.sql ${EXTRA_SQL_DIR:+"$EXTRA_SQL_DIR/$v"/*.sql}; do

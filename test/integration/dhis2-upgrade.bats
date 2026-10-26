@@ -91,6 +91,16 @@ env_value() { sed -n "s/^$1='\(.*\)'$/\1/p" "$DIR/env"; }
     assert_equal "$(markers)" 2.0+extra
 }
 
+@test "upgrades an instance that has no containers yet" {
+    # As initialize leaves a restored instance.
+    "$BIN/openmrs-docker" "$NAME" stop >/dev/null 2>&1
+    run "$UTILS/dhis2-upgrade.sh" --instance="$NAME" --to=2.0 </dev/null
+    assert_success
+    assert_equal "$(markers)" 2.0
+    run docker inspect -f '{{.State.Running}} {{.Config.Image}}' "$NAME-dhis2"
+    assert_output "true $STUB_DHIS2_IMAGE:step2"
+}
+
 @test "the built-in and known fixes are idempotent" {
     local f
     docker exec -i "$NAME-dhis2-db" psql -U dhis -d dhis -q <<'SQL'

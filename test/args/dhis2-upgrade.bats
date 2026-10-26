@@ -14,10 +14,10 @@ create_dhis2() { # <version>
 }
 
 @test "refuses a version not in the path" {
-    create_dhis2 2.30.0
+    create_dhis2 2.29.0
     run "$UTILS/dhis2-upgrade.sh" --instance="$NAME" </dev/null
     assert_failure
-    assert_output --partial "2.30.0 isn't in"
+    assert_output --partial "2.29.0 isn't in"
 }
 
 @test "refuses a non-dhis2 instance" {

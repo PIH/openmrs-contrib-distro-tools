@@ -41,7 +41,7 @@ check_setup_services() {
     done
 }
 
-start_stack() { compose up -d; check_setup_services; }
+start_stack() { compose up -d "$@"; check_setup_services; } # [service]
 
 # What the instance runs, for the commands whose work depends on it (initialize, backup): dhis2 if it
 # has the dhis2-db fragment, else openmrs. The one place that's decided.

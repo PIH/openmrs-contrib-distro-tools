@@ -2,7 +2,13 @@
 #   <DHIS2 version> <tomcat image tag> <release WAR URL> <WAR SHA-256>
 # Each is the final patch of its minor version. DHIS2's database migrations can't skip versions, and
 # each version needs its Java (dhis2-releases notes): 8 to 2.37, 11 for 2.38-40, 17 for 2.41.
-# URLs and checksums are from https://releases.dhis2.org/v1/versions/stable.json (2026-10-26).
+# URLs and checksums are from https://releases.dhis2.org/v1/versions/stable.json (2026-10-26), except
+# 2.30's: it isn't in that metadata, and https://releases.dhis2.org/2.30/dhis.war is a rolling build of
+# the 2.30 branch (b1c3a49, 2021-06-25), its checksum taken from the download. lsdata runs an earlier
+# one (b3863ff, 2019-12-06, SHA-256 0e30767d9d29e6fc1d04e70a8353ae88de884d786ab324933de6a49bb67cc8bd)
+# that's no longer published; the commits between them change no schema (*.hbm.xml or startup
+# upgrade code), only translations and bug fixes (checked 2026-10-26).
+2.30 9-jdk8 https://releases.dhis2.org/2.30/dhis.war f0e32abe638fc66ca300b3c1287ec07982bd2ab1a1b77c97e9a906a9239dfadf
 # Used by dhis2-war (to fetch a WAR) and dhis2-upgrade (to step an instance through them).
 2.31.9 9-jdk8 https://releases.dhis2.org/2.31/dhis2-stable-2.31.9.war 3e371eb8022d8d07f5fdd879558a55008206e69eb0b7bb91dd6944494ad92ee0
 2.32.7 9-jdk8 https://releases.dhis2.org/2.32/dhis2-stable-2.32.7.war 7d3150f2f9e45f84a77663f5879fccbf49cfbc6e0a95846f2b6ae0330d866cc9
