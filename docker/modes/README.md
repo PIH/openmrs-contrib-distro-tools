@@ -10,8 +10,9 @@ them is copied into an instance.
 
 What the `initialize` overlays have in common:
 
-- `initialize` only starts `openmrs-db`, so every restore container is an `openmrs-db` dependency,
-  including those that fill `openmrs-data`.
+- `initialize` only starts `openmrs-db` (`dhis2-db` for a DHIS2 instance, with the
+  `restore-dhis2-*` overlays), so every restore container is a dependency of it, including those that
+  fill `openmrs-data` (`dhis2-data`).
 - The variables they need beyond the instance's env are set by `initialize` for that one run and
   not written to env: the absolute `RESTORE_*_PATH`, the name the source is mounted as
   (`archive.<ext>`, `dump.sql[.gz]` or `backup`, so the right extractor or import runs),

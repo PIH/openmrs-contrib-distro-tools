@@ -1,0 +1,9 @@
+# initialize, RESTORE_PGDUMP_PATH (.sql or .sql.gz): mounts the dump where restore-pgdump.sh, which
+# the Postgres image's entrypoint runs on first start, imports it. See README.md here.
+
+services:
+  dhis2-db:
+    restart: "no"
+    volumes:
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/restore-pgdump.sh:/docker-entrypoint-initdb.d/20-restore-pgdump.sh:ro
+      - ${RESTORE_PGDUMP_PATH:?RESTORE_PGDUMP_PATH must be set}:/restore/${RESTORE_PGDUMP_FILENAME:?RESTORE_PGDUMP_FILENAME must be set}:ro

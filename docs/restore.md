@@ -186,3 +186,30 @@ image isn't counted. A dump import usually needs more than the dump itself (MySQ
 too), so for dumps this catches "nowhere near enough" rather than a tight fit. `extract-archive`,
 `backup-percona`, `convert-percona-backup` and `backup-openmrs-data-directory` check their output's
 filesystem the same way. `SKIP_DISK_SPACE_CHECK=true` goes ahead anyway.
+
+## DHIS2 instances
+
+A DHIS2 instance (one with the `dhis2-db` service, [DHIS2](services.md#dhis2)) is initialized from a
+`pg_dump`, since there's no DHIS2 seed image:
+
+| Variable | Fills | From |
+|---|---|---|
+| `RESTORE_PGDUMP_PATH` (required) | `dhis2-db-data` | A plain-SQL `pg_dump`: `.sql`, `.sql.gz`, or a `.7z`/`.zip` holding one (`ARCHIVE_PASSWORD` for a protected one) |
+| `RESTORE_DHIS2_DATA_PATH` | `dhis2-data` | A DHIS2 home (uploaded `files/`, installed `apps/`): a directory, or a `.tar.gz`/`.tgz`/`.tar`/`.7z`/`.zip` of one. Without it, DHIS2 starts with neither |
+
+```bash
+RESTORE_PGDUMP_PATH=~/lsdata.sql.7z RESTORE_DHIS2_DATA_PATH=~/lsdata-home.7z ARCHIVE_PASSWORD=... \
+    openmrs-docker lsdata-test initialize
+```
+
+The Postgres image's entrypoint imports the dump on the database's first start, after setting up
+PostGIS, and stops at the first error. A dump therefore has to restore into an empty database: one
+made with `pg_dump -c` (as PIH's older DHIS2 backup scripts did) fails on its first `DROP`. Take one
+with `openmrs-utils backup-pgdump`, or `pg_dump -O -x` without `-c`; leaving out the analytics tables
+(as `backup-pgdump` does) makes it much smaller, and DHIS2 rebuilds them when analytics next runs.
+Owner and grant statements for the `dhis` role still apply, since that's the default
+`DHIS2_DB_USER`. A failed `initialize` removes the volumes it made, so it can simply be run again.
+
+`dhis.conf` in a restored DHIS2 home is replaced on the first start (`dhis2-setup` writes it from
+`env`): carry its settings over into `env` first, above all `encryption.password` as
+`DHIS2_ENCRYPTION_PASSWORD`, without which values DHIS2 encrypted in the database can't be read.

@@ -51,6 +51,9 @@
 #   RESTORE_OPENMRS_DATA_PATH  openmrs-data from a directory, or a .tar.gz/.tgz/.tar/.7z/.zip archive of one
 #   ARCHIVE_PASSWORD           password for a protected .7z/.zip passed to any of the above
 #   INITIALIZE_DB_TIMEOUT      seconds to wait for the restored database to become healthy (default 3600)
+# A DHIS2 instance (one with the dhis2-db service) is initialized from a dump instead, and has no seed:
+#   RESTORE_PGDUMP_PATH        dhis2-db-data from a pg_dump (.sql/.sql.gz, or a .7z/.zip archive of one)
+#   RESTORE_DHIS2_DATA_PATH    dhis2-data from a DHIS2 home directory, or a .tar.gz/.tgz/.tar/.7z/.zip of one
 #
 # Environment variable overrides:
 #   OPENMRS_DOCKER_HOME   Where instance directories live (default: $HOME/openmrs)
@@ -85,6 +88,8 @@ MODES_DIR="$TOOL_DIR/docker/modes"
 . "$TOOL_DIR/lib/openmrs-docker/stack.sh"
 # shellcheck source=../lib/openmrs-docker/initialize.sh
 . "$TOOL_DIR/lib/openmrs-docker/initialize.sh"
+# shellcheck source=../lib/openmrs-docker/initialize-dhis2.sh
+. "$TOOL_DIR/lib/openmrs-docker/initialize-dhis2.sh"
 # shellcheck source=../lib/openmrs-docker/db.sh
 . "$TOOL_DIR/lib/openmrs-docker/db.sh"
 

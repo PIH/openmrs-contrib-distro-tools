@@ -4,6 +4,10 @@
 # Sourced by openmrs-docker.
 
 cmd_initialize() {
+    if [ "$(instance_kind)" = dhis2 ]; then initialize_dhis2; else initialize_openmrs; fi
+}
+
+initialize_openmrs() {
     require_new_instance
     # For the overlays: the images they run (openmrs-docker exports the utils dir they mount from).
     export P7ZIP_IMAGE PERCONA_IMAGE

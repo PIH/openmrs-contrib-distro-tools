@@ -1,0 +1,16 @@
+# initialize, RESTORE_DHIS2_DATA_PATH (a directory): copies it (a DHIS2 home) into dhis2-data. See README.md
+# here.
+
+services:
+  restore-dhis2-data-volume:
+    image: alpine:3.21
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-restore-dhis2-data-volume
+    volumes:
+      - ${RESTORE_DHIS2_DATA_PATH:?RESTORE_DHIS2_DATA_PATH must be set}:/source:ro
+      - dhis2-data:/target
+    command: ["sh", "-c", "cp -a /source/. /target/"]
+
+  dhis2-db:
+    depends_on:
+      restore-dhis2-data-volume:
+        condition: service_completed_successfully

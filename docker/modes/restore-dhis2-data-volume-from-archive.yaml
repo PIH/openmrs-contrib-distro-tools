@@ -1,0 +1,29 @@
+# initialize, RESTORE_DHIS2_DATA_PATH (an archive): extracts it into dhis2-data, through a
+# staging directory in the volume so the last step is a rename. A single top-level folder (as
+# backup-openmrs-data-directory makes, or a legacy DHIS2 home) is unwrapped. See README.md here.
+
+services:
+  restore-dhis2-data-volume:
+    image: ${P7ZIP_IMAGE:?P7ZIP_IMAGE must be set}
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-restore-dhis2-data-volume
+    environment:
+      - ARCHIVE_PASSWORD
+      - ARCHIVE_NAME=${RESTORE_DHIS2_DATA_ARCHIVE_FILENAME:?RESTORE_DHIS2_DATA_ARCHIVE_FILENAME must be set}
+    volumes:
+      - ${RESTORE_DHIS2_DATA_PATH:?RESTORE_DHIS2_DATA_PATH must be set}:/source/${RESTORE_DHIS2_DATA_ARCHIVE_FILENAME:?RESTORE_DHIS2_DATA_ARCHIVE_FILENAME must be set}:ro
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/extract.sh:/extract.sh:ro
+      - dhis2-data:/target
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        STAGING=/target/.restore-staging
+        ROOT=$$(sh /extract.sh "/source/$$ARCHIVE_NAME" "$$STAGING" --print-root)
+        find "$$ROOT" -mindepth 1 -maxdepth 1 -exec mv {} /target/ \;
+        rm -rf "$$STAGING"
+
+  dhis2-db:
+    depends_on:
+      restore-dhis2-data-volume:
+        condition: service_completed_successfully

@@ -1,0 +1,43 @@
+# initialize, RESTORE_PGDUMP_PATH (.7z or .zip): extracts the archive's one dump (.sql or .sql.gz)
+# into db-init, which restore-pgdump.sh imports on dhis2-db's first start. See README.md here.
+
+services:
+  restore-pgdump-archive:
+    image: ${P7ZIP_IMAGE:?P7ZIP_IMAGE must be set}
+    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-restore-pgdump-archive
+    environment:
+      - ARCHIVE_PASSWORD
+      - ARCHIVE_NAME=${RESTORE_PGDUMP_ARCHIVE_FILENAME:?RESTORE_PGDUMP_ARCHIVE_FILENAME must be set}
+    volumes:
+      - ${RESTORE_PGDUMP_PATH:?RESTORE_PGDUMP_PATH must be set}:/source/${RESTORE_PGDUMP_ARCHIVE_FILENAME:?RESTORE_PGDUMP_ARCHIVE_FILENAME must be set}:ro
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/extract.sh:/extract.sh:ro
+      - db-init:/target
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        STAGING=/target/.restore-staging
+        sh /extract.sh "/source/$$ARCHIVE_NAME" "$$STAGING"
+        FILES=$$(find "$$STAGING" -type f)
+        if [ -z "$$FILES" ] || [ "$$(echo "$$FILES" | wc -l)" -ne 1 ]; then
+            echo "error: $$ARCHIVE_NAME must contain exactly one dump file" >&2
+            exit 1
+        fi
+        case "$$FILES" in
+            *.gz) mv "$$FILES" /target/dump.sql.gz ;;
+            *)    mv "$$FILES" /target/dump.sql ;;
+        esac
+        rm -rf "$$STAGING"
+
+  dhis2-db:
+    restart: "no"
+    depends_on:
+      restore-pgdump-archive:
+        condition: service_completed_successfully
+    volumes:
+      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/restore-pgdump.sh:/docker-entrypoint-initdb.d/20-restore-pgdump.sh:ro
+      - db-init:/restore:ro
+
+volumes:
+  db-init:

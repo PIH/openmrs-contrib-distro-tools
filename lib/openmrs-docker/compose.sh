@@ -43,6 +43,12 @@ check_setup_services() {
 
 start_stack() { compose up -d; check_setup_services; }
 
+# What the instance runs, for the commands whose work depends on it (initialize, backup): dhis2 if it
+# has the dhis2-db fragment, else openmrs. The one place that's decided.
+instance_kind() {
+    if [ -f "$INSTANCE_DIR/dhis2-db.yaml" ]; then echo dhis2; else echo openmrs; fi
+}
+
 # The images the instance's containers, running or stopped, are made from (image IDs).
 instance_images() {
     local containers

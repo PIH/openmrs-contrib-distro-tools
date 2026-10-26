@@ -78,3 +78,14 @@ random_file() { # <path> <KiB>
     assert_output --partial "needs about 2.0M"
     assert_no_leftovers
 }
+
+@test "initialize refuses a pg dump when disk space is short, creating nothing" {
+    NAME="$(instance)"
+    SERVICES=dhis2-db,dhis2 DHIS2_VERSION=2.41.8.1 DHIS2_IMAGE_TAG=9-jdk17 create_instance "$NAME"
+    random_file src/dump.sql 1024
+    DISK_SPACE_FREE_KB=100 run_initialize "$NAME" RESTORE_PGDUMP_PATH=src/dump.sql
+    assert_failure
+    assert_output --partial "not enough disk space on Docker's volumes"
+    run docker volume ls -q --filter "name=^${NAME}_"
+    assert_output ''
+}
