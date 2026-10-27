@@ -64,3 +64,12 @@ teardown() { common_teardown; }
     assert_output --partial 'already exists'
     assert_equal "$(cat out.tar.gz)" original
 }
+
+@test "--exclude rejects a path that isn't relative to the data directory" {
+    for path in /etc . "" ../x a/../b ./a; do
+        run "$UTILS/backup-openmrs-data-directory.sh" --volume="$BATS_TEST_TMPDIR/data" --output=out.tar.gz --exclude="$path"
+        assert_failure
+        assert_output --partial "--exclude"
+        assert [ ! -e out.tar.gz ]
+    done
+}

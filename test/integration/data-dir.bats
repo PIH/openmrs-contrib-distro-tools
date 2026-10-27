@@ -161,6 +161,52 @@ env_file() { echo "$OPENMRS_DOCKER_HOME/$NAME/env"; }
     ARCHIVE_PASSWORD=pw assert_extracts_to lean.7z lean "$FIXTURE_TREE_EXCLUDED"
 }
 
+# The fixture with links to an image's config, as in a Bahmni image's data directory (recreated on
+# every start), backed up leaving them out with --exclude, as well as a folder and a file.
+backup_excluding() { # <output>
+    ln -s /var/www/config/calc "$BATS_TEST_TMPDIR/data/calc"
+    mkdir -p "$BATS_TEST_TMPDIR/data/home/.OpenMRS"
+    ln -s /opt/openmrs/modules "$BATS_TEST_TMPDIR/data/home/.OpenMRS/modules"
+    ARCHIVE_PASSWORD=pw run backup "$1" --exclude=calc --exclude=home/.OpenMRS/modules/ \
+        --exclude=.hidden --exclude=complex_obs/1.jpg
+    assert_success
+}
+FIXTURE_TREE_EXCLUDING="./.openmrs-lib-cache
+./.openmrs-lib-cache/c.class
+./complex_obs
+./configuration
+./configuration/addresshierarchy
+./configuration/addresshierarchy/h.csv
+./frontend
+./frontend/f.js
+./home
+./home/.OpenMRS
+./modules
+./modules/a.omod
+./openmrs-runtime.properties
+./owa
+./owa/app.zip"
+
+@test "--exclude leaves out files, folders and links, which the link check then ignores (.tar.gz)" {
+    backup_excluding lean.tar.gz
+    assert_extracts_to lean.tar.gz lean "$FIXTURE_TREE_EXCLUDING"
+}
+
+@test "--exclude leaves out files, folders and links, which the link check then ignores (.7z)" {
+    backup_excluding lean.7z
+    ARCHIVE_PASSWORD=pw assert_extracts_to lean.7z lean "$FIXTURE_TREE_EXCLUDING"
+}
+
+@test "--exclude still refuses the outside links it doesn't leave out" {
+    ln -s /var/www/config/calc "$BATS_TEST_TMPDIR/data/calc"
+    ln -s /opt/openmrs/x.properties "$BATS_TEST_TMPDIR/data/x.properties"
+    run backup out.tar.gz --exclude=calc
+    assert_failure
+    assert_output --partial 'x.properties -> /opt/openmrs/x.properties'
+    refute_output --partial 'calc ->'
+    assert [ ! -e out.tar.gz ]
+}
+
 @test "ARCHIVE_PASSWORD never appears in a docker command line" {
     record_docker_argv
     ARCHIVE_PASSWORD=s3cret-archive-pw backup nightly.7z >/dev/null 2>&1
