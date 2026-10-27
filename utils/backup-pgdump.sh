@@ -10,7 +10,8 @@
 #   --output          .sql, .gz (gzipped SQL), or .7z (encrypted, holding <name>.sql, and streamed
 #                     in, so the dump is never on disk unencrypted)
 #   --exclude-table   a pg_dump table pattern to leave out, besides the defaults
-#   --no-default-excludes  keeps analytics_*, aggregated* and completeness*, left out by default
+#   --no-default-excludes  keeps analytics_*, left out by default. Not aggregated* or completeness*:
+#                     2.39+ has a real aggregatedataexchange table
 #   The password is the container's own POSTGRES_PASSWORD, read inside it.
 #   ARCHIVE_PASSWORD  password for a .7z (required for one; on 7z's command line while it runs)
 set -euo pipefail
@@ -43,7 +44,7 @@ case "$OUTPUT" in
     *.7z) [ -n "${ARCHIVE_PASSWORD:-}" ] || die "ARCHIVE_PASSWORD must be set to produce a .7z output" ;;
     *) die "--output must end in .sql, .gz or .7z" ;;
 esac
-! $DEFAULT_EXCLUDES || EXCLUDES+=('analytics_*' 'aggregated*' 'completeness*')
+! $DEFAULT_EXCLUDES || EXCLUDES+=('analytics_*')
 OUTPUT=$(abs_path "$OUTPUT")
 prepare_output_file "$OUTPUT"
 

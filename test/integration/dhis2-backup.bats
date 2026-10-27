@@ -41,15 +41,16 @@ psql_in() { # <name> <sql>
     assert_not_in_docker_argv "$secret"
 }
 
-@test "excludes analytics tables by default" {
+@test "excludes only analytics tables by default" {
     create_dhis2 "$A"
     start_db "$A"
-    psql_in "$A" 'CREATE TABLE marker (v text); CREATE TABLE analytics_2024 (v text); CREATE TABLE completeness_x (v text);' >/dev/null
+    # aggregatedataexchange is a real table from 2.39; DHIS2 won't start without it.
+    psql_in "$A" 'CREATE TABLE marker (v text); CREATE TABLE analytics_2024 (v text); CREATE TABLE aggregatedataexchange (v text); CREATE TABLE completenesstarget (v text);' >/dev/null
     run "$UTILS/backup-pgdump.sh" --container="$A-dhis2-db" --output=dump.sql
     assert_success
-    run grep -c 'CREATE TABLE public.marker' dump.sql
-    assert_output 1
-    run grep -E 'analytics_2024|completeness_x' dump.sql
+    run grep -c -E 'CREATE TABLE public\.(marker|aggregatedataexchange|completenesstarget) ' dump.sql
+    assert_output 3
+    run grep analytics_2024 dump.sql
     assert_failure
     run grep -E 'OWNER TO|GRANT ' dump.sql
     assert_failure
