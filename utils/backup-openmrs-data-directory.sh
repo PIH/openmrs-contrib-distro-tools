@@ -4,19 +4,22 @@
 # data.7z both hold data/), which extract-archive prints the path of.
 #
 # Usage: openmrs-utils backup-openmrs-data-directory --volume=<volume or dir> --output=<file>
-#            [--exclude-distribution-artifacts] [--allow-running]
+#            [--exclude-distribution-artifacts] [--exclude=<path>...] [--allow-running]
 #   --volume          an openmrs-data volume, or an absolute directory path
 #   --output          .tar.gz or .tgz, or .7z (encrypted; unlike tar, it doesn't keep file owners)
 #   --exclude-distribution-artifacts
 #                     leaves out what the OpenMRS image copies in on every start (the contents of
 #                     modules/, owa/, configuration/ and frontend/) and .openmrs-lib-cache, which
 #                     it rebuilds: smaller, and no stale .omods restored beside a newer distro's
+#   --exclude=<path>  leaves out <path>, relative to --volume (a file, folder or link), e.g. a link
+#                     the image recreates on every start; repeatable
 #   --allow-running   backs up even while a container is using --volume (the copy may then be
 #                     inconsistent, e.g. the search index)
 #   Refuses a directory holding symbolic links that point outside it (absolute, or climbing above
-#   it with ..), outside what --exclude-distribution-artifacts leaves out, listing them: what they
-#   point to wouldn't be backed up, or found once restored. Delete the ones not needed, or replace
-#   them with what they point to. Links within the directory are backed up and restored as links.
+#   it with ..), outside what --exclude-distribution-artifacts and --exclude leave out, listing
+#   them: what they point to wouldn't be backed up, or found once restored. Delete the ones not
+#   needed, leave them out with --exclude, or replace them with what they point to. Links within the
+#   directory are backed up and restored as links.
 #   ARCHIVE_PASSWORD  password for a .7z (required for one)
 #   SKIP_DISK_SPACE_CHECK=true  skips the free-space check
 set -euo pipefail
@@ -31,11 +34,20 @@ VOLUME=
 OUTPUT=
 EXCLUDE_DISTRIBUTION_ARTIFACTS=false
 ALLOW_RUNNING=false
+EXCLUDE_PATHS=()
 for arg in "$@"; do
     case "$arg" in
         --volume=*) VOLUME="${arg#*=}" ;;
         --output=*) OUTPUT="${arg#*=}" ;;
         --exclude-distribution-artifacts) EXCLUDE_DISTRIBUTION_ARTIFACTS=true ;;
+        --exclude=*)
+            path="${arg#*=}"
+            while [ "${path%/}" != "$path" ]; do path=${path%/}; done
+            case "/$path/" in
+                //|/./|/\/*) die "--exclude needs a path relative to --volume: $arg" ;;
+                */../*|*/./*) die "--exclude can't hold . or .. : $arg" ;;
+            esac
+            EXCLUDE_PATHS+=("$path") ;;
         --allow-running) ALLOW_RUNNING=true ;;
         *) die "unknown argument: $arg" ;;
     esac
@@ -63,6 +75,10 @@ if $EXCLUDE_DISTRIBUTION_ARTIFACTS; then
     # The four folders' contents only, so they're still restored, empty.
     EXCLUDES=("$TOP/modules/*" "$TOP/owa/*" "$TOP/configuration/*" "$TOP/frontend/*" "$TOP/.openmrs-lib-cache")
 fi
+for path in ${EXCLUDE_PATHS[@]+"${EXCLUDE_PATHS[@]}"}; do
+    LEAVE_OUT+=("$path")
+    EXCLUDES+=("$TOP/$path")
+done
 
 # Paths relative to the source, as find prints them under /s. Left-out folders are skipped whole,
 # though the four distribution folders themselves are kept, empty. A link's target is judged by its
@@ -81,7 +97,7 @@ LINKS=$(docker run --rm -v "$VOLUME:/s:ro" "$ALPINE_IMAGE" sh -c '
         if (out) print \$1 \" -> \" \$2
     }"
 ' sh ${LEAVE_OUT[@]+"${LEAVE_OUT[@]}"})
-[ -z "$LINKS" ] || die "symbolic links pointing outside $VOLUME, which a backup can't carry over (delete the ones not needed, or replace them with what they point to):
+[ -z "$LINKS" ] || die "symbolic links pointing outside $VOLUME, which a backup can't carry over (delete the ones not needed, leave them out with --exclude, or replace them with what they point to):
 $LINKS"
 
 # Uncompressed: an openmrs-data directory is mostly already-compressed files (images, PDFs).
