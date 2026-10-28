@@ -393,3 +393,11 @@ limit Java 8 can start under. The healthcheck asks for the login page, using onl
 two hours before counting failures, since an upgrade's database migrations run before Tomcat answers.
 `openmrs-docker wait` is for OpenMRS; for DHIS2, run
 `openmrs-utils wait-for-healthy --container=<instance>-dhis2`.
+
+Behind a reverse proxy that ends TLS and forwards plain HTTP to `DHIS2_HTTP_PORT`, Tomcat takes the
+scheme and client address from the proxy's `X-Forwarded-Proto` and `X-Forwarded-For` (a
+`RemoteIpValve`), so DHIS2's redirects stay on https and its session cookie is Secure. Caddy sends
+both by default; behind nginx, add `proxy_set_header X-Forwarded-Proto $scheme;`. The headers are
+trusted only from private, loopback and `100.64.0.0/10` addresses, which covers a proxy on the same
+host (through Docker's bridge) or on the local network, and are ignored from anywhere else. Set
+`DHIS2_BASE_URL` to the public `https://` URL as well.

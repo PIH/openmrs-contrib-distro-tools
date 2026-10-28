@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Tomcat's server.xml for DHIS2 (dhis2.yaml mounts it over the image's): one HTTP connector, with
      the characters DHIS2's API puts in query strings allowed (DHIS2's installation guide), no AJP,
-     and no shutdown port. DHIS2 is webapps/dhis.war, so it serves at /dhis. -->
+     and no shutdown port. DHIS2 is webapps/dhis.war, so it serves at /dhis.
+     RemoteIpValve: behind a proxy that ends TLS and forwards plain HTTP (Caddy), the scheme, port and
+     client address come from X-Forwarded-Proto and X-Forwarded-For, so DHIS2's redirects are https
+     and its session cookie Secure. Only from the valve's default internal proxies (private, loopback
+     and 100.64/10 addresses, which include Docker's bridge); from anywhere else the headers are
+     ignored. -->
 <Server port="-1" shutdown="SHUTDOWN">
   <Listener className="org.apache.catalina.startup.VersionLoggerListener" />
   <Listener className="org.apache.catalina.core.JreMemoryLeakPreventionListener" />
@@ -9,6 +14,7 @@
   <Service name="Catalina">
     <Connector port="8080" protocol="HTTP/1.1" connectionTimeout="20000" relaxedQueryChars="\ { } | [ ]" />
     <Engine name="Catalina" defaultHost="localhost">
+      <Valve className="org.apache.catalina.valves.RemoteIpValve" protocolHeader="X-Forwarded-Proto" />
       <Host name="localhost" appBase="webapps" unpackWARs="true" autoDeploy="false" />
     </Engine>
   </Service>
