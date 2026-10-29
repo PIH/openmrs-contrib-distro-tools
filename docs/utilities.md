@@ -28,6 +28,7 @@ Run one as `openmrs-utils <name> [options]` (a passthrough to `utils/<name>.sh`)
   (e.g. 7z) only printed a warning.
   Those that write a lot check the free disk space first, as `initialize` does
   ([Disk space](restore.md#disk-space)); `SKIP_DISK_SPACE_CHECK=true` goes ahead anyway.
+- Images: the tools run in the images named in `utils/lib/images.sh` ([below](#images)).
 - Writing a new one: the helpers they share, and these conventions, are in `utils/lib/common.sh`.
 
 ## The utilities
@@ -46,3 +47,21 @@ Run one as `openmrs-utils <name> [options]` (a passthrough to `utils/<name>.sh`)
 | `runtime-properties` | Sets aside, or sets keys in, a data directory's `openmrs-runtime.properties` (values on stdin) |
 | `clear-configuration-checksums` | Removes openmrs-module-initializer's `configuration_checksums`, so the next start reprocesses all configuration |
 | `wait-for-healthy` | Waits until a container's healthcheck reports healthy, failing at once if it stops |
+
+## Images
+
+The utilities run their tools in containers, from the images named in `utils/lib/images.sh`:
+
+| Image | Used for |
+|---|---|
+| `alpine:3.21` | file operations on volumes and directories |
+| `partnersinhealth/p7zip@sha256:...` | `.7z`/`.zip` archives (7-Zip 24.08, which reads a password from stdin). Pinned by digest, because the image has only moving tags |
+| `partnersinhealth/percona-0.1-4` | Percona XtraBackup's `innobackupex`, for MySQL 5.6 data directories (`backup-percona`, `convert-percona-backup`, `initialize`'s Percona restore) |
+| the database's own image | `mysqldump`, `mysql` and the like, from the server's image or `--client-image=` |
+
+The two `partnersinhealth` images are still built and published from `docker-openmrs`, not from
+this repo, and stay so until the `backup-tools` image is rebuilt here (TASKS-597): `build-images.yml`
+publishes only what is in `images/` and `services/<svc>/image/`, tagged by the content hash of its
+folder ([Developing this tool](development.md#image-tags)). The ones this repo does build, such as
+`pihx-runtime`, are referenced by that tag and never `latest`; `latest` follows the newest build of
+each, for people who `docker run` them and for tools that pull without a tag.

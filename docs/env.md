@@ -1,124 +1,116 @@
-# An instance's env file
+# An instance's files
 
-Each instance's settings are in `$OPENMRS_DOCKER_HOME/<name>/env`, which `create` writes (puppet
-writes it for the instances it manages).
+An instance is a directory under `PIHX_HOME` (default `~/pihx`) holding one env file per service,
+`instance.env` for the values every service shares, and a link to the checkout of this tool it runs.
+`pihx <name> create` writes them (Puppet writes them for the instances it manages).
+
+```
+~/pihx/lesotho/
+  instance.env         TZ, and, from openmrs-docker, DISTRO_SOURCE_DIR and SEED_IMAGE_*
+  openmrs-db.env       OPENMRS_DB_PASSWORD, OPENMRS_DB_ROOT_PASSWORD, ports...
+  openmrs.env          OPENMRS_IMAGE_NAME, OPENMRS_PIH_CONFIG, OMRS_EXTRA_*...
+  petl.env             (one file per service of the instance)
+  openmrs.override.yaml   optional: see below
+  .lock                the instance lock
+  tools -> /home/me/distro-tools    the checkout this instance runs
+```
+
+## The files present are the instance's services
+
+Adding `petl.env` adds PETL ([`add-service`](services.md#adding-and-removing-services) writes it);
+removing a service's file removes the service, when `pihx <name> update` brings the instance up and
+removes the containers of services it no longer has. Volumes are kept. A `<name>.env` that is not a
+service in the checkout is an error, naming the file; `instance` is `instance.env`, so it is not a
+service name.
 
 ## Format
 
-Each line is `KEY='value'`. bash sources the file and Docker Compose reads it, and a single-quoted
-value is literal to both, so passwords can contain `$`, `"`, backticks and backslashes. A value can't
-contain a single quote or a newline: `create` and `add-service` refuse one, naming the variable. If
-you edit `env` by hand, keep to single quotes (a double-quoted value is expanded by bash and by
-Compose, differently).
+Each line is `KEY='value'`. A single-quoted value is literal to Docker Compose, which reads the files,
+and to bash, so passwords can contain `$`, `"`, backticks and backslashes (not one at the very end).
+A value can't contain a single quote or a newline: `create` and `add-service` refuse one, naming the
+variable. If you edit a file by hand, keep to single quotes: Compose expands `$` references in an
+unquoted or double-quoted value.
+
+Each file holds only this instance's values for its service. Defaults are not copied into it: they
+stay in the checkout, in `services/<svc>/env.defaults` ([Writing a
+service](services.md#variables-envdefaults-and-the-instances-files)) and `instance.env.defaults`. So
+a variable absent from the instance's files has its default, and a new default arrives with the
+checkout.
 
 ## Where values come from
 
-- **Defaults** are only in `.env.defaults` files: `docker/instance.env.defaults` for the instance
-  itself (`TZ`, `DISTRO_SOURCE_DIR`, `SEED_IMAGE_*`), and `docker/services/<svc>.env.defaults` for each
-  service. The fragments require their variables (`${VAR?}`) rather than repeating a default.
-- **`create`** writes each of them, taking a value already set in your shell instead of its default.
-  A variable with no usable default (e.g. `PETL_MYSQL_PASSWORD`) has to be set, or `create` and
-  `add-service` refuse.
-- **`sync`** adds any variable the instance's fragments now require that `env` lacks, with its
-  default. Until then, every other command refuses, naming it.
-- **When a command runs**, `env` is sourced and wins over your shell. A variable meant only for one
-  run (`RESTORE_*_PATH` for `initialize`, `SMOKE_TESTS_OUTPUT_DIR`, ...) must therefore stay out of
-  `env`: set it on the command line.
+- **`create`** writes the values you have set in your shell, each to the file of the service that
+  knows it: `instance.env` for a name in `instance.env.defaults` (`TZ`); the service whose
+  `env.defaults` defines the name; otherwise the first service, by name, that captures its prefix
+  (`OMRS_EXTRA_*` for openmrs, `OPENMRS_DB_OPT_*` for openmrs-db) or whose compose files mention it. A
+  variable with no default that a service requires (e.g. `PETL_MYSQL_PASSWORD`) has to be set, or
+  `create` and `add-service` refuse, quoting the message. So a settings file you source first works,
+  as long as it `export`s each variable (plain `KEY=value` lines only set shell variables, which
+  `pihx` never sees):
 
-## What reaches the containers
+  ```bash
+  # kol-ci.sh
+  export OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr
+  export OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci
+  export OPENMRS_HTTP_PORT=9090
+  ```
 
-Containers don't get the whole file. A service whose container takes variables from `env` declares
-their name prefixes in its `.env.defaults`, as a `# container-env: PREFIX_ ...` line: `OMRS_` for
-openmrs (`OMRS_EXTRA_*` runtime properties, `OMRS_JAVA_SERVER_OPTS`), `OPENMRS_DB_OPT_` for
-openmrs-db, `PETL_`, `DATASOURCES_`, `SPRING_` and `LOGGING_` for petl, `SQLSERVER_LOGIN_` for
-sqlserver-setup. Another container in the same fragment gets its own file from a
-`# container-env <file>: PREFIX_ ...` line (`<file>.env`): openmrs-db-accounts gets the
-`OPENMRS_DB_ACCOUNT_` lines that way, so changing an account doesn't recreate (restart) openmrs-db. On every command, `openmrs-docker` copies the matching lines of `env` into `<svc>.env`
-(mode 600) in the instance directory, which is that fragment's `env_file`. Without the directive
-nothing from `env` is passed: the container gets only what its fragment names under `environment:`,
-which is how every secret it needs (DB passwords, OpenHIM and mediator settings) reaches it. Edit
-`env`, not the generated files.
+  ```bash
+  source kol-ci.sh
+  pihx lesotho create --services=openmrs-db,openmrs
+  ```
 
-A `# run-service: holds-lock` line in a service's `.env.defaults` makes it a job against the running
-instance (petl has it): `run-service` holds the instance's lock for the run
-([One command at a time](instances.md#one-command-at-a-time)), runs the setup services first, and
-starts, stops or recreates none of the instance's containers. A `# setup-services: <svc> ...` line
-names a fragment's one-shot setup services (`openmrs-db-accounts`, `sqlserver-setup`): `start` and
-`update` wait for them and fail, naming the one that didn't succeed; a lock-holding `run-service`
-runs each as a one-off with the current env, and doesn't run the service if one fails.
+  To start from another instance's values, copy its files: `cp ~/pihx/other/*.env ~/pihx/new/` before
+  its first start (after editing what must differ, such as ports).
+- **Later**, you edit the files, and `pihx <name> config` prints the result, secrets masked
+  (`--show-secrets` shows them). Any `pihx` command picks up the change, but a running container only
+  does when `start` or `update` recreates it (`restart` doesn't).
+- **For one command**, a few values come from your environment instead and are never written
+  (`RESTORE_*` for `openmrs-docker initialize`, `ARCHIVE_PASSWORD`, `PIHX_LOCK_WAIT`...).
+  Docker Compose runs with only what `pihx` sets, so your environment never changes an instance's
+  values.
+
+## What each container gets
+
+A service's containers get its `env.defaults`, then its `<svc>.env`, and whatever its compose file
+passes under `environment:` (`TZ` from `instance.env`; a value another service owns, such as the
+database password `openmrs` uses, which stays in the owner's file). Nothing else: there is no
+shared file to filter. Compose's own interpolation of the compose files sees every file of the
+instance, in this order, later winning: `instance.env.defaults`, each service's `env.defaults`,
+each `<svc>.env`, then `instance.env`. Because of that, variable names are prefixed by their
+service, and two services never define the same one.
+
+`<svc>.override.yaml` in the instance directory is a compose file applied after that service's own
+(and any `with-<other>.yaml`), for one-off changes that aren't env values: an extra port, a debug
+mount. It survives updates of the tool.
+
+## The checkout: tools
+
+`tools` is the checkout the instance runs: `pihx <name> ...` runs the instance's own `tools`, whichever
+`pihx` you typed (the launcher hands off to `tools/bin/pihx`). `create` links it to the checkout it
+was run from (on a Puppet host, `tools` is the checkout itself). To move an instance to another
+checkout, such as a worktree on a stable branch:
+
+```bash
+pihx <name> use-tools <path>
+pihx list        # the instances, their services and what their tools point to
+```
 
 ## Variables
 
-| Variable | Required? | Purpose |
+Each service's variables are in its README ([Services](services.md)). Those of the instance itself:
+
+| Variable | Default | Purpose |
 |---|---|---|
-| `OPENMRS_IMAGE_NAME` | Required | OpenMRS image, no tag |
-| `OPENMRS_PIH_CONFIG` | Optional | PIH config profile, for a distro that uses one; OpenMRS fails at startup if it needs one and this is missing |
-| `DISTRO_SOURCE_DIR` | For `build`, `--dev` and `--build` | Path to the distro repo checkout |
-| `SEED_IMAGE_NAME` | For `initialize`, unless each volume has a `RESTORE_*` source ([Initializing an instance](restore.md)) | Seed image, no tag |
-| `OPENMRS_DATA_OWNER` | Optional (the openmrs image's runtime `uid:gid`) | Owner `initialize` gives a restored `openmrs-data` |
-| `OPENMRS_CREATE_TABLES` | Optional (`true`) | Whether OpenMRS creates its schema on first start; `initialize` sets it to `false` when the database is restored without runtime properties |
-| `SERVICE_NAME` | Optional (the instance name) | Docker Compose project name |
-| `OPENMRS_IMAGE_TAG`, `SEED_IMAGE_TAG` | Optional (`latest`) | Image tags |
-| `OPENMRS_HTTP_PORT`, `OPENMRS_DB_PORT`, `OPENMRS_DEBUG_PORT` | Optional | Published ports; set them differently to run more than one instance at once |
-| `TZ` | Optional (`UTC`) | Containers' time zone. `openmrs-db` reads the rules from the host's `/usr/share/zoneinfo`, since older images' are out of date (`mysql:5.6` still has daylight saving time for Mexico City) |
-| `OPENMRS_DB_IMAGE_NAME` (`mysql`), `OPENMRS_DB_IMAGE_TAG` (`5.6`), `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD`, `OPENMRS_ACTIVITYLOG_ENABLED`, `OPENMRS_DB_MEMORY_LIMIT`, `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS` | Optional | Database and memory settings. The DB passwords can't contain a backslash |
-| `OPENMRS_DB_OPT_<option>` | Optional | MySQL/MariaDB server options ([below](#database-server-options-openmrs_db_opt_)) |
-| `SERVICES` | Optional (`openmrs-db,openmrs`), at `create` | The fragments in `docker/services/` to copy into the instance |
-| `OMRS_EXTRA_*` | Optional | Extra OpenMRS runtime properties, taken from your shell at `create` ([below](#runtime-properties-omrs_extra_)) |
-| `OPENMRS_DB_ACCOUNT_<ID>_*` | Optional | MySQL accounts that openmrs-db-accounts makes sure exist ([MySQL accounts](services.md#mysql-accounts)) |
-| `OPENMRS_DOCKER_LOCK_WAIT` | Optional (`0`), in your shell, not `env` | Seconds a command waits for another one holding the instance's lock, instead of refusing at once ([One command at a time](instances.md#one-command-at-a-time)) |
+| `TZ` | `UTC` | Containers' time zone |
+| `DISTRO_SOURCE_DIR` | none | `openmrs-docker`: the distro repo checkout for `build`, `--dev` and `--build` |
+| `SEED_IMAGE_NAME`, `SEED_IMAGE_TAG` | none, `latest` | `openmrs-docker initialize`: the seed image ([The OpenMRS front end](../openmrs/README.md)) |
 
-The optional services' variables are in [Optional services](services.md).
+And these, for one command, from your shell, never in the files:
 
-## Database server options (`OPENMRS_DB_OPT_*`)
-
-Each `OPENMRS_DB_OPT_<option>` variable becomes a `--<option>=<value>` flag on the
-`mysqld`/`mariadbd` command line, with `_` in the name turned into `-` (MySQL and MariaDB treat the
-two the same in option names). An empty value gives a bare flag: `OPENMRS_DB_OPT_skip_name_resolve=`
-becomes `--skip-name-resolve`. An option not set is left at the server's own default, so the same
-settings carry over to another MySQL or MariaDB version as long as each option exists there. To drop
-one of the defaults below, delete its line from `env`.
-
-`create` writes these defaults (from `docker/services/openmrs-db.env.defaults`), and takes any other
-`OPENMRS_DB_OPT_*` set in your shell:
-
-| Option | Default |
+| Variable | Purpose |
 |---|---|
-| `character_set_server` | `utf8` |
-| `collation_server` | `utf8_general_ci` |
-| `max_allowed_packet` | `1G` |
-| `innodb_buffer_pool_size` | `1G` |
-| `net_read_timeout`, `net_write_timeout` | `3600` |
-| `log_bin_trust_function_creators` | `1` (only matters when binary logging is on, e.g. by default on MySQL 8+: lets PETL create functions) |
-
-Binary logging, e.g. for a CDC tool such as Debezium, is left at the server's default: off on MySQL
-5.6 and MariaDB, on (30-day expiry) on MySQL 8+. To turn it on for 5.6:
-
-```bash
-OPENMRS_DB_OPT_log_bin='mysql-bin'
-OPENMRS_DB_OPT_server_id='1'
-OPENMRS_DB_OPT_binlog_format='ROW'
-OPENMRS_DB_OPT_expire_logs_days='10'            # MySQL 8+ / MariaDB 10.6+: binlog_expire_logs_seconds
-```
-
-To turn it off again, run [`purge-binlogs`](utilities.md) first, then remove those lines (or, on
-MySQL 8+, add `OPENMRS_DB_OPT_skip_log_bin=`) and restart: once binary logging is off, the server
-can't delete the binlogs it already has.
-
-## Runtime properties (`OMRS_EXTRA_*`)
-
-openmrs-core's `startup-init.sh` turns each `OMRS_EXTRA_<name>` into a runtime property: the name is
-lowercased, `_` becomes `.` and `__` becomes `_` (so `OMRS_EXTRA_pihmalawi_warehouse_connection_url`
-sets `pihmalawi.warehouse.connection.url`). Property keys with capital letters can't be set this way.
-
-Distro images already set some of these: the OpenMRS SDK's `build-distro` bakes each `property.<key>`
-from `openmrs-distro.properties` into the image as `ENV OMRS_EXTRA_<key with . replaced by _>`, e.g.
-`OMRS_EXTRA_pih_config` and `OMRS_EXTRA_initializer_startup_load`. To override one of those, use
-exactly that name, including its case. Environment variable names are case-sensitive, so
-`OMRS_EXTRA_INITIALIZER_STARTUP_LOAD` would be a second variable for the same property rather than an
-override, and on a first install openmrs-core keeps the image's value. Check an image's baked values
-with `docker image inspect <image> --format '{{range .Config.Env}}{{println .}}{{end}}' | grep OMRS_EXTRA_`.
-
-openmrs-core 2.6+ writes the runtime properties file once, on its first install, and afterwards only
-merges `OMRS_EXTRA_*` into it. For anything else in an existing file, see
-[`runtime-properties`](utilities.md).
+| `PIHX_HOME` | The directory of instances (default `~/pihx`; `~/openmrs` is the OpenMRS SDK's) |
+| `PIHX_LOCK_WAIT` | Seconds a command waits for another one holding the instance's lock, instead of refusing at once ([One command at a time](instances.md#one-command-at-a-time)) |
+| `PIHX_WAIT_TIMEOUT` | Seconds `wait` waits (default 3600) |
+| `PIHX_INITIALIZE_TIMEOUT`, `ARCHIVE_PASSWORD`, `OPENMRS_DATA_OWNER`, `SKIP_DISK_SPACE_CHECK` | `initialize` ([Initializing an instance](restore.md)) |

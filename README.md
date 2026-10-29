@@ -3,9 +3,13 @@
 Tools for running OpenMRS distributions in Docker: for development and testing on your own machine,
 in CI, and on servers.
 
-- **`openmrs-docker`** creates and runs *instances*: an OpenMRS distro image with its MySQL database
-  and, optionally, OpenHIM and its mediators, PETL and others, as one Docker Compose project. It
-  can fill a new instance from a seed image or from a server's backups.
+- **`pihx`** creates and runs *instances*: a set of services (an OpenMRS database and OpenMRS, OpenHIM
+  and its mediators, PETL and SQL Server, the AdvaPACS gateway and others) as one Docker Compose
+  project. Each service is a directory in this repo that holds everything about it; an instance is a
+  directory of one env file per service. `pihx` needs only Docker and a shell.
+- **`openmrs-docker`** is the OpenMRS front end on `pihx`, for day-to-day OpenMRS work: it creates
+  an instance with OpenMRS and its database by default, builds a distribution from source and runs
+  it, and fills an instance from a distro's seed image or a server's backups.
 - **`openmrs-utils`** runs standalone utilities for backing up, restoring and checking MySQL
   databases and OpenMRS data directories, on an instance or on a server installed directly on a host.
 - **`openmrs-sdk`** wraps common OpenMRS SDK commands, for distro development without Docker images.
@@ -23,7 +27,7 @@ git clone https://github.com/PIH/openmrs-contrib-distro-tools.git "$DISTRO_TOOLS
 echo "export PATH=\"$DISTRO_TOOLS_HOME/bin:\$PATH\"" >> ~/.bashrc   # ~/.zshrc for zsh
 ```
 
-Open a new terminal, and `openmrs-docker`, `openmrs-utils` and `openmrs-sdk` are available. You
+Open a new terminal, and `pihx`, `openmrs-docker`, `openmrs-utils` and `openmrs-sdk` are available. You
 need Docker with the Compose plugin, 2.20 or later. To update the tool, `git pull` in it.
 
 ### On Windows
@@ -52,7 +56,8 @@ You only need to do this once — `openmrs-contrib-distro-tools` is now installe
 
 ## Quick start
 
-Create an instance of a distro, fill it from the distro's nightly seed image, and start it:
+Create an instance of an OpenMRS distro, fill it from the distro's nightly seed image, and start it,
+with `openmrs-docker`, the OpenMRS front end:
 
 ```bash
 OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr \
@@ -65,25 +70,41 @@ openmrs-docker lesotho start
 openmrs-docker lesotho wait        # until OpenMRS has started
 ```
 
-Then go to `http://localhost:8080/openmrs`. Afterwards:
+Then go to `http://localhost:8080/openmrs`. Instances live in `~/pihx` (`PIHX_HOME`; `~/openmrs`
+is the OpenMRS SDK's), and `pihx` works on them directly: it is what `openmrs-docker` runs, and what
+servers use. Afterwards:
 
 ```bash
-openmrs-docker lesotho logs        # follow the logs
-openmrs-docker lesotho stop        # the data stays in the instance's volumes
-openmrs-docker lesotho destroy     # removes the instance and its data
+pihx lesotho logs        # follow the logs
+pihx lesotho status      # the containers, and what holds the instance's lock
+pihx lesotho update      # pull the images, and recreate what changed
+pihx lesotho stop        # the data stays in the instance's volumes
+pihx lesotho destroy     # removes the instance and its data
+pihx list                # every instance
 ```
 
-Run `openmrs-docker` or `openmrs-utils` with no arguments for every command and option.
+`pihx` alone creates an instance of any services, here the same one without the front end's
+defaults and seed handling:
+
+```bash
+OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr \
+OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci \
+pihx lesotho2 create --services=openmrs-db,openmrs
+pihx lesotho2 start
+```
+
+Run `pihx`, `openmrs-docker` or `openmrs-utils` with no arguments for every command and option.
 
 ## Documentation
 
 | | |
 |---|---|
-| [Running an instance](docs/instances.md) | Creating, starting, updating and building instances; the instance lock; changing DB passwords |
-| [The env file](docs/env.md) | An instance's settings: where they come from, every variable, database server options, runtime properties |
+| [Running an instance](docs/instances.md) | Creating, starting, updating and pinning instances; the instance lock |
+| [An instance's files](docs/env.md) | `instance.env` and one env file per service: where values come from, what a container sees, overrides, the checkout an instance runs |
+| [Services](docs/services.md) | The services, adding and removing them, and how to write one; each service's README has its variables |
 | [Initializing an instance](docs/restore.md) | Filling a new instance from a seed image, dumps, data directories or Percona backups, and checking the result |
-| [Utilities](docs/utilities.md) | `openmrs-utils`: backups, restores and checks |
-| [Optional services](docs/services.md) | OpenHIM and its mediators, the AdvaPACS gateway, PETL and its SQL Server |
-| [CI workflows](docs/ci-workflows.md) | The reusable workflows: build and release, base image variants, seed images, smoke tests, scanning |
+| [The OpenMRS front end](openmrs/README.md) | `openmrs-docker`: what it adds to `pihx`, `RESTORE_*`, building and running a distro from source |
+| [Utilities](docs/utilities.md) | `openmrs-utils`: backups, restores and checks, and the images they run |
+| [CI workflows](docs/ci-workflows.md) | The reusable workflows: build and release, base image variants, seed images, smoke tests, scanning; and the helper images this repo publishes |
 | [The openmrs-sdk wrapper](docs/sdk.md) | `openmrs-sdk` commands |
-| [Developing this tool](docs/development.md) | Code layout and the test suite |
+| [Developing this tool](docs/development.md) | Code layout, image tags and the test suite |

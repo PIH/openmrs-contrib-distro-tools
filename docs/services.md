@@ -1,364 +1,191 @@
-# Optional services
+# Services
 
-Besides `openmrs-db` and `openmrs`, `docker/services/` has OpenHIM and its mediators, the AdvaPACS
-gateway, a modality simulator, a biometrics (fingerprint) server, PETL, SQL Server, and the smoke tests ([CI workflows](ci-workflows.md#running-smoke-tests-locally)).
+An instance is a set of services, and a service is a directory under `services/` in this repo.
+Everything that exists only because of one service lives in its directory, so removing a service
+means removing it.
 
-## Attaching a service
+| Service | What it is | Docs |
+|---|---|---|
+| `openmrs-db` | The OpenMRS database (MySQL or MariaDB), and the setup that keeps its declared accounts in place | [README](../services/openmrs-db/README.md) |
+| `openmrs` | The OpenMRS application (requires `openmrs-db`) | [README](../services/openmrs/README.md) |
+| `openhim` | OpenHIM: core, console and MongoDB. Also the AdvaPACS mediator, `openhim-advapacs-mediator` | [README](../services/openhim/README.md) |
+| `advapacs-gateway` | AdvaPACS's on-premises gateway for DICOM from local modalities | [README](../services/advapacs-gateway/README.md) |
+| `modality-simulator` | A fake CR, US and CT modality, for testing the gateway | [README](../services/modality-simulator/README.md) |
+| `biometrics` | The pih-biometrics fingerprint server | [README](../services/biometrics/README.md) |
+| `sqlserver` | Microsoft SQL Server, and the setup for its settings, databases and logins | [README](../services/sqlserver/README.md) |
+| `petl` | The PETL ETL job, run against `openmrs-db` and writing to SQL Server | [README](../services/petl/README.md) |
+| `openmrs-smoke-tests` | The PIH EMR smoke tests, run against the instance's OpenMRS | [CI workflows](ci-workflows.md#running-smoke-tests-locally) |
 
-Choose an instance's services with `SERVICES=<comma-separated>` at `create` (default
-`openmrs-db,openmrs`), or attach and detach one later:
+## Adding and removing services
+
+An instance's services are the `<service>.env` files in its directory ([An instance's
+files](env.md)). Choose them at `create`, or add and remove them later:
 
 ```bash
-openmrs-docker <name> add-service <svc>
-openmrs-docker <name> remove-service <svc>
+pihx <name> create --services=openmrs-db,openmrs,petl,sqlserver
+pihx <name> add-service <svc>
+pihx <name> remove-service <svc>
 ```
 
-Each service is a fragment, `docker/services/<svc>.yaml`, with its defaults in `<svc>.env.defaults`,
-which `create` and `add-service` write into the instance's `env` ([The env file](env.md)).
-`add-service` refuses a fragment whose services don't fit the instance's others (e.g. a mediator
-without `openhim`), and changes nothing. `remove-service` removes only that fragment's containers,
-and keeps its volumes, naming them. A profiled service (PETL, the smoke tests) is a job that `start`
-doesn't bring up: run it with `openmrs-docker <name> run-service [--pull] <svc> [command...]`
-(`--pull` pulls its image first; a plain `pull` skips profiled services).
+(`openmrs-docker create <name>` takes `SERVICES=<comma-separated>` instead, default
+`openmrs-db,openmrs`.) `add-service` writes `<svc>.env` from the values in your environment that
+the service knows, and refuses a service whose `requires` the instance lacks (e.g. a mediator
+without `openhim`), changing nothing. `remove-service` removes that service's containers, keeps its
+volumes (naming them) and deletes its env file. Deleting the file by hand and running
+`pihx <name> update` does the same, since the files present are the instance's services.
 
-## Scripts and commands in a service directory
+A job (PETL) isn't brought up by `start`: run it with `pihx <name> run-service [--pull] <svc>
+[command...]` (`--pull` pulls its image first; a plain `pull` skips it).
 
-A service directory may hold `summary.sh` (what `pihx <instance> summary` prints: `[section]` lines,
-one sorted fact per line, no secrets), `commands/<name>` (run with `pihx <instance> <service>
-<name> [args...]`; `pihx <instance> <service>` lists them with the first comment line of each) and
-`restore/prepare` and `restore/finish`. They are executable files, run by `pihx` inside its container
-with the instance's merged values as environment variables, plus `PIHX_INSTANCE`, `PIHX_INSTANCE_DIR`,
-`PIHX_TOOLS`, `PIHX_SERVICE` (the script's own service), `SERVICE_NAME` (the instance's name, which compose
-files interpolate) and `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE` and `COMPOSE_ENV_FILES`. A plain
-`docker compose ...` therefore targets the instance, but Compose has no variable for the project
-directory, so pass `--project-directory "$PIHX_INSTANCE_DIR"` to resolve the compose files' relative
-paths as `pihx` does.
+## Writing a service
 
-A command holds the instance lock while it runs, unless one of its first lines is `# pihx: no-lock`
-(for one that only reads). Its exit status is `pihx`'s.
-
-**The environment holds the instance's secrets** (database passwords among them): a script must
-never print it, so no `env`, `set`, `printenv` or `set -x`, and no message that quotes a value.
-
-## MySQL accounts
-
-`openmrs-db`'s fragment has a one-shot `openmrs-db-accounts`. On every `start`, and first for any
-service that depends on it, it makes sure each account declared in `env` exists:
+### The directory
 
 ```
-OPENMRS_DB_ACCOUNT_<ID>_USER='<user>'
-OPENMRS_DB_ACCOUNT_<ID>_PASSWORD='<password>'
-OPENMRS_DB_ACCOUNT_<ID>_GRANTS='<privileges> ON <db>.<table>[;<privileges> ON <db>.<table>...]'
-OPENMRS_DB_ACCOUNT_<ID>_DATABASES='<db> ...'   # optional: created if missing
+services/<svc>/
+  service.yaml             the manifest (required)
+  compose.yaml             its containers (required)
+  env.defaults             its defaults, literal KEY=value lines (required)
+  with-<other>.yaml        what it adds to another service's containers, when the instance has both
+  restore/                 overlays `initialize` adds, and the optional prepare and finish hooks
+  summary.sh               what `pihx <instance> summary` prints for it
+  commands/<name>          `pihx <instance> <svc> <name>`
+  scripts/                 scripts its containers mount
+  README.md                its docs
 ```
 
-It creates `<user>@'%'` if missing, sets its password to the one in `env` (so a rotated password, or a
-restored database's old one, is replaced), creates the databases and applies the grants. A
-declaration missing a value changes nothing; anything else wrong fails with MySQL's own error. Either
-way its log (`openmrs-docker <name> logs openmrs-db-accounts`) says why. Accounts that aren't declared, and the same user's accounts for other
-hosts, are left alone: removing one is up to you. `root` and the OpenMRS account (`OPENMRS_DB_USER`) can't be declared: their passwords are the instance's own (`OPENMRS_DB_*`). If it fails, so do `start` and `update`, naming it,
-and a lock-holding `run-service` (petl) doesn't run.
+The name is lowercase letters, digits, `-` and `_`, starting with a letter or digit, and can't be a
+`pihx` command (`start`, `config`, ...) or `instance`. Only `service.yaml`, `compose.yaml` and
+`env.defaults` are required; the rest is found by its presence. `pihx/tests/test_service_tree.py`
+and `test/static/services.bats` check every service in the tree against the conventions below.
 
-Accounts declared directly in `openmrs-db.env` also reach the database container (it reads that
-file too), so changing one recreates `openmrs-db` on the next `start`/`update`. A service's account
-belongs in its own `with-openmrs-db.yaml`, from values in its own env file, as petl's does: then only
-`openmrs-db-accounts` sees it, and changing it leaves the database running.
+### The manifest
 
-## OpenHIM and mediators
+`service.yaml` has these fields and no others; an unknown key is an error naming it.
 
-`openhim` is the standard OpenHIM install (MongoDB, openhim-core and openhim-console). Each mediator is
-its own fragment, and more than one can be attached to the same OpenHIM.
-
-OpenHIM's MongoDB database is named `openhim` (it was `openhim-development` before TASKS-596). An
-instance created before starts on an empty database: `openhim-setup` sets the admin password again
-and each mediator registers and provisions its channels and clients on its next start, but the
-transaction log, audit events, metrics and anything changed by hand in the console aren't carried
-over. The old database stays in the `mongo-data` volume, to copy with `mongodump` / `mongorestore
---nsFrom 'openhim-development.*' --nsTo 'openhim.*'` or drop.
-
-OpenHIM's clients authenticate with Basic auth or custom tokens; its JWT authentication is off,
-since nothing uses it and it would otherwise accept a token signed with a shared secret for any
-client.
-
-Inside the instance's Docker network, OpenHIM and its mediators talk plain HTTP, including
-openhim-core's admin API; TLS for access from outside is the reverse proxy's job. `openhim.yaml`
-publishes only what's used from outside, and its comments say why each one is:
-
-| Variable | Default | Published for |
-|---|---|---|
-| `OPENHIM_CONSOLE_HOST_PORT` | `9000` | the admin console |
-| `OPENHIM_ADMIN_API_HOST_PORT` | `8081` | the admin API, which the console (running in the admin's browser) calls directly |
-| `OPENHIM_ROUTER_HTTP_HOST_PORT` | `5001` | the router, for external systems calling a channel. A proxy in front should forward only those channels' paths: some channels are public |
-
-Behind a proxy, tell the console where the browser finds the admin API, and set the console's own
-address for links openhim-core generates. The defaults are for a browser on the same machine:
-
-| Variable | Default |
+| Field | |
 |---|---|
-| `OPENHIM_CONSOLE_API_PROTOCOL`, `OPENHIM_CONSOLE_API_HOST`, `OPENHIM_CONSOLE_API_PORT`, `OPENHIM_CONSOLE_API_PATH` | `http`, `localhost`, `OPENHIM_ADMIN_API_HOST_PORT`, empty |
-| `OPENHIM_CONSOLE_URL` | `http://localhost:<OPENHIM_CONSOLE_HOST_PORT>` |
+| `description` | Required: one line, what the service is |
+| `requires` | Services that must also be in the instance (e.g. `[openmrs-db]`); `create` and `add-service` refuse without them, and they start first |
+| `setup` | Containers of its `compose.yaml` that are one-shot setup, e.g. `[openmrs-db-accounts]`. `start` and `update` wait for them and fail, naming the one that didn't succeed; a job's run runs each as a one-off first |
+| `capture-env` | Name prefixes (e.g. `[OMRS_EXTRA_]`). At `create` and `add-service`, a variable in your environment with such a prefix goes into the service's `.env` even though no default or compose file names it |
+| `job` | `true` for a job: `start` doesn't bring it up and `run-service` runs it holding the instance lock |
+| `backup` | `none`. Backups come with TASKS-597; until then a service says it has nothing to back up |
+| `restore` | What `initialize` accepts, as a list of entries: `names` (the entries of the `--from` folder), `overlay` (a compose file under `restore/`) and optionally `after` (another, run after it, e.g. an account reset) |
 
-For example, with the proxy serving the console at `https://openhim.example.org` and forwarding
-`/api` there to the admin API: `OPENHIM_CONSOLE_API_PROTOCOL=https`,
-`OPENHIM_CONSOLE_API_HOST=openhim.example.org`, `OPENHIM_CONSOLE_API_PORT=443`,
-`OPENHIM_CONSOLE_API_PATH=/api`, `OPENHIM_CONSOLE_URL=https://openhim.example.org`.
-
-Logging in to the console needs that proxy, serving the admin API over HTTPS. openhim-core's session
-cookie is Secure, and core trusts the proxy's `X-Forwarded-Proto` to know the request came in over
-HTTPS. Caddy sends it by default; behind nginx, add `proxy_set_header X-Forwarded-Proto $scheme;`.
-Without it, or with the browser going straight to the published port, every login fails, and
-openhim-core logs "Cannot send secure cookie over unencrypted connection".
-
-The following example will create an instance with OpenHIM and its mediators installed, configured
-for Lesotho:
-
-```bash
-export OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr
-export OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci
-export SEED_IMAGE_NAME="partnersinhealth/lesotho-emr-seed-lesotho"
-export OPENHIM_PASSWORD=<pick-a-password>
-export ADVAPACS_MEDIATOR_INBOUND_SECRET=<pick-a-secret>
-export ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD=<pick-a-password>
-export ADVAPACS_CLIENT_ID=<advapacs-client-id>
-export ADVAPACS_CLIENT_SECRET=<advapacs-client-secret>
-export OPENMRS_USERNAME=<username-for-mediator-access-to-openmrs>
-export OPENMRS_PASSWORD=<password-for-mediator-access-to-openmrs>
-export ADVAPACS_PATIENT_IDENTIFIER_SYSTEM="http://www.pih.org/identifiers/lesotho/emr-id"
-export SERVICES=openmrs-db,openmrs,openhim,openhim-advapacs-mediator
-openmrs-docker create <name>
-openmrs-docker <name> initialize
-openmrs-docker <name> start
+```yaml
+description: The OpenMRS database (MySQL or MariaDB), and the setup that makes sure its accounts exist
+capture-env: [OPENMRS_DB_OPT_]
+setup: [openmrs-db-accounts]
+backup: none
+restore:
+  - names: [openmrs-db.sql, openmrs-db.sql.gz]
+    overlay: restore/dump.yaml
 ```
 
-## AdvaPACS gateway
+### Variables: env.defaults and the instance's files
 
-`advapacs-gateway` is AdvaPACS's on-premises gateway, from its
-[`advahealthsolutions/advapacs-gateway`](https://hub.docker.com/r/advahealthsolutions/advapacs-gateway)
-image ([AdvaPACS's install guide](https://docs.advapacs.com/getting-started/connect-modalities/install-the-gateway/docker)).
-It receives studies from the site's modalities over DICOM (and HL7, if set up) and uploads them to
-AdvaPACS, connecting out over HTTPS only. It doesn't need `openhim` or the mediator: the mediator
-carries orders, the gateway carries images.
+`env.defaults` holds the defaults every instance starts from, as plain `KEY=value` lines, with
+comments on lines of their own. **Defaults are literals**: no `${OTHER}`, no `${VAR:-default}`. (A
+reference would be resolved before the instance's own files are read, so an instance changing
+`OTHER` wouldn't carry through. Derive a value in `compose.yaml` instead, as `${A:-${B}}`. A
+single-quoted value may hold a `${...}` that is for the application, as petl's `PETL_MYSQL_OPTIONS`
+does.) A value the instance must set has no default: `compose.yaml` requires it, as
+`${NAME:?message saying what it is}`, so a missing one fails with that message.
 
-Create the gateway in AdvaPACS (Configuration > Gateways > +), which shows its region and access
-key; the secret is shown only once.
+Variables keep their service's prefix (`OPENMRS_DB_*`, `PETL_*`), because every file of an instance is
+interpolated at once and a name two services define would collide; the tests check that none does. A
+service defines the values it owns once: `openmrs` reads the database password `openmrs-db` owns,
+from `openmrs-db.env`.
 
-| Variable | Default | |
-|---|---|---|
-| `ADVAPACS_GATEWAY_REGION` | must be set | the gateway's region |
-| `ADVAPACS_GATEWAY_ACCESS_KEY_ID` | must be set | the gateway's access key ID |
-| `ADVAPACS_GATEWAY_ACCESS_KEY_SECRET` | must be set | the gateway's access key secret |
-| `ADVAPACS_GATEWAY_IMAGE_NAME`, `ADVAPACS_GATEWAY_IMAGE_TAG` | `advahealthsolutions/advapacs-gateway`, `1.22.1` | to upgrade, change the tag in the instance's `env` and run `update` |
+**The container convention.** A container gets its service's `env.defaults`, then its `<svc>.env`
+(absent is fine), and whatever its `compose.yaml` passes under `environment:`. Nothing from another
+service's file reaches it, nor `instance.env`, unless passed explicitly (`TZ: ${TZ}`). Every container
+of a service declares exactly:
 
-Everything else is configured in AdvaPACS, and the gateway picks it up within a few minutes of
-starting, when it shows as Online:
-
-- **Ports.** Each Local AE (Configuration > Local AEs) and each gateway HL7 inbound service has its
-  own port, which the gateway opens. The gateway uses the host's network, so these are the host's
-  ports: nothing is published, but the host's firewall must let the modalities reach them. Give
-  modalities the host's IP address, with the Local AE's AE title and port, and check with a C-ECHO.
-- **Modalities.** Each one is a Remote AE (Configuration > Remote AEs), whose AE title must match the
-  modality's exactly, case included. Its worklist and query settings are there too.
-- **Data directory.** Leave it at the default, `/opt/AdvaHealthSolutions/AdvaPACSGateway`: that's the
-  `advapacs-gateway-data` volume, which holds received studies until they're uploaded.
-
-AdvaPACS asks for 4 GB of memory (8 GB recommended) and 50 GB of disk (200 GB recommended) for the
-gateway, and an accurate clock (NTP): its authentication fails if the host's clock drifts.
-
-```bash
-export ADVAPACS_GATEWAY_REGION=<region>
-export ADVAPACS_GATEWAY_ACCESS_KEY_ID=<access-key-id>
-export ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=<access-key-secret>
-openmrs-docker <name> add-service advapacs-gateway
-openmrs-docker <name> start
+```yaml
+    env_file:
+      - path: ${PIHX_TOOLS}/services/<svc>/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/<svc>.env
+        required: false
 ```
 
-## Modality simulator
+`PIHX_TOOLS` is the instance's checkout, `PIHX_INSTANCE_DIR` its directory, and `SERVICE_NAME` its
+name, which names containers: `container_name: ${SERVICE_NAME}-<container>`. A compose file has no
+relative host paths (Compose would resolve them against the instance directory), so what it mounts
+from the checkout is `${PIHX_TOOLS}/services/<svc>/scripts/<file>`.
 
-`modality-simulator` is a fake CR, US and CT imaging room, for testing the order → worklist →
-images flow without real equipment, from
-[PIH/modality-simulator](https://github.com/PIH/modality-simulator). It reads the
-AdvaPACS gateway's DICOM worklist; click **Acquire** in its console (`http://<host>:8095`) and it
-sends images stamped with that entry's patient and accession number back to the gateway.
+### Contributing to another service: `with-<other>.yaml`
 
-| Variable | Default | |
-|---|---|---|
-| `MODALITY_SIMULATOR_GATEWAY_AE` | must be set | the gateway's Local AE title in AdvaPACS |
-| `MODALITY_SIMULATOR_GATEWAY_HOST`, `MODALITY_SIMULATOR_GATEWAY_PORT` | `host.docker.internal`, `11112` | where the gateway listens: its Local AE's port, on this host by default |
-| `MODALITY_SIMULATOR_CALLING_AE` | `SIM_MODALITY` | the simulator's AE title |
-| `MODALITY_SIMULATOR_MODALITIES` | `CR,US,CT` | which worklist entries it shows |
-| `MODALITY_SIMULATOR_STATION_AE_FILTER` | empty | only entries scheduled for this station AE |
-| `MODALITY_SIMULATOR_INSTITUTION` | `OpenMRS Modality Simulator` | written into every image |
-| `MODALITY_SIMULATOR_AUTO_ACQUIRE`, `MODALITY_SIMULATOR_POLL_SECONDS` | `false`, `30` | acquire every new entry on each poll, without clicking |
-| `MODALITY_SIMULATOR_HOST_PORT` | `8095` | the console's port on the host |
-| `MODALITY_SIMULATOR_IMAGE_DIR` | `./modality-simulator-images` | DICOM files to send instead of generated images; relative to the instance directory |
-| `MODALITY_SIMULATOR_IMAGE_NAME`, `MODALITY_SIMULATOR_IMAGE_TAG` | `partnersinhealth/modality-simulator`, `latest` | |
+Where a service adds something to another's containers, it does so in
+`services/<svc>/with-<other>.yaml`: a compose file applied only when the instance has both, after
+every service's `compose.yaml` and before the instance's override files. It adds only to the other
+service's containers, and the other service never names it. [petl's](../services/petl/with-openmrs-db.yaml)
+adds PETL's MySQL account to `openmrs-db-accounts`' `environment:`, built from PETL's own values, so
+changing PETL's account doesn't recreate the database container.
 
-In AdvaPACS, add the simulator as a Remote AE (Configuration > Remote AEs) whose AE title exactly
-matches `MODALITY_SIMULATOR_CALLING_AE`, and let it query the worklist. Until then, its console
-says the gateway rejected the association.
+### Restore
 
-It doesn't depend on the `advapacs-gateway` service, so it also works with a gateway elsewhere
-(set `MODALITY_SIMULATOR_GATEWAY_HOST`). With no files in its image directory it generates
-images; any files you add there must be de-identified.
+`pihx <instance> initialize --from <folder>` gives each service the entry of the folder its manifest's
+`restore` names. For each, the service's overlay (a compose file in `restore/`, added to the
+instance's files for that one run) does the work in containers, given these variables, `<SVC>` being
+the service's name in capitals with `-` as `_`:
 
-```bash
-export MODALITY_SIMULATOR_GATEWAY_AE=PIH_KOL-CI_GW
-openmrs-docker <name> add-service modality-simulator
-openmrs-docker <name> start
-```
+| Variable | |
+|---|---|
+| `<SVC>_RESTORE_PATH` | the entry's path on the host |
+| `<SVC>_RESTORE_NAME` | the entry's name, e.g. `openmrs-db.sql.gz` |
+| `<SVC>_RESTORE_ARCHIVE` | for an archive, the `archive.<ext>` name to mount it as |
 
-## Biometrics
+Entry names start with the service's name. Overlays mount the entry read-only (with long-syntax bind
+mounts, so a missing source fails rather than becoming an empty directory) and may declare staging
+volumes of their own, which are removed afterwards. Two optional hooks, executable files, are found by
+their presence:
 
-`biometrics` is the [pih-biometrics](https://github.com/PIH/pih-biometrics) fingerprint server: it
-stores fingerprint templates and enrolls and matches them for OpenMRS (pihcore). Scanning happens on
-the user's workstation, through the fingerprint client there; this server never sees a scanner. It
-publishes nothing: OpenMRS reaches it on the instance's network, so set these two runtime properties
-on the instance (pihcore reads them in lowercase from the release with UHM-9581 on):
+- `restore/prepare` runs first, before any volume exists, when the service has an entry. It prints
+  `KEY=value` lines: values for that restore only (`openmrs`'s finds the owner of the restored
+  files).
+- `restore/finish` runs once the restore has worked, e.g. to record in the instance's files that the
+  database wasn't empty (`openmrs-db`'s). If anything fails, `initialize` removes the containers and
+  every volume it made, and undoes what a `finish` wrote to the instance's env files. A hook sets a
+  value with `python3 -m pihx.envfile set <file> <NAME> <value>`.
 
-```bash
-OMRS_EXTRA_pihcore_biometrics_subjecturl='http://biometrics:9000/subject'
-OMRS_EXTRA_pihcore_biometrics_matchurl='http://biometrics:9000/match'
-```
+What the entries look like to a user is in [Initializing an instance](restore.md).
 
-| Variable | Default | |
-|---|---|---|
-| `BIOMETRICS_LICENSE_BASE64` | must be set | the Neurotechnology license file, base64-encoded: `base64 -w0 <file>.lic` |
-| `BIOMETRICS_MATCHING_THRESHOLD`, `BIOMETRICS_MATCHING_SPEED`, `BIOMETRICS_TEMPLATE_SIZE` | `72`, `LOW`, `LARGE` (the app's own defaults) | speed: `LOW`, `MEDIUM` or `HIGH`; size: `COMPACT`, `SMALL`, `MEDIUM` or `LARGE` |
-| `BIOMETRICS_IMAGE_NAME`, `BIOMETRICS_IMAGE_TAG` | `ghcr.io/pih/pih-biometrics`, `latest` | `latest` is the newest master build; releases are tagged with their version |
+### Summary and commands
 
-The image is private (it contains Neurotechnology's libraries), so `pull` needs the host's Docker
-credentials for `ghcr.io`, for the user that runs `openmrs-docker`. The license is an internet
-license: it checks in with Neurotechnology over outbound HTTP (port 80) every few minutes, and runs on
-one machine at a time. The container keeps the same machine identity when it's recreated because its
-hostname is fixed and the identity Neurotechnology's library keeps in `/var/tmp` is on the
-`biometrics-licensing` volume. Losing that volume, or moving the instance to another host, makes it a
-new machine: it can't get the license until the old activation expires (about 30–40 minutes).
-The `biometrics-data` volume holds the fingerprint templates, which are patient data: back it up
-wherever the instance's data matters. To check the server can enroll and match:
-`docker exec <name>-biometrics pih-biometrics-selftest`.
+`summary.sh` is run by `pihx <instance> summary`: it prints `[section]` lines, then one sorted fact per
+line, so a before-and-after pair can be diffed. **No secrets and no row contents.**
 
-```bash
-export BIOMETRICS_LICENSE_BASE64=$(base64 -w0 <file>.lic)
-openmrs-docker <name> add-service biometrics
-openmrs-docker <name> start
-```
+`commands/<name>` are executable files, run with `pihx <instance> <svc> <name> [args...]` on instances
+that have the service. `pihx <instance> <svc>` lists them with the first comment line after the
+shebang of each, so write one. A command holds the instance lock while it runs, so no other command
+changes the instance meanwhile, unless one of its first ten lines is `# pihx: no-lock`, which a
+command that only reads should carry. Its exit status is `pihx`'s.
 
-## SQL Server
+### What a script's environment holds
 
-`sqlserver` is Microsoft's SQL Server (`mcr.microsoft.com/mssql/server:2025-latest`;
-`SQLSERVER_IMAGE_TAG`), with its data in the `sqlserver-data` volume. Its one-shot `sqlserver-setup`
-runs on every `start`, and first for any service that depends on it:
+Every script (restore hooks, `summary.sh`, commands) runs inside `pihx`'s container with the instance's
+merged values as environment variables (the defaults, the `<svc>.env` files and `instance.env`, as
+`pihx <instance> config` prints them), plus:
 
-- server settings: SIMPLE recovery for new databases, cost threshold for parallelism 25, max degree
-  of parallelism 0, max server memory `SQLSERVER_MEMORY_MB` (2048), at least `SQLSERVER_TEMPDB_FILES`
-  (4) tempdb files;
-- each database in `SQLSERVER_DATABASES` (space-separated), created if missing;
-- each login declared in `env`, created if missing, its password kept to the one in `env`, and a user
-  with the role in each of its databases (created if missing; an existing user, e.g. in a database
-  restored from another server, is remapped to this server's login):
+| Variable | |
+|---|---|
+| `PIHX_INSTANCE`, `PIHX_INSTANCE_DIR` | the instance's name and directory |
+| `PIHX_TOOLS`, `PIHX_HOME` | the instance's checkout, and the directory of instances |
+| `PIHX_SERVICE` | the script's own service |
+| `SERVICE_NAME` | the instance's name, as compose files interpolate it |
+| `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE`, `COMPOSE_ENV_FILES` | so a plain `docker compose ...` targets the instance |
 
-```
-SQLSERVER_LOGIN_<ID>_USER='<login>'
-SQLSERVER_LOGIN_<ID>_PASSWORD='<password>'
-SQLSERVER_LOGIN_<ID>_DATABASES='<db> ...'
-SQLSERVER_LOGIN_<ID>_ROLE='db_owner'          # the default
-```
+Compose has no variable for the project directory, so pass `--project-directory "$PIHX_INSTANCE_DIR"`
+to resolve the compose files' paths as `pihx` does.
 
-As for MySQL accounts, logins that aren't declared are left alone, anything wrong fails with SQL
-Server's own error, and a failure stops `start`, `update` and a lock-holding `run-service`. SQL
-Server's policy also refuses a password containing its login's name. `sa` can't be declared (it's the
-server's admin, set by `SQLSERVER_SA_PASSWORD`). `SQLSERVER_SA_PASSWORD` has no default; SQL Server needs passwords of at least 8 characters,
-with three of upper case, lower case, digits and symbols. The instance's services reach it on 1433;
-`SQLSERVER_PUBLISHED_PORT` (default 1433, or `<address>:<port>`) is where it's reachable from outside
-Docker, e.g. for reporting tools. `SQLSERVER_MEMORY_LIMIT` (3g) is the container's memory limit.
+**The environment holds the instance's secrets** (database passwords among them). A script must never
+print it: no `env`, `set`, `printenv` or `set -x`, and no message that quotes a value.
 
-`sqlserver` replaces `petl-sqlserver`. To move an instance that has it: `openmrs-docker <name>
-remove-service petl-sqlserver`, then with `SQLSERVER_SA_PASSWORD` and `PETL_MYSQL_PASSWORD` set in your
-shell, `openmrs-docker <name> add-service sqlserver` and `openmrs-docker <name> sync` (the newer petl
-fragment). Then, in `env`:
+### Checking a new service
 
-- set `PETL_SQLSERVER_HOST='sqlserver'`;
-- set `PETL_SQLSERVER_USER='petl'` and `PETL_MYSQL_USER='petl'`: older instances have `sa` and the
-  OpenMRS account there, and `sa` can't be a declared login;
-- add the `OPENMRS_DB_ACCOUNT_PETL_*` and `SQLSERVER_LOGIN_PETL_*` lines from
-  `docker/services/petl.env.defaults`, with the same users and passwords.
-
-Then run PETL to rebuild the data (or copy it from the `petl-sqlserver-data` volume yourself).
-
-## PETL
-
-`petl` runs the [petl](https://github.com/PIH/petl) ETL pipeline against the instance's `openmrs-db`,
-writing to SQL Server. It's a job: run it with `openmrs-docker <name> run-service --pull petl`. Its
-image is an ETL project's (e.g. `partnersinhealth/ces-etl`, `partnersinhealth/apzu-etl`), built on
-`partnersinhealth/petl` with that project's jobs, datasources and `application.yml`; it runs
-`PETL_FULL_REFRESH_JOBS`, retrying up to `PETL_MAX_RETRIES` times, then exits.
-
-Its runs reuse one container, `<name>-petl`, kept between them and recreated only when its image or
-settings change, so its log builds up across runs like a running service's: `openmrs-docker <name>
-logs petl` (it follows: Ctrl-C), or `docker logs <name>-petl`. `docker inspect -f '{{.State.ExitCode}}
-{{.State.FinishedAt}}' <name>-petl` gives the last run's result. `stop` removes the container (and
-its log). When a run recreates it, the image it was made from is removed, as `update` does
-([Updating](instances.md#updating)). `run-service petl <command...>` runs that command in a one-off
-container instead.
-
-```bash
-export OPENMRS_IMAGE_NAME=partnersinhealth/ces-emr
-export PETL_IMAGE_NAME=partnersinhealth/ces-etl
-export PETL_FULL_REFRESH_JOBS="create-partitions.yml refresh-cesci-data.yml"
-export PETL_MYSQL_PASSWORD=<pick-a-password>
-export PETL_SQLSERVER_PASSWORD=<pick-a-password>
-export SQLSERVER_SA_PASSWORD=<pick-a-password>
-export PETL_SQLSERVER_DATABASE=openmrs_ces_ci
-export SERVICES=openmrs-db,openmrs,petl,sqlserver
-openmrs-docker create <name>
-openmrs-docker <name> start
-openmrs-docker <name> run-service --pull petl
-```
-
-- **Configuration:** the petl container gets `env`'s `PETL_*`, `DATASOURCES_*`, `SPRING_*` and
-  `LOGGING_*` lines. PETL reads any of its properties by its Spring environment-variable name (`.` and
-  `-` become `_`, uppercased), so e.g. `DATASOURCES_OPENMRS_CESCI_HOST` sets
-  `datasources.openmrs.cesci.host`, overriding the image's `application.yml`.
-- **Its accounts:** PETL connects to MySQL as `PETL_MYSQL_USER` (`petl`) and to SQL Server as
-  `PETL_SQLSERVER_USER` (`petl`). `PETL_MYSQL_PASSWORD` has no default and must be set.
-  `PETL_SQLSERVER_PASSWORD` is needed only by an ETL that writes to SQL Server (not, e.g., an
-  apzu-etl run filling only its MySQL reporting database); with `sqlserver` in the instance,
-  `sqlserver-setup` refuses to start without it (`SQLSERVER_LOGIN_PETL_PASSWORD must be set`).
-  ETL projects' datasource files paste these into YAML unquoted, so keep them to letters, digits
-  and `-`, `_`, `.`, `+`, `=`, `~` (a ` #` cuts one short; `: ` or a leading `"`, `!`, `&`, `*`,
-  `%`, `@`, `[`, `{` breaks the file). petl's defaults declare the matching MySQL account (`OPENMRS_DB_ACCOUNT_PETL_*`, `ALL ON
-  *.*`) and SQL Server login (`SQLSERVER_LOGIN_PETL_*`, `db_owner` on `PETL_SQLSERVER_DATABASE`,
-  default `openmrs_reporting`), and petl waits for both setups before it runs. If you change a PETL
-  user or password in `env`, change its `OPENMRS_DB_ACCOUNT_PETL_*` or `SQLSERVER_LOGIN_PETL_*` line
-  too.
-- **MySQL connection options:** `PETL_MYSQL_OPTIONS`, which ETL projects' `application-docker.yml`
-  uses for their MySQL datasources. The default (the legacy servers' options) ends with
-  `serverTimezone=${user.timezone}`, which PETL resolves to its JVM's zone, the instance's `TZ`.
-  Keep `serverTimezone` if you change the options: without it, PETL's MySQL driver goes by the
-  server's zone abbreviation, refusing some (e.g. `EDT`) and misreading others (`CST` as Chicago,
-  an hour off from Mexico City for part of the year).
-- **A MySQL reporting database:** only for an ETL with a MySQL reporting stage (apzu-etl):
-  `PETL_MYSQL_REPORTING_DATABASE` is created and granted to PETL's account.
-- **Job history:** by default PETL keeps it in H2, in the `petl-data` volume. To keep it in SQL Server
-  instead (tables `petl_database_change_log*` and `petl_job_execution` in its database, where reports
-  and monitoring can read them, as on the legacy test and production servers), add to `env`:
-
-  ```
-  SPRING_DATASOURCE_URL='jdbc:sqlserver://sqlserver:1433;databaseName=<PETL_SQLSERVER_DATABASE>'
-  SPRING_DATASOURCE_USERNAME='<PETL_SQLSERVER_USER>'
-  SPRING_DATASOURCE_PASSWORD='<PETL_SQLSERVER_PASSWORD>'
-  SPRING_DATASOURCE_DRIVER_CLASS_NAME='com.microsoft.sqlserver.jdbc.SQLServerDriver'
-  SPRING_DATASOURCE_PLATFORM='mssql'
-  SPRING_JPA_HIBERNATE_DIALECT='org.hibernate.dialect.SQLServer2012Dialect'
-  SPRING_LIQUIBASE_DATABASE_CHANGE_LOG_TABLE='petl_database_change_log'
-  SPRING_LIQUIBASE_DATABASE_CHANGE_LOG_LOCK_TABLE='petl_database_change_log_lock'
-  ```
-
-  (puppet's `openmrs_docker::service::petl` writes these with `job_store => 'sqlserver'`).
-- **A remote SQL Server:** without the `sqlserver` service, set `PETL_SQLSERVER_HOST` and
-  `PETL_SQLSERVER_PORT` (defaults `sqlserver`, 1433), the user and the password; the login has to
-  exist there.
-- **Runs and deploys:** a `run-service petl` holds the instance's lock for the whole run, so a
-  deploy (`pull`, `start`, ...) waits for it or refuses. It runs against the running instance:
-  `openmrs-db` (and `sqlserver`, if the instance has it) must be up, OpenMRS needn't be
-  ([One command at a time](instances.md#one-command-at-a-time)).
+`test/run unit` loads every manifest and checks the conventions above; `test/run static` validates each
+service's compose files against its defaults. Give `test/static/services.bats` placeholder values
+for what the service requires and has no default for. The static docs test checks the links in the
+service's `README.md`.

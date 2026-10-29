@@ -153,7 +153,7 @@ images). Set `OPENMRS_DATA_OWNER=<uid>:<gid>` to choose it instead.
 It also moves a restored `openmrs-runtime.properties` aside to `openmrs-runtime.properties.restored`
 (`openmrs-utils runtime-properties --set-aside`). That file holds the source server's connection
 settings, which would win over this instance's: openmrs-core 2.6+ only merges `OMRS_EXTRA_*` into an
-existing file. OpenMRS writes a fresh one from the instance's `env` on its first start.
+existing file. OpenMRS writes a fresh one from the instance's values (`openmrs.env`) on its first start.
 
 With no runtime properties in `openmrs-data` (set aside, or nothing restored), OpenMRS would take
 the database for a new install and create every table again, so once `openmrs-db` is restored,
@@ -192,7 +192,7 @@ used core's defaults (`OpenmrsConstants.ENCRYPTION_KEY_DEFAULT` / `ENCRYPTION_VE
 those.
 
 To set a property on an instance you manage by hand (a local or dev instance), add it to the
-instance's `env` and start it again:
+instance's `openmrs.env` and start it again:
 
 ```bash
 # lowercase keys: OMRS_EXTRA_<key>, with '_' written as '__' and '.' as '_'
@@ -203,13 +203,13 @@ OMRS_JAVA_SERVER_OPTS='-Dfile.encoding=UTF-8 -server -Djava.security.egd=file:/d
 ```
 
 ```bash
-openmrs-docker <name> start    # not restart: restart doesn't pick up env changes
+pihx <name> start    # not restart: restart doesn't pick up env changes
 ```
 
 `OMRS_EXTRA_*` values are merged into the runtime properties file on every start, overriding it
-([env](env.md#runtime-properties-omrs_extra_)); removing one later leaves its last value in the
-file. On an instance whose `env` puppet manages (mirebalais-puppet's `openmrs_docker` module), set
-them with the module's `runtime_properties` / `java_system_properties` instead: puppet rewrites `env`
+([openmrs](../services/openmrs/README.md#runtime-properties-omrs_extra_)); removing one later leaves its last value in the
+file. On an instance whose env files puppet manages (mirebalais-puppet's `openmrs_docker` module), set
+them with the module's `runtime_properties` / `java_system_properties` instead: puppet rewrites `openmrs.env`
 on every apply. Once you've finished comparing, delete `openmrs-runtime.properties.restored` (it
 holds the source's secrets).
 

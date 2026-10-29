@@ -374,15 +374,15 @@ a time, so jobs for the same host queue whichever repo they come from.
   manifest only; an app's deploy passes its own instance and `host: false`. A deploy for a held instance skips entirely; one for
   `all` warns about held instances, which puppet skips. A running deploy is never cancelled; per
   repository and instance, only the newest pending deploy waits. For `openmrs_docker` instances,
-  puppet runs `openmrs-docker <instance> update`. With `run-etl`, the legacy host-installed PETL
+  puppet runs `pihx <instance> update`. With `run-etl`, the legacy host-installed PETL
   (`/opt/petl/bin/execute-full.sh`).
 - **`run-petl-via-runner.yml`** (`runner-label`, `instance`): runs PETL for an `openmrs_docker`
   instance, as `sudo -u <instance> /home/<instance>/bin/run-petl`. Puppet's
   `openmrs_docker::service::petl` installs that script and, with `ci_runner => true`, the one sudoers
-  rule allowing it. The script runs `openmrs-docker <instance> run-service --pull petl`, which holds
+  rule allowing it. The script runs `pihx <instance> run-service --pull petl`, which holds
   the instance's lock (a deploy waits for it). PETL's output, which may contain data, isn't in the
   job's log: it's in the instance's `petl` container log on the host, `docker logs <instance>-petl`
-  ([PETL](services.md#petl)). The job
+  ([PETL](../services/petl/README.md)). The job
   fails when PETL does, so the author of the change that triggered it is notified.
 
 An ETL project calls it after building its image:
@@ -400,6 +400,32 @@ An ETL project calls it after building its image:
       notify_ci_dashboard: true
     secrets: inherit
 ```
+
+## Helper images
+
+`.github/workflows/build-images.yml` builds and publishes the images this repo defines: every
+`images/<name>/` and every `services/<svc>/image/`, as `partnersinhealth/<name>` (multi-arch: amd64
+and arm64). It is not reusable; it runs here, on pushes to `main` and on pull requests that touch
+those folders, `lib/image-tag.sh` or the workflow itself.
+
+- **Tags are content hashes.** An image's tag is `lib/image-tag.sh <folder>` of its folder
+  ([Developing this tool](development.md#image-tags)), so one commit changing the folder means one
+  new tag, and `pihx` computes the same tag from its checkout to find the image it needs.
+- **A tag is never overwritten.** For each folder, the workflow asks Docker Hub whether the tag
+  exists (`docker manifest inspect`). Only a definite "no such manifest" or "manifest unknown" means
+  it doesn't; a repository that doesn't exist yet (the first publish) is told apart by Docker Hub's
+  API answering 404. Any other failure (network, rate limit, an auth error, a 5xx) is retried
+  three times and then fails the run, without building or pushing: it must never lead to a push over a
+  tag that exists. A tag that exists isn't rebuilt.
+- **On `main`**, a missing tag is built and pushed, then `latest` is moved to the image's current tag
+  (for people and for tools that pull without a tag). **On a pull request** the image is built
+  without being pushed, to check it builds, and `latest` is left alone. Two runs on `main` queue
+  rather than race to push the same tag.
+- It needs `DOCKERHUB_PASSWORD` as a secret (the `pihci` account).
+
+`p7zip` and `percona-0.1-4`, which the utilities use, are not built here yet: they stay with
+`docker-openmrs` until the `backup-tools` image is rebuilt in this repo ([Utilities](utilities.md#images)).
+Seed images are a different thing, built by [`build-seeded-image.yml`](#seed-image-builds).
 
 ## Vulnerability scanning
 

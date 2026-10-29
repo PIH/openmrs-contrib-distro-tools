@@ -1,12 +1,12 @@
 #!/usr/bin/env bats
-# The README and docs/ link only to files and headings that exist.
+# The README, docs/ and each README under openmrs/ and services/ link only to files and headings that exist.
 
 load ../helpers
 
 @test "every relative link in the README and docs/ resolves, headings included" {
     command -v python3 >/dev/null || skip "needs python3"
     cd "$REPO_ROOT"
-    run python3 - README.md docs/*.md openmrs/README.md <<'PYTHON'
+    run python3 - README.md docs/*.md openmrs/README.md services/*/README.md <<'PYTHON'
 import os, re, sys
 def slug(heading):  # GitHub's anchor for a heading
     return re.sub(r'[^\w\- ]', '', heading.strip().lower()).replace(' ', '-')
