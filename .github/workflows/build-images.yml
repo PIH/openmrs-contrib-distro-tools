@@ -3,7 +3,8 @@ name: Build helper images
 # Every images/<name>/ and services/<name>/image/ is published as partnersinhealth/<name>, tagged by the
 # content hash of its folder (lib/image-tag.sh). A tag that exists is never rebuilt or overwritten. On
 # main, missing tags are pushed and `latest` is moved to each image's current tag; pull requests build
-# without pushing. (Seed images are built by build-seeded-image.yml, not here.)
+# without pushing. A push from outside this workflow could still overwrite a tag with identical
+# content at the same moment; that is accepted. (Seed images are built by build-seeded-image.yml, not here.)
 
 on:
   push:
@@ -66,7 +67,23 @@ jobs:
             tag=$(lib/image-tag.sh "$dir")
             platforms=linux/amd64,linux/arm64
             echo "::group::$image:$tag"
-            if docker manifest inspect "$image:$tag" >/dev/null 2>&1; then
+            # Only a definite "not found" means the tag is missing. Any other failure (network,
+            # auth or rate limit, Hub 5xx) is retried, then fails the run: it must never lead to
+            # a push over a tag that exists.
+            published=unknown
+            for attempt in 1 2 3; do
+              if err=$(docker manifest inspect "$image:$tag" 2>&1 >/dev/null); then
+                published=yes; break
+              elif grep -q -i -E 'no such manifest|manifest unknown|not found' <<< "$err"; then
+                published=no; break
+              fi
+              echo "docker manifest inspect $image:$tag failed (attempt $attempt): $err" >&2
+              sleep $((attempt * ${RETRY_DELAY:-5}))
+            done
+            if [ "$published" = unknown ]; then
+              echo "::error::Can't tell whether $image:$tag is published; not building or pushing it"
+              exit 1
+            elif [ "$published" = yes ]; then
               echo "$image:$tag is published; not rebuilt"
             elif [ "$PUSH" = true ]; then
               docker buildx build --push --platform "$platforms" -t "$image:$tag" "$dir"

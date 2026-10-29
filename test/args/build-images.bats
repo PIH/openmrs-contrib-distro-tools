@@ -18,6 +18,7 @@ echo "$*" >> "$STUB_LOG"
 # `manifest inspect <image>` succeeds for the images in STUB_EXISTING (space-separated).
 if [ "$1 $2" = "manifest inspect" ]; then
     for e in $STUB_EXISTING; do [ "$e" = "$3" ] && exit 0; done
+    echo "Error: no such manifest: $3" >&2
     exit 1
 fi
 exit 0
@@ -69,7 +70,7 @@ build() { run bash -c "$script"; }
     cat > "$BATS_TEST_TMPDIR/bin/docker" <<'STUB'
 #!/bin/sh
 echo "$*" >> "$STUB_LOG"
-[ "$1 $2" = "manifest inspect" ] && exit 1
+[ "$1 $2" = "manifest inspect" ] && { echo "no such manifest" >&2; exit 1; }
 [ "$1 $2" = "buildx build" ] && exit 1
 exit 0
 STUB
@@ -77,4 +78,20 @@ STUB
     assert_failure
     run cat "$STUB_LOG"
     refute_output --partial "imagetools"
+}
+
+@test "build-images fails, without building or pushing, when the manifest check fails for another reason" {
+    cat > "$BATS_TEST_TMPDIR/bin/docker" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$STUB_LOG"
+[ "$1 $2" = "manifest inspect" ] && { echo "toomanyrequests: rate limit" >&2; exit 1; }
+exit 0
+STUB
+    RETRY_DELAY=0 PUSH=true build
+    assert_failure
+    assert_output --partial "Can't tell whether"
+    run cat "$STUB_LOG"
+    refute_output --partial "build"
+    refute_output --partial "imagetools"
+    assert_equal "$(grep -c 'manifest inspect' "$STUB_LOG")" 3
 }
