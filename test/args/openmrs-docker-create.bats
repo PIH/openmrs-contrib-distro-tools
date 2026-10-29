@@ -286,7 +286,8 @@ assert_env_files_unchanged() {
     run env -u ADVAPACS_GATEWAY_REGION -u ADVAPACS_GATEWAY_ACCESS_KEY_ID -u ADVAPACS_GATEWAY_ACCESS_KEY_SECRET \
         "$BIN/openmrs-docker" "$NAME" add-service advapacs-gateway
     assert_failure
-    assert_output --regexp 'ADVAPACS_GATEWAY_REGION( is missing a value)?: must be set'
+    # Compose names whichever required variable it reaches first.
+    assert_output --regexp 'ADVAPACS_GATEWAY_(REGION|ACCESS_KEY_ID|ACCESS_KEY_SECRET)( is missing a value)?: must be set'
     assert [ ! -e "$(env_file_of "$NAME" advapacs-gateway)" ]
     assert_env_files_unchanged
     ADVAPACS_GATEWAY_REGION=usa1 ADVAPACS_GATEWAY_ACCESS_KEY_ID=key-id ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=key-secret \
