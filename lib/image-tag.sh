@@ -11,14 +11,20 @@ if [ $# -ne 1 ] || [ ! -d "$1" ]; then
     exit 2
 fi
 
-# macOS has shasum, not sha256sum.
-if command -v sha256sum >/dev/null 2>&1; then
-    sha256() { sha256sum | cut -c1-64; }
-else
-    sha256() { shasum -a 256 | cut -c1-64; }
-fi
+# The hash of stdin. macOS has shasum, not sha256sum. No pipe, so a read error is a failure.
+sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then sum=$(sha256sum); else sum=$(shasum -a 256); fi
+    echo "${sum%% *}"
+}
 
 cd "$1"
-find . -type f | sed 's|^\./||' | LC_ALL=C sort | while IFS= read -r path; do
-    printf '%s  %s\n' "$(sha256 < "$path")" "$path"
-done | sha256 | cut -c1-12
+# Each step on its own, not one pipeline: sh has no pipefail, and a file that can't be listed or
+# read must fail the script rather than leave a tag that matches nothing.
+files=$(find . -type f) || { echo "error: can't list $1" >&2; exit 1; }
+[ -n "$files" ] || { echo "error: no files in $1" >&2; exit 1; }
+listing=$(printf '%s\n' "$files" | sed 's|^\./||' | LC_ALL=C sort | while IFS= read -r path; do
+    hash=$(sha256 < "$path") || { echo "error: can't read $1/$path" >&2; exit 1; }
+    printf '%s  %s\n' "$hash" "$path"
+done) || exit 1
+tag=$(printf '%s\n' "$listing" | sha256)
+echo "$tag" | cut -c1-12

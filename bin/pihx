@@ -6,6 +6,8 @@
 # pihx hands to Compose resolve on the host. pihx <instance> ... runs the instance's own checkout
 # (its tools link), whichever bin/pihx was typed.
 set -eu
+# A relative cd would otherwise follow CDPATH and print the directory it picked.
+unset CDPATH
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -27,28 +29,52 @@ PIHX_HOME=$(cd -P "$PIHX_HOME" && pwd)
 
 # Hand-off: an instance runs the checkout its tools link names. Only for a valid instance name, so
 # the argument can't point outside PIHX_HOME. A tools link that resolves nowhere is pihx's to report.
-case ${1-} in
-    '' | [!a-z0-9]* | *[!a-z0-9_-]*) ;;
-    *)
-        if instance_tools=$(cd -P "$PIHX_HOME/$1/tools" 2>/dev/null && pwd) \
-                && [ "$instance_tools" != "$PIHX_TOOLS" ]; then
-            [ -x "$instance_tools/bin/pihx" ] || die "$PIHX_HOME/$1/tools has no bin/pihx"
-            exec "$instance_tools/bin/pihx" "$@"
-        fi
-        ;;
+# Once only: the launcher handed to never hands off again, so links can't send it round in a loop.
+if [ -z "${PIHX_HANDED_OFF-}" ]; then
+    case ${1-} in
+        '' | [!a-z0-9]* | *[!a-z0-9_-]*) ;;
+        *)
+            if instance_tools=$(cd -P "$PIHX_HOME/$1/tools" 2>/dev/null && pwd) \
+                    && [ "$instance_tools" != "$PIHX_TOOLS" ]; then
+                [ -x "$instance_tools/bin/pihx" ] || die "$PIHX_HOME/$1/tools has no bin/pihx"
+                PIHX_HANDED_OFF=1
+                export PIHX_HANDED_OFF
+                exec "$instance_tools/bin/pihx" "$@"
+            fi
+            ;;
+    esac
+fi
+
+# The socket is mounted into the container, so only a local one will do.
+docker_host=${DOCKER_HOST:-unix:///var/run/docker.sock}
+case $docker_host in
+    unix://*) socket=${docker_host#unix://} ;;
+    *) die "pihx needs a local Docker socket; DOCKER_HOST is $DOCKER_HOST" ;;
 esac
+# GNU stat, then BSD (macOS).
+socket_gid=$(stat -c %g "$socket" 2>/dev/null || stat -f %g "$socket" 2>/dev/null) \
+    || die "can't read the Docker socket $socket"
 
 image=pihx-runtime:$("$PIHX_TOOLS/lib/image-tag.sh" "$PIHX_TOOLS/images/pihx-runtime")
 if ! docker image inspect "$image" >/dev/null 2>&1; then
     echo "Building $image" >&2
-    docker build -q -t "$image" "$PIHX_TOOLS/images/pihx-runtime" >/dev/null
+    docker build -q -t "$image" "$PIHX_TOOLS/images/pihx-runtime" >/dev/null \
+        || die "couldn't build $image"
 fi
 
-socket=/var/run/docker.sock
-case ${DOCKER_HOST-} in unix://*) socket=${DOCKER_HOST#unix://} ;; esac
-# GNU stat, then BSD (macOS).
-socket_gid=$(stat -c %g "$socket" 2>/dev/null || stat -f %g "$socket" 2>/dev/null) \
-    || die "can't read the Docker socket $socket"
+# From here "$@" is the container's command, so options for docker run can go in front of it.
+set -- "$image" python3 -m pihx "$@"
+
+# The caller's Docker config, for registry credentials (Puppet writes the instance user's). Mounted
+# aside, read-only: pihx installs a copy without credential helpers, whose binaries the image lacks,
+# and keeps ~/.docker writable for buildx.
+unset PIHX_DOCKER_CONFIG
+docker_config=${DOCKER_CONFIG:-$HOME/.docker}/config.json
+if [ -f "$docker_config" ]; then
+    PIHX_DOCKER_CONFIG=/run/pihx/docker-config.json
+    export PIHX_DOCKER_CONFIG
+    set -- -v "$docker_config:$PIHX_DOCKER_CONFIG:ro" "$@"
+fi
 
 # The container's working directory is the caller's when it's mounted; PIHX_CWD carries it anyway,
 # so relative paths can be resolved as on the host.
@@ -81,4 +107,4 @@ exec docker run --rm -i $tty \
     -v "$PIHX_TOOLS:$PIHX_TOOLS:ro" -v "$PIHX_HOME:$PIHX_HOME" \
     -w "$workdir" \
     -e HOME=/tmp -e PYTHONPATH="$PIHX_TOOLS" -e PYTHONDONTWRITEBYTECODE=1 $env_args \
-    "$image" python3 -m pihx "$@"
+    "$@"

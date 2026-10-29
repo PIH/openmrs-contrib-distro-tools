@@ -4,7 +4,7 @@ import os
 import re
 import sys
 
-from pihx import __version__
+from pihx import __version__, runtime
 
 USAGE = """\
 Usage:
@@ -89,7 +89,11 @@ def dispatch(argv):
 
 def main(argv):
     try:
+        # The launcher mounts the caller's Docker config here; set up before any docker command.
+        docker_config = os.environ.get("PIHX_DOCKER_CONFIG")
+        if docker_config:
+            runtime.install_docker_config(docker_config, os.environ["HOME"])
         return dispatch(argv)
-    except CliError as e:
+    except (CliError, runtime.SetupError) as e:
         print(f"error: {e}", file=sys.stderr)
-        return e.status
+        return getattr(e, "status", 1)

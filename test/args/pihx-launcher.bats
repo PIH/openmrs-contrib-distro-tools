@@ -42,6 +42,18 @@ copy_tools() { # <dir>
     refute_output "$first"
 }
 
+@test "image-tag fails on a file it can't read, rather than print a tag" {
+    [ "$(id -u)" -ne 0 ] || skip "root reads any file"
+    mkdir d
+    echo a > d/a; echo b > d/b
+    chmod 000 d/b
+    run "$REPO_ROOT/lib/image-tag.sh" d
+    chmod 600 d/b
+    assert_failure
+    assert_line --index 1 "error: can't read d/b"
+    refute_output --regexp '^[0-9a-f]{12}$'
+}
+
 @test "pihx version prints a version and exits 0" {
     run "$BIN/pihx" version
     assert_success
@@ -50,7 +62,7 @@ copy_tools() { # <dir>
 
 @test "exit status is passed through" {
     run "$BIN/pihx" nosuch status
-    assert_failure
+    assert_failure 2
     assert_output --partial 'error:'
 }
 
@@ -63,6 +75,43 @@ copy_tools() { # <dir>
     assert_success
     assert [ -f "$PIHX_HOME/written" ]
     assert_equal "$(stat -c %u:%g "$PIHX_HOME/written")" "$(id -u):$(id -g)"
+}
+
+@test "a runtime image that fails to build ends with an error line" {
+    copy_tools tools
+    echo 'RUN exit 3' >> tools/images/pihx-runtime/Dockerfile
+    run tools/bin/pihx version
+    assert_failure
+    assert_line --index -1 --regexp '^error: couldn.t build pihx-runtime:[0-9a-f]{12}$'
+}
+
+@test "a non-local DOCKER_HOST is refused" {
+    DOCKER_HOST=tcp://127.0.0.1:2375 run "$BIN/pihx" version
+    assert_failure
+    assert_output 'error: pihx needs a local Docker socket; DOCKER_HOST is tcp://127.0.0.1:2375'
+
+    # A unix:// one is used as the socket.
+    DOCKER_HOST=unix:///var/run/docker.sock run "$BIN/pihx" version
+    assert_success
+}
+
+@test "the caller's registry credentials reach the container, without credential helpers" {
+    # A fake credential; the probe prints only the config's keys.
+    export DOCKER_CONFIG="$BATS_TEST_TMPDIR/docker-config"
+    mkdir -p "$DOCKER_CONFIG"
+    printf '%s' '{"auths": {"ghcr.io": {"auth": "ZmFrZTpmYWtl"}}, "credsStore": "desktop",' \
+        ' "credHelpers": {"gcr.io": "gcloud"}}' > "$DOCKER_CONFIG/config.json"
+    copy_tools tools
+    printf '%s\n' 'import json, os' 'from pihx import cli' 'cli.main(["version"])' \
+        'path = os.path.join(os.environ["HOME"], ".docker", "config.json")' \
+        'config = json.load(open(path))' \
+        'print("keys:", sorted(config), "auths:", sorted(config["auths"]))' \
+        'print("docker dir writable:", os.access(os.path.dirname(path), os.W_OK))' \
+        > tools/pihx/__main__.py
+    run tools/bin/pihx
+    assert_success
+    assert_line "keys: ['auths'] auths: ['ghcr.io']"
+    assert_line "docker dir writable: True"
 }
 
 @test "works from a directory outside the mounted paths" {
@@ -93,4 +142,10 @@ copy_tools() { # <dir>
     run a/bin/pihx inst version
     assert_success
     assert_output --partial "tools: $b"
+
+    # Hands off once only, so links can't loop.
+    a=$(cd -P a && pwd)
+    PIHX_HANDED_OFF=1 run a/bin/pihx inst version
+    assert_success
+    assert_output --partial "tools: $a"
 }
