@@ -250,3 +250,7 @@ what is counted; an `openmrs-data` archive, extracted within its volume, about h
 too), so for dumps this catches "nowhere near enough" rather than a tight fit. `extract-archive`,
 `backup-percona`, `convert-percona-backup` and `backup-openmrs-data-directory` check their output's
 filesystem the same way. `SKIP_DISK_SPACE_CHECK=true` goes ahead anyway.
+
+A `.gz` entry's uncompressed size is read from the gzip trailer, which holds it modulo 4 GiB: for a
+file that is 4 GiB or more uncompressed, the estimate is too low (by a multiple of 4 GiB), so check
+the free space yourself before restoring a dump that large.
