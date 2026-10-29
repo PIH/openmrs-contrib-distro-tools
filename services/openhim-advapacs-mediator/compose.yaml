@@ -1,0 +1,43 @@
+# The AdvaPACS radiology-order mediator. Needs the openhim service: it registers with openhim-core,
+# which routes to it.
+#
+# Don't rename the service: the mediator's mediatorConfig.json (in its image) routes its channel to
+# the host openhim-advapacs-mediator, which is this service's name on the instance's network.
+services:
+  openhim-advapacs-mediator:
+    container_name: ${SERVICE_NAME}-openhim-advapacs-mediator
+    image: ${ADVAPACS_MEDIATOR_IMAGE_NAME}:${ADVAPACS_MEDIATOR_IMAGE_TAG}
+    restart: unless-stopped
+    depends_on:
+      openhim-core:
+        condition: service_healthy
+      openhim-setup:
+        condition: service_completed_successfully
+    env_file:
+      - path: ${PIHX_TOOLS}/services/openhim-advapacs-mediator/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/openhim-advapacs-mediator.env
+        required: false
+    extra_hosts:
+      # For an OpenMRS running on the host rather than in this instance (OPENMRS_BASE_URL
+      # http://host.docker.internal:8080/openmrs): see the mediator's README.
+      - "host.docker.internal:host-gateway"
+    environment:
+      # openhim-core by service name, over plain HTTP (see openhim.yaml).
+      OPENHIM_API_URL: http://openhim-core:8080
+      OPENHIM_ROUTER_URL: http://openhim-core:5001
+      ADVAPACS_CHANNEL_URL: http://openhim-core:5001/advapacs
+      MEDIATOR_PORT: "3500"
+      # OpenHIM's own, which the openhim service owns.
+      OPENHIM_USERNAME: ${OPENHIM_USERNAME}
+      OPENHIM_PASSWORD: ${OPENHIM_PASSWORD}
+      # OPENMRS_BASE_URL, OPENMRS_FHIR_PATH, OPENMRS_USERNAME, OPENMRS_PASSWORD and the ADVAPACS_*
+      # settings reach the mediator from its env files, under the names it reads.
+      # TODO: Do we want to namespace the openmrs ones in some way? Would this be at the OpenHIM or AdvaPACS level?
+      # Prefixed ADVAPACS_MEDIATOR_* in the instance's env, passed to the mediator under the names it
+      # reads.
+      LOG_LEVEL: ${ADVAPACS_MEDIATOR_LOG_LEVEL}
+      MEDIATOR_INBOUND_SECRET: ${ADVAPACS_MEDIATOR_INBOUND_SECRET}
+      ORDER_INGESTION_MODE: ${ADVAPACS_MEDIATOR_ORDER_INGESTION_MODE}
+      ORDER_POLL_INTERVAL_MS: ${ADVAPACS_MEDIATOR_ORDER_POLL_INTERVAL_MS}
+      OPENHIM_INBOUND_CLIENT_ID: ${ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_ID}
+      OPENHIM_INBOUND_CLIENT_PASSWORD: ${ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD}

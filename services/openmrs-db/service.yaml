@@ -1,0 +1,6 @@
+description: The OpenMRS database (MySQL or MariaDB), and the setup that makes sure the accounts declared for it exist
+# Server options set when the instance is created, as OPENMRS_DB_OPT_<option> (see compose.yaml).
+capture-env: [OPENMRS_DB_OPT_]
+# Runs on every start, once the database is healthy.
+setup: [openmrs-db-accounts]
+backup: none

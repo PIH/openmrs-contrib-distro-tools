@@ -77,6 +77,17 @@ class InstanceTest(TempDirTest):
         self.assertEqual(config["TZ"], "Africa/Kigali")        # instance.env applies
         self.assertEqual(config["SHARED"], "instance")         # instance.env beats every service
 
+    def test_instance_defaults_come_first(self):
+        files = self.open().env_files()
+        self.assertEqual(files[0], self.tools / "instance.env.defaults")
+        self.assertEqual(files[1], self.tools / "services" / "app" / "env.defaults")
+
+    def test_instance_defaults_apply_below_everything(self):
+        (self.home / "kz" / "instance.env").unlink()
+        config = self.open().config()
+        self.assertEqual(config["TZ"], "UTC")      # instance.env.defaults
+        self.assertEqual(config["SHARED"], "db")   # beaten by the services' defaults
+
     def test_without_instance_env(self):
         (self.home / "kz" / "instance.env").unlink()
         kz = self.open()

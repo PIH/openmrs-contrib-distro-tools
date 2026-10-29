@@ -1,0 +1,47 @@
+services:
+  openmrs:
+    container_name: ${SERVICE_NAME}-openmrs
+    image: ${OPENMRS_IMAGE_NAME:?OPENMRS_IMAGE_NAME must be set}:${OPENMRS_IMAGE_TAG}
+    depends_on:
+      openmrs-db:
+        condition: service_healthy
+        restart: true
+    ports:
+      - ${OPENMRS_HTTP_PORT}:8080
+    # Its OMRS_* (e.g. OMRS_EXTRA_<property>) are set in openmrs.env.
+    env_file:
+      - path: ${PIHX_TOOLS}/services/openmrs/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/openmrs.env
+        required: false
+    labels:
+      # Makes `wait` fail as soon as OpenMRS is unhealthy, instead of waiting out its start period.
+      pihx.wait: fail-on-unhealthy
+    environment:
+      OMRS_CONFIG_MODULE_WEB_ADMIN: "true"
+      OMRS_CONFIG_AUTO_UPDATE_DATABASE: "true"
+      # false when initialize restored db-data from a backup with no matching openmrs-data
+      OMRS_CONFIG_CREATE_TABLES: "${OPENMRS_CREATE_TABLES:-true}"
+      OMRS_CONFIG_CONNECTION_SERVER: openmrs-db
+      OMRS_CONFIG_CONNECTION_DATABASE: openmrs
+      OMRS_CONFIG_CONNECTION_USERNAME: ${OPENMRS_DB_USER}
+      OMRS_CONFIG_CONNECTION_PASSWORD: ${OPENMRS_DB_PASSWORD}
+      OMRS_EXTRA_pih_config: ${OPENMRS_PIH_CONFIG}
+      OMRS_JAVA_MEMORY_OPTS: ${OPENMRS_JAVA_MEMORY_OPTS}
+      OMRS_EXTRA_activitylog__enabled: ${OPENMRS_ACTIVITYLOG_ENABLED}
+      TZ: ${TZ}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/openmrs/health/started"]
+      interval: 10s
+      timeout: 15s
+      retries: 3
+      start_period: 3600s
+    volumes:
+      - openmrs-data:/openmrs/data/
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${OPENMRS_MEMORY_LIMIT}
+
+volumes:
+  openmrs-data:

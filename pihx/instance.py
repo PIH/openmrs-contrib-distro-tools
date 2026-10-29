@@ -10,6 +10,7 @@ from pathlib import Path
 from pihx import compose, envfile, services as services_module
 
 INSTANCE_ENV = "instance.env"
+INSTANCE_DEFAULTS = "instance.env.defaults"
 # Global commands come first on the command line, so no instance can take their names.
 RESERVED_NAMES = frozenset({"list", "help", "version"})
 INSTANCE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
@@ -37,9 +38,13 @@ class Instance:
     services: list
 
     def env_files(self):
-        """The env files whose values the instance sees, later ones winning: every service's
-        defaults, then every <svc>.env, then instance.env (if present)."""
-        files = [s.dir / "env.defaults" for s in self.services]
+        """The env files whose values the instance sees, later ones winning: the checkout's
+        instance.env.defaults, every service's defaults, then every <svc>.env, then instance.env
+        (if present)."""
+        files = []
+        if (self.tools / INSTANCE_DEFAULTS).is_file():
+            files.append(self.tools / INSTANCE_DEFAULTS)
+        files += [s.dir / "env.defaults" for s in self.services]
         files += [self.dir / f"{s.name}.env" for s in self.services]
         if (self.dir / INSTANCE_ENV).is_file():
             files.append(self.dir / INSTANCE_ENV)

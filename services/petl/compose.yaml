@@ -1,0 +1,25 @@
+services:
+  petl:
+    container_name: ${SERVICE_NAME}-petl
+    # Compose interpolates every fragment on every command, so PETL_IMAGE_NAME may be empty
+    # (its default) until petl is run: only `run-service petl` then fails, on the image name.
+    image: ${PETL_IMAGE_NAME}:${PETL_IMAGE_TAG}
+    profiles: ["petl"]
+    # No depends_on: run-service runs the instance's setup services (openmrs-db-accounts, and
+    # sqlserver-setup when the instance has sqlserver) before it, against the running instance. A
+    # depends_on sqlserver-setup would make an instance without sqlserver invalid.
+    # PETL's properties (PETL_*, DATASOURCES_*, SPRING_*, LOGGING_*) are set in petl.env.
+    env_file:
+      - path: ${PIHX_TOOLS}/services/petl/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/petl.env
+        required: false
+    environment:
+      PETL_MYSQL_HOST: openmrs-db
+      PETL_MYSQL_PORT: 3306
+      PETL_MYSQL_PASSWORD: "${PETL_MYSQL_PASSWORD:?must be set: the password for the PETL MySQL account}"
+      TZ: ${TZ}
+    volumes:
+      - petl-data:/home/petl/data
+
+volumes:
+  petl-data:

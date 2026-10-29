@@ -1,0 +1,59 @@
+services:
+  sqlserver:
+    container_name: ${SERVICE_NAME}-sqlserver
+    image: mcr.microsoft.com/mssql/server:${SQLSERVER_IMAGE_TAG}
+    env_file:
+      - path: ${PIHX_TOOLS}/services/sqlserver/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/sqlserver.env
+        required: false
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${SQLSERVER_SA_PASSWORD:?must be set: the SQL Server sa password (8+ characters, with 3 of upper case, lower case, digits and symbols)}"
+      MSSQL_MEMORY_LIMIT_MB: ${SQLSERVER_MEMORY_MB}
+      # For sqlcmd (healthcheck), so the password isn't on its command line.
+      SQLCMDPASSWORD: ${SQLSERVER_SA_PASSWORD}
+      TZ: ${TZ}
+    ports:
+      - ${SQLSERVER_PUBLISHED_PORT}:1433
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      # -C: 2022+ images encrypt by default, with a self-signed certificate.
+      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-C", "-S", "localhost", "-U", "sa", "-Q", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${SQLSERVER_MEMORY_LIMIT}
+
+  # Server settings, databases and logins (scripts/sqlserver-setup.sh). Runs on every
+  # start, and first for any service that depends on it.
+  sqlserver-setup:
+    container_name: ${SERVICE_NAME}-sqlserver-setup
+    image: mcr.microsoft.com/mssql/server:${SQLSERVER_IMAGE_TAG}
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    entrypoint: ["bash", "/sqlserver-setup.sh"]
+    # Its SQLSERVER_LOGIN_* come from sqlserver.env, and from other services' settings below.
+    env_file:
+      - path: ${PIHX_TOOLS}/services/sqlserver/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/sqlserver.env
+        required: false
+    environment:
+      SQLCMDPASSWORD: ${SQLSERVER_SA_PASSWORD}
+      # PETL's login, from PETL's own settings (all empty, so no login, when the instance has no
+      # PETL); set SQLSERVER_LOGIN_PETL_* in sqlserver.env to change it.
+      SQLSERVER_LOGIN_PETL_USER: ${SQLSERVER_LOGIN_PETL_USER:-${PETL_SQLSERVER_USER:-}}
+      SQLSERVER_LOGIN_PETL_PASSWORD: ${SQLSERVER_LOGIN_PETL_PASSWORD:-${PETL_SQLSERVER_PASSWORD:-}}
+      SQLSERVER_LOGIN_PETL_DATABASES: ${SQLSERVER_LOGIN_PETL_DATABASES:-${PETL_SQLSERVER_DATABASE:-}}
+    volumes:
+      - ${PIHX_TOOLS}/services/sqlserver/scripts/sqlserver-setup.sh:/sqlserver-setup.sh:ro
+    restart: "no"
+
+volumes:
+  sqlserver-data:

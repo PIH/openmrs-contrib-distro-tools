@@ -46,6 +46,7 @@ def add_service(tools, name, manifest, defaults="", files=()):
 def two_service_tools(root):
     """A checkout with services db and app."""
     tools = Path(root) / "tools"
+    write(tools / "instance.env.defaults", "TZ=UTC\nSHARED=tools\n")
     add_service(tools, "db", DB_MANIFEST, "DB_PASSWORD=default\nDB_PORT=3306\nSHARED=db\n",
                 ["restore/dump.yaml", "restore/datadir.yaml", "restore/reset.yaml"])
     add_service(tools, "app", APP_MANIFEST, "APP_PORT=8080\nSHARED=app\n",

@@ -1,0 +1,5 @@
+description: The OpenMRS application
+requires: [openmrs-db]
+# Runtime properties, set when the instance is created, as OMRS_EXTRA_<property>.
+capture-env: [OMRS_EXTRA_]
+backup: none

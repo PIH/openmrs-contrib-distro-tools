@@ -13,7 +13,7 @@ class ComposeTest(TempDirTest):
         self.kz = instance.open(self.home, "kz", tools=self.tools)
         self.dir = self.home / "kz"
         self.svc = self.tools / "services"
-        self.env_files = [self.svc / "app" / "env.defaults", self.svc / "db" / "env.defaults",
+        self.env_files = [self.tools / "instance.env.defaults", self.svc / "app" / "env.defaults", self.svc / "db" / "env.defaults",
                           self.dir / "app.env", self.dir / "db.env", self.dir / "instance.env"]
         self.compose_files = [self.svc / "app" / "compose.yaml", self.dir / "app.override.yaml",
                               self.svc / "db" / "compose.yaml"]

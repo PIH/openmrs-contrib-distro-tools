@@ -1,0 +1,32 @@
+# A fake CR/US/CT modality for testing: it reads the AdvaPACS gateway's DICOM worklist and sends
+# images for the entries picked in its console (or all of them, with auto-acquire). Its code and
+# README: https://github.com/PIH/modality-simulator.
+#
+# No depends_on advapacs-gateway: the gateway may be outside this instance, and it opens its DICOM
+# port only once AdvaPACS has sent it its configuration. The simulator shows why it can't connect
+# and retries. The gateway uses the host's network, so it's reached through host.docker.internal.
+services:
+  modality-simulator:
+    container_name: ${SERVICE_NAME}-modality-simulator
+    image: ${MODALITY_SIMULATOR_IMAGE_NAME}:${MODALITY_SIMULATOR_IMAGE_TAG}
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${MODALITY_SIMULATOR_HOST_PORT}:8080"
+    env_file:
+      - path: ${PIHX_TOOLS}/services/modality-simulator/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/modality-simulator.env
+        required: false
+    environment:
+      TZ: ${TZ}
+      # The only value with no default (it's the gateway's Local AE in AdvaPACS: Configuration >
+      # Local AEs); the others reach the container by the file above, under the same names.
+      MODALITY_SIMULATOR_GATEWAY_AE: "${MODALITY_SIMULATOR_GATEWAY_AE:?must be set: the gateway's AE title, its Local AE in AdvaPACS (Configuration > Local AEs)}"
+    volumes:
+      - modality-simulator-data:/data
+      # De-identified DICOM files to send instead of generated images; with none, it generates them.
+      - ${MODALITY_SIMULATOR_IMAGE_DIR}:/images:ro
+
+volumes:
+  modality-simulator-data:
