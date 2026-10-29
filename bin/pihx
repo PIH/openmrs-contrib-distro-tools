@@ -41,6 +41,18 @@ if [ -z "${PIHX_HANDED_OFF-}" ]; then
                 export PIHX_HANDED_OFF
                 exec "$instance_tools/bin/pihx" "$@"
             fi
+            # An instance whose tools link resolves nowhere (the checkout moved or was deleted) has
+            # no checkout to run. Python never resolves other instances' links, so this is the one
+            # place that says so. use-tools is the fix, and create refuses an existing directory
+            # itself.
+            case $1:${2-} in
+                list:* | help:* | version:* | *:use-tools | *:create) ;;
+                *)
+                    if [ -d "$PIHX_HOME/$1" ] && [ ! -d "$PIHX_HOME/$1/tools" ]; then
+                        die "$PIHX_HOME/$1/tools doesn't resolve to a checkout; point it at one with: pihx $1 use-tools <path>"
+                    fi
+                    ;;
+            esac
             ;;
     esac
 fi
@@ -62,8 +74,19 @@ if ! docker image inspect "$image" >/dev/null 2>&1; then
         || die "couldn't build $image"
 fi
 
+# use-tools checks the checkout it is given, so that is mounted too (read-only) when it's elsewhere.
+use_tools_mount=
+if [ "${2-}" = use-tools ] && [ -n "${3-}" ] && [ -d "$3" ]; then
+    use_tools_dir=$(cd -P "$3" && pwd)
+    case $use_tools_dir/ in
+        "$PIHX_TOOLS"/* | "$PIHX_HOME"/*) ;;
+        *) use_tools_mount=$use_tools_dir:$use_tools_dir:ro ;;
+    esac
+fi
+
 # From here "$@" is the container's command, so options for docker run can go in front of it.
 set -- "$image" python3 -m pihx "$@"
+[ -z "$use_tools_mount" ] || set -- -v "$use_tools_mount" "$@"
 
 # The caller's Docker config, for registry credentials (Puppet writes the instance user's). Mounted
 # aside, read-only: pihx installs a copy without credential helpers, whose binaries the image lacks,
@@ -84,14 +107,17 @@ case $PIHX_CWD/ in
     *) workdir=/ ;;
 esac
 
-# The variables pihx reads, passed by name (-e NAME) so values, secrets included, stay off the
-# command line.
+# Every variable the caller has, passed by name (-e NAME) so values, secrets included, stay off the
+# command line: `create` captures whatever a service defines or requires (including values with no
+# default), and pihx's Python decides which belong in which file. Not passed: what the container sets
+# for itself (PATH, HOME, ...), the host's shell state, DOCKER_* (handled above), and Python's and
+# the loader's own settings.
 export PIHX_TOOLS PIHX_HOME PIHX_CWD
 PIHX_RUNTIME_IMAGE=$image
 export PIHX_RUNTIME_IMAGE
 env_args=
-for name in $(env | awk -F= '/^(PIHX|OPENMRS|RESTORE|SEED|MYSQL)_[A-Za-z0-9_]*=/ ||
-        /^(ARCHIVE_PASSWORD|TZ|SERVICES)=/ { print $1 }'); do
+for name in $(awk 'BEGIN { for (k in ENVIRON) print k }' | grep -E '^[A-Za-z_][A-Za-z0-9_]*$' |
+        grep -Ev '^(PATH|HOME|PWD|OLDPWD|SHLVL|HOSTNAME|_|DOCKER_.*|PYTHON.*|LD_.*)$'); do
     env_args="$env_args -e $name"
 done
 

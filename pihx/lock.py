@@ -98,3 +98,11 @@ def check(instance, wait_seconds=0):
     """Refuses (after waiting up to <wait_seconds>) if another command holds the lock, without
     holding it."""
     os.close(_acquire(instance, wait_seconds))
+
+
+def wait_seconds():
+    """How long commands wait for the lock: PIHX_LOCK_WAIT seconds (default 0, refuse at once)."""
+    value = os.environ.get("PIHX_LOCK_WAIT", "0")
+    if not value.isdigit():
+        raise LockError(f"PIHX_LOCK_WAIT must be a number of seconds, not '{value}'")
+    return int(value)

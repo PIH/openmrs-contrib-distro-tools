@@ -4,7 +4,11 @@ import os
 import sys
 
 from pihx import __version__, runtime
-from pihx.instance import RESERVED_NAMES, instance_name_error
+from pihx.commands import CliError, instance_cmds
+from pihx.compose import ComposeError
+from pihx.instance import InstanceError, instance_name_error
+from pihx.lock import LockError
+from pihx.services import ServiceError
 
 USAGE = """\
 Usage:
@@ -15,17 +19,15 @@ Instance names: lowercase letters, digits, '-' and '_', starting with a letter o
 global command's name.
 
 Commands:
-  help       Show this help
-  version    Show pihx's version and the checkout it runs from
+  list                       Show the instances
+  create --services=a,b      Make the instance (one env file per service, from your environment)
+  config [--show-secrets]    Print the merged values, secrets masked
+  add-service <service>      Add a service to the instance
+  remove-service <service>   Remove a service's containers (not its volumes) and env file
+  use-tools <path>           Run the instance from another distro-tools checkout
+  help                       Show this help
+  version                    Show pihx's version and the checkout it runs from
 """
-
-
-class CliError(Exception):
-    """An error to report as `error: <message>` with a non-zero status."""
-
-    def __init__(self, message, status=1):
-        super().__init__(message)
-        self.status = status
 
 
 def cmd_help(args):
@@ -43,13 +45,18 @@ def cmd_version(args):
     return 0
 
 
-GLOBAL_COMMANDS = {"help": cmd_help, "version": cmd_version}
+GLOBAL_COMMANDS = {"help": cmd_help, "version": cmd_version, "list": instance_cmds.cmd_list}
 
 # Commands on an instance; each takes (instance, args). version reports the checkout the instance
 # runs (the launcher has already handed off to it).
 INSTANCE_COMMANDS = {
     "help": lambda instance, args: cmd_help(args),
     "version": lambda instance, args: cmd_version(args),
+    "create": instance_cmds.cmd_create,
+    "config": instance_cmds.cmd_config,
+    "add-service": instance_cmds.cmd_add_service,
+    "remove-service": instance_cmds.cmd_remove_service,
+    "use-tools": instance_cmds.cmd_use_tools,
 }
 
 
@@ -60,8 +67,6 @@ def dispatch(argv):
     first, rest = argv[0], argv[1:]
     if first in GLOBAL_COMMANDS:
         return GLOBAL_COMMANDS[first](rest)
-    if first in RESERVED_NAMES:
-        raise CliError(f"'{first}' isn't implemented yet")
     error = instance_name_error(first)
     if error:
         raise CliError(error, status=2)
@@ -80,6 +85,7 @@ def main(argv):
         if docker_config:
             runtime.install_docker_config(docker_config, os.environ["HOME"])
         return dispatch(argv)
-    except (CliError, runtime.SetupError) as e:
+    except (CliError, runtime.SetupError, InstanceError, ServiceError, ComposeError, LockError,
+            OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return getattr(e, "status", 1)

@@ -149,3 +149,38 @@ copy_tools() { # <dir>
     assert_success
     assert_output --partial "tools: $a"
 }
+
+@test "every caller variable reaches pihx by name, except the container's own settings" {
+    copy_tools tools
+    printf '%s\n' 'import os' 'e = os.environ' \
+        'print("custom:", e.get("PETL_MYSQL_PASSWORD"), e.get("ZZ_ANYTHING"))' \
+        'print("home:", e["HOME"], "pythonpath:", e["PYTHONPATH"])' > tools/pihx/__main__.py
+    PETL_MYSQL_PASSWORD='s3 cr$t' ZZ_ANYTHING=x PYTHONPATH=/nonexistent HOME=/caller \
+        run tools/bin/pihx
+    assert_success
+    assert_line 'custom: s3 cr$t x'
+    assert_line "home: /tmp pythonpath: $(cd -P tools && pwd)"
+}
+
+@test "values are passed by name, so they aren't on the docker command line" {
+    # A docker in front of the real one, recording its arguments.
+    mkdir bin
+    printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$@" >> "$RECORD"' \
+        "exec $(command -v docker) \"\$@\"" > bin/docker
+    chmod +x bin/docker
+    RECORD="$BATS_TEST_TMPDIR/args" PATH="$BATS_TEST_TMPDIR/bin:$PATH" PETL_MYSQL_PASSWORD=sekrit-value \
+        run "$BIN/pihx" version
+    assert_success
+    run grep -c sekrit-value "$BATS_TEST_TMPDIR/args"
+    assert_output 0
+    run grep -x PETL_MYSQL_PASSWORD "$BATS_TEST_TMPDIR/args"
+    assert_success
+}
+
+@test "an instance whose tools link points nowhere is an error naming use-tools" {
+    mkdir -p "$PIHX_HOME/inst"
+    ln -s "$BATS_TEST_TMPDIR/gone" "$PIHX_HOME/inst/tools"
+    run "$BIN/pihx" inst version
+    assert_failure
+    assert_output "error: $PIHX_HOME/inst/tools doesn't resolve to a checkout; point it at one with: pihx inst use-tools <path>"
+}

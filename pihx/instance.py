@@ -87,3 +87,8 @@ def open(home, name, tools=None):
         except services_module.ServiceError as e:
             raise InstanceError(f"{env_file}: {e}") from None
     return Instance(name=name, dir=instance_dir, tools=tools, services=found)
+
+
+def home():
+    """PIHX_HOME, the directory holding the instances (default ~/pihx)."""
+    return Path(os.environ.get("PIHX_HOME") or Path.home() / "pihx").absolute()
