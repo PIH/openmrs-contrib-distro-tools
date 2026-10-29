@@ -23,7 +23,7 @@ MASK = "********"
 FILE_MODE = 0o600
 
 
-def _tools():
+def tools_dir():
     tools = os.environ.get("PIHX_TOOLS")
     if not tools:
         raise InstanceError("PIHX_TOOLS isn't set (run pihx through bin/pihx)")
@@ -146,7 +146,7 @@ def cmd_create(name, args):
     names = [n for n in value.split(",") if n]
     if not names or len(set(names)) != len(names):
         raise CliError("--services needs a comma-separated list of distinct services", status=2)
-    tools = _tools()
+    tools = tools_dir()
     home = instance_module.home()
     instance_dir = home / name
     if os.path.lexists(instance_dir):
@@ -203,7 +203,7 @@ def cmd_list(args):
 def cmd_config(name, args):
     show = "--show-secrets" in args
     _no_arguments([a for a in args if a != "--show-secrets"], "config")
-    values = instance_module.open(instance_module.home(), name, tools=_tools()).config()
+    values = instance_module.open(instance_module.home(), name, tools=tools_dir()).config()
     for key in sorted(values):
         value = values[key]
         if not show and value and SECRET_NAME.fullmatch(key):
@@ -215,7 +215,7 @@ def cmd_config(name, args):
 def cmd_add_service(name, args):
     if len(args) != 1:
         raise CliError("usage: pihx <instance> add-service <service>", status=2)
-    inst = instance_module.open(instance_module.home(), name, tools=_tools())
+    inst = instance_module.open(instance_module.home(), name, tools=tools_dir())
     try:
         svc = services_module.load(inst.tools, args[0])
     except services_module.ServiceError as e:
@@ -252,7 +252,7 @@ def _containers(service):
 def cmd_remove_service(name, args):
     if len(args) != 1:
         raise CliError("usage: pihx <instance> remove-service <service>", status=2)
-    inst = instance_module.open(instance_module.home(), name, tools=_tools())
+    inst = instance_module.open(instance_module.home(), name, tools=tools_dir())
     svc = next((s for s in inst.services if s.name == args[0]), None)
     if svc is None:
         raise InstanceError(f"{name} doesn't have {args[0]}")

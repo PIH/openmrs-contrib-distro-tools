@@ -4,7 +4,7 @@ import os
 import sys
 
 from pihx import __version__, runtime
-from pihx.commands import CliError, instance_cmds
+from pihx.commands import CliError, instance_cmds, lifecycle
 from pihx.compose import ComposeError
 from pihx.instance import InstanceError, instance_name_error
 from pihx.lock import LockError
@@ -25,6 +25,17 @@ Commands:
   add-service <service>      Add a service to the instance
   remove-service <service>   Remove a service's containers (not its volumes) and env file
   use-tools <path>           Run the instance from another distro-tools checkout
+  start                      Bring the instance up and check its setup containers
+  stop                       Remove its containers (not its volumes)
+  restart                    Restart its containers
+  status                     Show its containers, and what holds its lock
+  logs [service]             Follow the logs
+  pull                       Pull its images
+  update                     Pull, bring up (removing containers of removed services), and remove
+                             the images replaced
+  run-service [--pull] <service> [command...]
+                             Run a service once (a job holds the lock); exits with its exit code
+  destroy [--force]          Remove its containers, volumes and directory (asks first)
   help                       Show this help
   version                    Show pihx's version and the checkout it runs from
 """
@@ -57,6 +68,15 @@ INSTANCE_COMMANDS = {
     "add-service": instance_cmds.cmd_add_service,
     "remove-service": instance_cmds.cmd_remove_service,
     "use-tools": instance_cmds.cmd_use_tools,
+    "start": lifecycle.cmd_start,
+    "stop": lifecycle.cmd_stop,
+    "restart": lifecycle.cmd_restart,
+    "status": lifecycle.cmd_status,
+    "logs": lifecycle.cmd_logs,
+    "pull": lifecycle.cmd_pull,
+    "update": lifecycle.cmd_update,
+    "run-service": lifecycle.cmd_run_service,
+    "destroy": lifecycle.cmd_destroy,
 }
 
 

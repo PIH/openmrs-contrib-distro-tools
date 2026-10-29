@@ -148,12 +148,6 @@ ENV
     assert_output 'p$$w #rd "q" `x` \y'   # `config` writes a literal $ as $$
 }
 
-@test "env values with special characters reach the container unchanged" {
-    # Needs `pihx create` and `start` (Task 6): a value written by create, started, and read back
-    # from the running container's environment.
-    skip "needs pihx create/start (TASKS-652 Task 6)"
-}
-
 @test "an instance's <svc>.override.yaml applies after the service's compose file" {
     local dir="$BATS_TEST_TMPDIR/instance"
     EXTRA_ENV=()
