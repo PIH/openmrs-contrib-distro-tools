@@ -43,7 +43,9 @@ create_tables() { # what the running openmrs container got
     docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$NAME-openmrs" | sed -n 's/^OMRS_CONFIG_CREATE_TABLES=//p'
 }
 
-@test "a new instance's first start has OpenMRS create the tables; an existing container keeps its value; once the database has tables, a new container doesn't" {
+container_id() { docker inspect -f '{{.Id}}' "$NAME-openmrs"; }
+
+@test "a new instance's first start has OpenMRS create the tables; once it has been healthy, the next start decides from the database" {
     local id
     create_with_stub
     run "$BIN/openmrs-docker" "$NAME" start
@@ -53,23 +55,41 @@ create_tables() { # what the running openmrs container got
     assert_success
     run create_tables
     assert_output true
-    id=$(docker inspect -f '{{.Id}}' "$NAME-openmrs")
-    # What OpenMRS's install would do, part way.
+    id=$(container_id)
+    # What OpenMRS's install did.
     mysql_exec "$NAME-openmrs-db" openmrs 'CREATE TABLE openmrs.installed (id INT)'
-    # A second start while the container exists keeps its value and doesn't recreate it.
+    # It has been healthy, so the install may have finished: the database decides, and the
+    # container is recreated with false.
     run "$BIN/openmrs-docker" "$NAME" start
     assert_success
-    assert_output --partial 'openmrs: the openmrs container exists: keeping its create_tables (true)'
-    assert_equal "$(docker inspect -f '{{.Id}}' "$NAME-openmrs")" "$id"
+    assert_output --partial "openmrs: the openmrs container can't keep its create_tables; checking the database"
+    assert_output --partial "openmrs: the database has tables: OpenMRS won't create them"
+    [ "$(container_id)" != "$id" ] || fail "the openmrs container wasn't recreated"
+    run create_tables
+    assert_output false
+}
+
+@test "a start during OpenMRS's first install keeps the container and its true; once it has restarted, the database decides" {
+    local id
+    OMRS_EXTRA_stub_installing=1 create_with_stub
+    run "$BIN/openmrs-docker" "$NAME" start
+    assert_success
+    assert_output --partial 'openmrs: the database has no tables: OpenMRS will create them'
+    id=$(container_id)
+    # Part way through the install.
+    mysql_exec "$NAME-openmrs-db" openmrs 'CREATE TABLE openmrs.installing (id INT)'
+    run "$BIN/openmrs-docker" "$NAME" start
+    assert_success
+    assert_output --partial 'openmrs: the openmrs container is still on its first start: keeping its create_tables (true)'
+    assert_equal "$(container_id)" "$id"
     run create_tables
     assert_output true
-    # stop removes the container: the next start decides from the database.
-    "$BIN/openmrs-docker" "$NAME" stop >/dev/null 2>&1
+    # Once it has stopped (here a restart), its install can't be told from a finished one.
+    docker restart -t 0 "$NAME-openmrs" >/dev/null
     run "$BIN/openmrs-docker" "$NAME" start
     assert_success
     assert_output --partial "openmrs: the database has tables: OpenMRS won't create them"
-    run "$BIN/openmrs-docker" "$NAME" wait
-    assert_success
+    [ "$(container_id)" != "$id" ] || fail "the openmrs container wasn't recreated"
     run create_tables
     assert_output false
 }

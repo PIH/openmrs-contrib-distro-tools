@@ -159,8 +159,10 @@ With no runtime properties in `openmrs-data` (set aside, or nothing restored), O
 database for a new install, and would create every table again if told to. It is told to only when
 the database has no tables at all: before every `start` and `update`, the `openmrs` service's
 `start/create-tables` starts `openmrs-db`, counts the tables in the OpenMRS schema, and sets
-`create_tables` to true only for a count of zero. While an `openmrs` container exists, it keeps
-that container's value instead, so a start never recreates OpenMRS part way through its install. Anything else (tables, a failed or timed-out
+`create_tables` to true only for a count of zero. An existing `openmrs` container keeps false, and
+keeps true only while its first install can't have finished (running, never stopped, health still
+`starting` with no passed check), so a start never recreates OpenMRS part way through its install;
+any other container is decided from the database ([openmrs](../services/openmrs/README.md#creating-the-tables)). Anything else (tables, a failed or timed-out
 query, `openmrs-db` not healthy) gives false, with a line saying why, and so does a plain
 `docker compose up` that doesn't go through pihx. Nothing is recorded: each start decides from the
 database. `OPENMRS_CREATE_TABLES` in `openmrs.env`, if set, decides instead.

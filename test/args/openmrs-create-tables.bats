@@ -82,31 +82,77 @@ FAKE
     [ "$(grep -o 'SELECT COUNT(\*) FROM information_schema' docker-calls | wc -l)" -eq 2 ]
 }
 
-@test "an existing openmrs container keeps its value, whatever the database holds, and the database isn't checked" {
-    local value
-    for value in true false; do
+NEVER=0001-01-01T00:00:00Z
+
+# FAKE_ENV for an openmrs container: <first line: state health finished-at check-exit-codes> <value>
+container() { printf '%s\n%s\n' "$1" "${2:+OMRS_CONFIG_CREATE_TABLES=$2}"; }
+
+checked_database() { grep -qE ' (up|exec) ' docker-calls; }
+
+@test "an existing container's false is kept, whatever its state, without checking the database" {
+    local state
+    for state in "running healthy 2026-10-29T10:00:00Z 0," "exited unhealthy 2026-10-29T10:00:00Z 1," \
+            "running starting $NEVER "; do
         rm -f docker-calls
-        FAKE_IDS='abc\n' FAKE_ENV="A=1\nOMRS_CONFIG_CREATE_TABLES=$value\n" FAKE_COUNTS='1\n5\n' \
+        FAKE_IDS='abc\n' FAKE_ENV="$(container "$state" false)" FAKE_COUNTS='1\n0\n' \
             run --separate-stderr "$SCRIPT"
-        assert_success
-        assert_output "OPENMRS_DB_FOUND_EMPTY=$value"
-        [[ "$stderr" == *"the openmrs container exists: keeping its create_tables ($value)"* ]]
-        run grep -cE ' (up|exec) ' docker-calls
-        assert_output 0
+        assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
+        [[ "$stderr" == *"the openmrs container exists: keeping its create_tables (false)"* ]]
+        ! checked_database || fail "$state: checked the database"
     done
 }
 
-@test "an existing container whose value can't be read, or a failed lookup, gives false with a warning" {
-    FAKE_PS=1 run --separate-stderr "$SCRIPT"
-    assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
-    [[ "$stderr" == *"warning: couldn't tell whether the openmrs container exists"* ]]
-    FAKE_IDS='abc\n' FAKE_INSPECT=1 run --separate-stderr "$SCRIPT"
-    assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
-    [[ "$stderr" == *"warning: couldn't read the openmrs container's settings"* ]]
-    local env
-    for env in 'A=1\n' 'OMRS_CONFIG_CREATE_TABLES=yes\n' 'OMRS_CONFIG_CREATE_TABLES=true\nOMRS_CONFIG_CREATE_TABLES=true\n'; do
-        FAKE_IDS='abc\n' FAKE_ENV=$env FAKE_COUNTS='1\n0\n' run --separate-stderr "$SCRIPT"
+@test "an existing container's true is kept only while its first install can't have finished" {
+    local state
+    for state in "running starting $NEVER " "running starting $NEVER 1,1,10," "running starting $NEVER 137,"; do
+        rm -f docker-calls
+        FAKE_IDS='abc\n' FAKE_ENV="$(container "$state" true)" FAKE_COUNTS='1\n5\n' \
+            run --separate-stderr "$SCRIPT"
+        assert_output 'OPENMRS_DB_FOUND_EMPTY=true'
+        [[ "$stderr" == *"still on its first start: keeping its create_tables (true)"* ]]
+        ! checked_database || fail "$state: checked the database"
+    done
+}
+
+@test "an existing container's true that may have finished installing is decided from the database" {
+    local state
+    # healthy, unhealthy, exited, created but never started, restarted or stopped once (FinishedAt
+    # set), a check that passed, or no health at all
+    for state in "running healthy $NEVER 0," "running unhealthy $NEVER 1,1,1," \
+            "exited unhealthy 2026-10-29T10:00:00Z 1," "created none $NEVER " \
+            "running starting 2026-10-29T10:00:00Z " "running starting $NEVER 1,0,1," \
+            "running starting $NEVER 0," "running none $NEVER " "paused starting $NEVER "; do
+        rm -f docker-calls
+        FAKE_IDS='abc\n' FAKE_ENV="$(container "$state" true)" FAKE_COUNTS='1\n5\n' \
+            run --separate-stderr "$SCRIPT"
         assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
-        [[ "$stderr" == *"warning: the openmrs container's create_tables is unreadable"* ]] || fail "$env: $stderr"
+        [[ "$stderr" == *"can't keep its create_tables; checking the database"* ]] || fail "$state: $stderr"
+        [[ "$stderr" == *"the database has tables"* ]] || fail "$state: $stderr"
+        checked_database || fail "$state: didn't check the database"
+    done
+    # An empty database still gives true then.
+    FAKE_IDS='abc\n' FAKE_ENV="$(container "running healthy $NEVER 0," true)" FAKE_COUNTS='1\n0\n' \
+        run --separate-stderr "$SCRIPT"
+    assert_output 'OPENMRS_DB_FOUND_EMPTY=true'
+}
+
+@test "a container that can't be read, or a failed lookup, is decided from the database, with a warning" {
+    FAKE_PS=1 FAKE_COUNTS='1\n5\n' run --separate-stderr "$SCRIPT"
+    assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
+    [[ "$stderr" == *"warning: couldn't tell whether the openmrs container exists; checking the database"* ]]
+    checked_database
+    rm -f docker-calls
+    FAKE_IDS='abc\n' FAKE_INSPECT=1 FAKE_COUNTS='1\n5\n' run --separate-stderr "$SCRIPT"
+    assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
+    [[ "$stderr" == *"warning: couldn't read the openmrs container's settings; checking the database"* ]]
+    checked_database
+    local value
+    for value in '' yes 'true\nOMRS_CONFIG_CREATE_TABLES=true'; do
+        rm -f docker-calls
+        FAKE_IDS='abc\n' FAKE_ENV="$(container "running starting $NEVER " "$value")" FAKE_COUNTS='1\n5\n' \
+            run --separate-stderr "$SCRIPT"
+        assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
+        [[ "$stderr" == *"can't keep its create_tables; checking the database"* ]] || fail "$value: $stderr"
+        checked_database || fail "$value: didn't check the database"
     done
 }

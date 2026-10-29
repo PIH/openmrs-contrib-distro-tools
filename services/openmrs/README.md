@@ -27,12 +27,17 @@ zero gives true, for that start only; anything else -- tables, a failed or timed
 recorded, and a plain `docker compose up` that bypasses pihx gets false. `OPENMRS_CREATE_TABLES`
 in `openmrs.env`, if set, decides instead.
 
-It decides only when there is no `openmrs` container. While one exists, in any state, a start or
-update keeps the value that container has (read with `docker inspect`), so this value never
-recreates it: a recreate part way through OpenMRS's first install could leave a half-built schema
-that the next start would take for an installed one. If that value can't be read, it's false, with
-a warning. `pihx <name> stop` removes the container, so the start after it decides from the
-database again.
+An existing `openmrs` container keeps its value, so a start or update doesn't recreate it for this,
+only where that is safe (read with `docker inspect`): false always, and true only while OpenMRS's
+first install can't have finished. That means the container is running, has never stopped since it
+was created (`State.FinishedAt` unset), its health is still `starting`, and no healthcheck in its
+log has passed. A recreate part way through the first install could leave a half-built schema that
+the next start would take for an installed one. Anything else (a container that has been healthy,
+was stopped or restarted, or can't be read) is decided from the database like a new one, so a full
+database gives false at the cost of one recreate. (Docker resets the health status to `starting`
+on every restart and keeps only the last five checks, so "has ever been healthy" alone can't be
+told; a stop or restart sets `FinishedAt`.) A container left with true would otherwise reinstall
+over a full database if its runtime properties file were later removed.
 
 ## Runtime properties (`OMRS_EXTRA_*`)
 

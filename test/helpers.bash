@@ -214,13 +214,14 @@ write_tiny_dump() { # <path>
 
 # A stand-in for an OpenMRS image, so start/wait/stop can run without one: it sleeps, and a curl
 # shim answers openmrs.yaml's healthcheck (curl .../health/started) once it has started. With
-# OMRS_EXTRA_stub_exit set (an instance's OMRS_EXTRA_* reach the container), it exits at once.
+# OMRS_EXTRA_stub_exit set (an instance's OMRS_EXTRA_* reach the container), it exits at once; with
+# OMRS_EXTRA_stub_installing set, it never becomes ready (an install still running).
 STUB_OPENMRS_IMAGE=distro-tools-test/stub-openmrs
 build_stub_openmrs_image() {
     docker build -q -t "$STUB_OPENMRS_IMAGE" - >/dev/null <<'DOCKERFILE'
 FROM alpine:3.21
 RUN printf '#!/bin/sh\nexec test -e /tmp/started\n' > /usr/local/bin/curl && chmod +x /usr/local/bin/curl
-CMD ["sh", "-c", "[ -z \"$OMRS_EXTRA_stub_exit\" ] || exit 1; touch /tmp/started; exec sleep 3600"]
+CMD ["sh", "-c", "[ -z \"$OMRS_EXTRA_stub_exit\" ] || exit 1; [ -n \"$OMRS_EXTRA_stub_installing\" ] || touch /tmp/started; exec sleep 3600"]
 DOCKERFILE
 }
 
