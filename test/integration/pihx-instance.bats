@@ -128,6 +128,18 @@ teardown() { common_teardown; }
     assert_output --partial "isn't a distro-tools checkout"
 }
 
+@test "use-tools resolves a path through a link or .. outside the mounted paths" {
+    "$BIN/pihx" kz create --services=openmrs-db
+    mkdir -p real other/sub
+    cp -R "$REPO_ROOT/bin" "$REPO_ROOT/lib" "$REPO_ROOT/images" "$REPO_ROOT/pihx" \
+        "$REPO_ROOT/services" "$REPO_ROOT/instance.env.defaults" real
+    real=$(cd -P real && pwd)
+    ln -s "$real" alias
+    run "$BIN/pihx" kz use-tools other/sub/../../alias
+    assert_success
+    assert_equal "$(readlink "$PIHX_HOME/kz/tools")" "$real"
+}
+
 @test "use-tools refuses to replace a tools directory" {
     "$BIN/pihx" kz create --services=openmrs-db
     # As on a Puppet host: the checkout itself.

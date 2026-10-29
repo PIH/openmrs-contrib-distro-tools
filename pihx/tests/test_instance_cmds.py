@@ -85,6 +85,13 @@ class CreateTest(CommandTest):
         self.assertEqual(self.read("kz", "app.env"), "APP_SECRET='s'\nAPP_WITH='w'\n")
         self.assertEqual(self.read("kz", "db.env"), "")
 
+    def test_a_name_two_services_define_goes_to_the_first_by_name(self):
+        write(self.tools / "services" / "app" / "env.defaults", "APP_PORT=1\nDB_PORT=2\n")
+        self.set_env({"DB_PORT": "3"})
+        self.run_pihx("kz", "create", "--services=app,db")
+        self.assertEqual(self.read("kz", "app.env"), "DB_PORT='3'\n")
+        self.assertEqual(self.read("kz", "db.env"), "")
+
     def test_a_value_another_service_owns_is_written_only_there(self):
         # app refers to DB_PASSWORD, which db's defaults own.
         write(self.tools / "services" / "app" / "compose.yaml",
@@ -173,6 +180,13 @@ class ServiceManagementTest(CommandTest):
         self.assertFalse((self.home / "kz" / "app.env").exists())
         self.assertTrue((self.home / "kz" / "db.env").exists())
 
+    def test_remove_service_never_calls_rm_without_names(self):
+        write(self.tools / "services" / "app" / "compose.yaml", "services: {}\n")
+        status, _, err = self.run_pihx("kz", "remove-service", "app")
+        self.assertEqual(status, 0, err)
+        self.assertEqual(self.compose_calls, [])
+        self.assertFalse((self.home / "kz" / "app.env").exists())
+
     def test_remove_service_refuses_one_another_requires(self):
         status, _, err = self.run_pihx("kz", "remove-service", "db")
         self.assertNotEqual(status, 0)
@@ -258,6 +272,12 @@ class UseToolsTest(CommandTest):
         self.assertEqual(os.readlink(self.home / "kz" / "tools"), str(self.other))
         self.assertEqual(sorted(p.name for p in (self.home / "kz").iterdir() if "tools" in p.name),
                          ["tools"])
+
+    def test_uses_the_launchers_resolved_path(self):
+        self.set_env({"PIHX_USE_TOOLS": str(self.other)})
+        status, _, err = self.run_pihx("kz", "use-tools", "as/typed/../alias")
+        self.assertEqual(status, 0, err)
+        self.assertEqual(os.readlink(self.home / "kz" / "tools"), str(self.other))
 
     def test_replaces_a_dangling_link(self):
         (self.home / "kz" / "tools").unlink()

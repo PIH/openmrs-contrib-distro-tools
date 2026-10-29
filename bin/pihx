@@ -75,9 +75,13 @@ if ! docker image inspect "$image" >/dev/null 2>&1; then
 fi
 
 # use-tools checks the checkout it is given, so that is mounted too (read-only) when it's elsewhere.
+# pihx gets the resolved path (PIHX_USE_TOOLS), the one mounted, not the argument as typed.
+unset PIHX_USE_TOOLS
 use_tools_mount=
 if [ "${2-}" = use-tools ] && [ -n "${3-}" ] && [ -d "$3" ]; then
     use_tools_dir=$(cd -P "$3" && pwd)
+    PIHX_USE_TOOLS=$use_tools_dir
+    export PIHX_USE_TOOLS
     case $use_tools_dir/ in
         "$PIHX_TOOLS"/* | "$PIHX_HOME"/*) ;;
         *) use_tools_mount=$use_tools_dir:$use_tools_dir:ro ;;

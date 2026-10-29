@@ -84,7 +84,11 @@ def captured_values(tools, selected, environ):
             if defaults_file.is_file() else set()
     except ValueError as e:
         raise InstanceError(f"{defaults_file}: {e}") from None
-    owner = {name: svc.name for svc in services_module.all(tools).values() for name in svc.defaults}
+    # A name two services define (the static test forbids it) belongs to the first by name.
+    owner = {}
+    for svc in sorted(services_module.all(tools).values(), key=lambda s: s.name):
+        for name in svc.defaults:
+            owner.setdefault(name, svc.name)
     ordered = sorted(selected, key=lambda s: s.name)
     present = {s.name for s in ordered}
     references = {s.name: _references(s, present) for s in ordered}
@@ -258,7 +262,12 @@ def cmd_remove_service(name, args):
                             f"{'it' if len(needing) == 1 else 'them'} first")
     with lock.hold(inst, lock.wait_seconds(), command="remove-service"):
         # Its containers, not its volumes; with its env file still there for Compose to read.
-        compose_module.Compose(inst).run("rm", "-sf", *_containers(svc))
+        # Never with no names: that would remove every container of the project.
+        containers = _containers(svc)
+        if containers:
+            compose_module.Compose(inst).run("rm", "-sf", *containers)
+        else:
+            print(f"{svc.name} defines no containers; only its env file is removed", file=sys.stderr)
         (inst.dir / f"{svc.name}.env").unlink()
     print(f"Removed {svc.name} from {name} (its volumes are kept)", file=sys.stderr)
     return 0
@@ -275,8 +284,10 @@ def cmd_use_tools(name, args):
     instance_dir = home / name
     if not instance_dir.is_dir():
         raise InstanceError(f"no instance '{name}': {instance_dir} doesn't exist")
+    # The launcher's resolved path is the one it mounted; the argument as typed may go through a
+    # link or `..` that doesn't resolve the same way here.
     cwd = os.environ.get("PIHX_CWD") or os.getcwd()
-    target = Path(os.path.realpath(os.path.join(cwd, args[0])))
+    target = Path(os.path.realpath(os.environ.get("PIHX_USE_TOOLS") or os.path.join(cwd, args[0])))
     if not (target / "bin" / "pihx").is_file() or not (target / "services").is_dir():
         raise InstanceError(f"{target} isn't a distro-tools checkout (no bin/pihx or services/)")
     link = instance_dir / "tools"
