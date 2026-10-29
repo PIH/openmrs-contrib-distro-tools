@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -133,10 +134,23 @@ class InitializeCommandTest(InitializeTest):
         super().setUp()
         self.docker_calls = []
         self.existing_volumes = set()
+        self.hooks, self.hook_envs, self.compose_envs = {}, {}, []
+        # db's own container mounts db-data; a shared, external volume isn't the instance's.
+        self.config = {"services": {"db": {"volumes": [
+            {"type": "volume", "source": "db-data", "target": "/d"},
+            {"type": "volume", "source": "backups", "target": "/b"},
+            {"type": "bind", "source": "/x", "target": "/x"}]}},
+            "volumes": {"db-data": {"name": "kz_db-data"},
+                        "backups": {"name": "backups", "external": True}}}
+        self.folder = write(self.home / "run" / "db.sql", "").parent
         write(self.tools / "utils" / "lib" / "images.sh", "ALPINE_IMAGE=alpine:3.21\n")
 
     def fake_docker(self, argv, **kwargs):
-        self.docker_calls.append(argv[1:])
+        self.docker_calls.append(argv[1:] if argv[0] == "docker" else argv)
+        if argv[0] != "docker":
+            hook = Path(argv[0]).name
+            self.hook_envs[hook] = kwargs.get("env", {})
+            return self.hooks.get(hook, lambda: done())()
         if argv[1:3] == ["volume", "inspect"]:
             return done(returncode=0 if argv[3] in self.existing_volumes else 1)
         return done()
@@ -144,10 +158,16 @@ class InitializeCommandTest(InitializeTest):
     def run_pihx(self, *argv):
         def fake_run(compose_self, *args, **kwargs):
             self.compose_calls.append(args)
+            self.compose_envs.append(compose_self.environment())
+            if "config" in args:
+                return done(json.dumps(self.config))
             return done()
         with mock.patch.object(compose.Compose, "run", fake_run), \
                 mock.patch.object(initialize.subprocess, "run", self.fake_docker):
             return run(list(argv))
+
+    def up_calls(self):
+        return [c for c in self.compose_calls if "up" in c]
 
     def test_a_source_is_required_and_only_one(self):
         for argv in ([], ["--from", "a", "--from-image", "b"], ["--from"], ["--other"]):
@@ -156,19 +176,79 @@ class InitializeCommandTest(InitializeTest):
                 self.assertEqual(status, 2, err)
                 self.assertEqual(self.compose_calls, [])
 
-    def test_an_existing_volume_a_restore_writes_is_refused(self):
-        (self.tools / "services" / "db" / "restore" / "dump.yaml").write_text(
-            "services:\n  db:\n    volumes: [db-data:/d]\n")
-        folder = write(self.home / "run" / "db.sql", "").parent
-        self.existing_volumes = {"kz_db-data"}
-        status, _, err = self.run_pihx("kz", "initialize", "--from", str(folder))
+    def test_an_existing_volume_of_a_restoring_service_is_refused(self):
+        # Not one the overlay names: the dump overlay only adds a file to the db container.
+        for existing in ("kz_db-data", "kz_db-init"):
+            with self.subTest(existing=existing):
+                (self.tools / "services" / "db" / "restore" / "dump.yaml").write_text(
+                    "services:\n  db: {}\n  unpack:\n    volumes: [db-init:/t]\n"
+                    "volumes:\n  db-init:\n")
+                self.existing_volumes = {existing, "backups"}
+                status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+                self.assertEqual(status, 1)
+                self.assertIn(f"{existing} already exists", err)
+                self.assertIn("pihx kz destroy", err)
+                self.assertEqual(self.up_calls(), [])
+
+    def test_an_external_volume_is_not_refused(self):
+        self.existing_volumes = {"backups"}
+        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+        self.assertEqual(status, 0, err)
+        self.assertEqual(len(self.up_calls()), 1)
+
+    def test_prepare_gives_values_for_this_run_and_a_failing_hook_names_its_service(self):
+        write(self.tools / "services" / "db" / "restore" / "prepare", "")
+        self.hooks["prepare"] = lambda: done("DB_OWNER=1:2\n\n")
+        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+        self.assertEqual(status, 0, err)
+        self.assertEqual(self.compose_envs[-1]["DB_OWNER"], "1:2")
+        # The hook gets the script environment and the instance's values.
+        self.assertEqual(self.hook_envs["prepare"]["PIHX_INSTANCE"], "kz")
+        self.assertEqual(self.hook_envs["prepare"]["DB_PASSWORD"], "secret $x")
+        for result, fragment in [(done(returncode=3), "db: restore/prepare failed (exit 3)"),
+                                 (done("not a value\n"), "printed 'not a value'")]:
+            with self.subTest(fragment=fragment):
+                self.compose_calls.clear()
+                self.hooks["prepare"] = lambda: result
+                status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+                self.assertEqual(status, 1)
+                self.assertIn(fragment, err)
+                self.assertEqual(self.up_calls(), [])
+
+    def test_a_failing_finish_is_cleaned_up_like_a_failed_restore(self):
+        write(self.tools / "services" / "db" / "restore" / "finish", "")
+        db_env = self.home / "kz" / "db.env"
+        before = db_env.read_text()
+
+        def finish():
+            db_env.write_text(before + "WRITTEN=1\n")
+            write(self.home / "kz" / "new.env", "")
+            self.existing_volumes = {"kz_db-data"}
+            return done(returncode=1)
+        self.hooks["finish"] = finish
+        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
         self.assertEqual(status, 1)
-        self.assertIn("kz_db-data already exists", err)
-        self.assertIn("pihx kz destroy", err)
-        self.assertEqual(self.compose_calls, [])
+        self.assertIn("db: restore/finish failed (exit 1)", err)
+        self.assertEqual(db_env.read_text(), before)
+        self.assertFalse((self.home / "kz" / "new.env").exists())
+        self.assertIn(("down",), self.compose_calls)
+
+    def test_a_volume_left_after_a_failure_is_named_with_destroy(self):
+        write(self.tools / "services" / "db" / "restore" / "finish", "")
+
+        def finish():
+            self.existing_volumes = {"kz_db-init"}
+            return done(returncode=1)
+        self.hooks["finish"] = finish
+        (self.tools / "services" / "db" / "restore" / "dump.yaml").write_text(
+            "services:\n  unpack:\n    volumes: [db-init:/t]\nvolumes:\n  db-init:\n")
+        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+        self.assertEqual(status, 1)
+        self.assertIn("Couldn't remove kz_db-init (db-init holds a full copy", err)
+        self.assertIn("'pihx kz destroy'", err)
 
     def test_an_empty_folder_is_an_error(self):
-        (self.home / "run").mkdir()
-        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.home / "run"))
+        (self.home / "empty").mkdir()
+        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.home / "empty"))
         self.assertEqual(status, 1)
         self.assertIn("nothing to restore", err)

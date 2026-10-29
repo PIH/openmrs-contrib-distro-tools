@@ -12,7 +12,13 @@ services:
       # A directory is mounted as backup, which extract.sh copies.
       - SOURCE_NAME=${OPENMRS_DB_RESTORE_ARCHIVE:-backup}
     volumes:
-      - ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}:/source/${OPENMRS_DB_RESTORE_ARCHIVE:-backup}:ro
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}
+        target: /source/${OPENMRS_DB_RESTORE_ARCHIVE:-backup}
+        read_only: true
+        bind:
+          create_host_path: false
       - ${PIHX_TOOLS}/utils/lib/in-container/extract.sh:/extract.sh:ro
       - percona-staging:/staging
     command:
@@ -53,8 +59,3 @@ services:
 
 volumes:
   percona-staging:
-
-x-pihx:
-  # The database isn't empty, so OpenMRS mustn't create its tables (see the openmrs service).
-  env:
-    OPENMRS_DB_CREATED_EMPTY: "false"

@@ -1,3 +1,5 @@
+import contextlib
+import io
 import textwrap
 import unittest
 
@@ -128,6 +130,39 @@ class MergeTest(TempDirTest):
         self.assertIn(f"{f}: line 2: required variable UNSET is missing a value: needs it",
                       str(raised.exception))
         self.assertEqual(envfile.merge([self.write("g", "B=${A?x}\n")], {"A": "1"}), {"B": "1"})
+
+
+
+class SetTest(TempDirTest):
+    def test_set_replaces_every_line_defining_the_name_or_appends(self):
+        f = write(self.root / "a.env", "# kept\nA=1\nB='x'\nA=2\n")
+        f.chmod(0o600)
+        envfile.set_value(f, "A", "a $b")
+        self.assertEqual(f.read_text(), "# kept\nA='a $b'\nB='x'\n")
+        envfile.set_value(f, "C", "false")
+        self.assertEqual(f.read_text(), "# kept\nA='a $b'\nB='x'\nC='false'\n")
+        self.assertEqual(f.stat().st_mode & 0o777, 0o600)
+
+    def test_set_makes_a_missing_file_readable_by_its_owner_only(self):
+        f = self.root / "new.env"
+        envfile.set_value(f, "A", "1")
+        self.assertEqual(f.read_text(), "A='1'\n")
+        self.assertEqual(f.stat().st_mode & 0o777, 0o600)
+
+    def test_set_refuses_a_file_it_cant_read_and_a_value_it_cant_write(self):
+        f = write(self.root / "bad.env", "not a line\n")
+        with self.assertRaises(ValueError):
+            envfile.set_value(f, "A", "1")
+        self.assertEqual(f.read_text(), "not a line\n")
+        with self.assertRaises(ValueError):
+            envfile.set_value(self.root / "a.env", "A", "it's")
+
+    def test_set_from_the_command_line(self):
+        f = self.root / "c.env"
+        self.assertEqual(envfile.main(["set", str(f), "OPENMRS_DB_CREATED_EMPTY", "false"]), 0)
+        self.assertEqual(f.read_text(), "OPENMRS_DB_CREATED_EMPTY='false'\n")
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(envfile.main(["set", str(f), "A"]), 2)
 
 
 if __name__ == "__main__":

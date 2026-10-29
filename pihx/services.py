@@ -168,55 +168,25 @@ def load(tools, name):
     )
 
 
-# --- restore overlays -------------------------------------------------------------------------------
+# --- restore overlays ---------------------------------------------------------------------------
 #
-# A restore overlay is a compose file added for `initialize` only. Besides Compose's own keys it may
-# have an `x-pihx` mapping (Compose ignores x- keys), for what Compose can't express:
-#   image-user: {variable: V, service: S}  before anything runs, V (unless the instance or the
-#                                          caller sets it) becomes the <uid>:<gid> that S's image
-#                                          runs as
-#   env: {NAME: value, ...}                once initialize succeeds, written to the service's own
-#                                          <svc>.env, unless that file already sets NAME
+# A restore overlay is a compose file added for `initialize` only. A service may also have
+# restore/prepare (run before the restore; prints KEY=value lines for that run only) and
+# restore/finish (run after it succeeds), found by their presence.
 
-EXTENSION = "x-pihx"
 VOLUME_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 
 
 def read_overlay(path):
-    """A restore overlay, parsed, its x-pihx checked. Raises ServiceError naming the file."""
+    """A restore overlay, parsed. Raises ServiceError naming the file."""
     try:
         data = parse_yaml(Path(path).read_text())
         data = {} if data is None else data
         if not isinstance(data, dict):
             raise ValueError("expected a mapping (a compose file)")
-        _check_extension(data.get(EXTENSION, {}))
     except ValueError as e:
         raise ServiceError(f"{path}: {e}") from None
     return data
-
-
-def _check_extension(ext):
-    if not isinstance(ext, dict):
-        raise ValueError(f"'{EXTENSION}' must be a mapping")
-    for key in ext:
-        if key not in ("image-user", "env"):
-            raise ValueError(f"unknown key '{key}' in '{EXTENSION}' (known: env, image-user)")
-    user = ext.get("image-user", {"variable": "V", "service": "s"})
-    if not isinstance(user, dict) or set(user) != {"variable", "service"} \
-            or any(not isinstance(v, str) for v in user.values()):
-        extra = sorted(set(user) - {"variable", "service"}) if isinstance(user, dict) else []
-        raise ValueError("'image-user' must be {variable: <name>, service: <service>}"
-                         + (f", not with '{extra[0]}'" if extra else ""))
-    if not envfile.NAME.fullmatch(user["variable"]):
-        raise ValueError(f"'image-user': '{user['variable']}' isn't a variable name")
-    env = ext.get("env", {})
-    if not isinstance(env, dict):
-        raise ValueError("'env' must be a mapping of names to values")
-    for name, value in env.items():
-        if not isinstance(name, str) or not envfile.NAME.fullmatch(name):
-            raise ValueError(f"'env': '{name}' isn't a variable name")
-        if not isinstance(value, str):
-            raise ValueError(f"'env': {name}'s value must be a string (quote it)")
 
 
 def overlay_volumes(data):

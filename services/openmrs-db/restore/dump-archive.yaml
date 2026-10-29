@@ -9,7 +9,13 @@ services:
       - ARCHIVE_PASSWORD
       - ARCHIVE_NAME=${OPENMRS_DB_RESTORE_ARCHIVE:?OPENMRS_DB_RESTORE_ARCHIVE must be set}
     volumes:
-      - ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}:/source/${OPENMRS_DB_RESTORE_ARCHIVE:?OPENMRS_DB_RESTORE_ARCHIVE must be set}:ro
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}
+        target: /source/${OPENMRS_DB_RESTORE_ARCHIVE:?OPENMRS_DB_RESTORE_ARCHIVE must be set}
+        read_only: true
+        bind:
+          create_host_path: false
       - ${PIHX_TOOLS}/utils/lib/in-container/extract.sh:/extract.sh:ro
       - db-init:/target
     command:
@@ -39,8 +45,3 @@ services:
 
 volumes:
   db-init:
-
-x-pihx:
-  # The database isn't empty, so OpenMRS mustn't create its tables (see the openmrs service).
-  env:
-    OPENMRS_DB_CREATED_EMPTY: "false"

@@ -1,0 +1,18 @@
+#!/bin/sh
+# initialize, before openmrs-data is restored: prints OPENMRS_DATA_OWNER, the owner its restore
+# overlays give the restored files -- the user the openmrs image runs as, unless the instance or the
+# caller sets it. Run before any volume exists, so an image that can't be run fails first.
+set -eu
+if [ -n "${OPENMRS_DATA_OWNER:-}" ]; then
+    echo "OPENMRS_DATA_OWNER=$OPENMRS_DATA_OWNER"
+    exit 0
+fi
+# (config --images would list the images of the services openmrs depends on too.)
+image=$(docker compose config --format json openmrs |
+    python3 -c 'import json, sys; print(json.load(sys.stdin)["services"]["openmrs"]["image"])')
+# shellcheck disable=SC2016 # expanded in the image's shell
+if ! owner=$(docker run --rm --entrypoint sh "$image" -c 'echo "$(id -u):$(id -g)"'); then
+    echo "error: couldn't determine the user $image runs as -- set OPENMRS_DATA_OWNER=<uid>:<gid> to choose the owner of the restored openmrs-data explicitly" >&2
+    exit 1
+fi
+echo "OPENMRS_DATA_OWNER=$owner"

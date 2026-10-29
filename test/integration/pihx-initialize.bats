@@ -78,13 +78,38 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
 
 @test "a service without an entry starts empty" {
     create openmrs-db,openmrs
-    printf 'CREATE TABLE marker (id INT);\nINSERT INTO marker VALUES (3);\n' | gzip > run/openmrs-db.sql.gz
+    # An entry may be a link to a file elsewhere: the host resolves it.
+    mkdir elsewhere
+    printf 'CREATE TABLE marker (id INT);\nINSERT INTO marker VALUES (3);\n' | gzip > elsewhere/dump.sql.gz
+    ln -s "$BATS_TEST_TMPDIR/elsewhere/dump.sql.gz" run/openmrs-db.sql.gz
     initialize --from run
     assert_success
     run db_marker_in_volume "${NAME}_db-data"
     assert_output 3
     # openmrs-data is OpenMRS's to build up on its first start.
     assert_equal "$(volumes)" "${NAME}_db-data"
+}
+
+@test "an existing volume of a restoring service is refused, even one its restore doesn't name" {
+    create openmrs-db,openmrs
+    # A dump restore adds only a file to openmrs-db, which mounts db-data itself.
+    docker volume create "${NAME}_db-data" >/dev/null
+    write_tiny_dump run/openmrs-db.sql
+    initialize --from run
+    assert_failure
+    assert_output --partial "${NAME}_db-data already exists"
+    assert_equal "$(volumes)" "${NAME}_db-data"
+}
+
+@test "a dangling link entry is an error, not an empty restore" {
+    create openmrs-db,openmrs
+    ln -s "$BATS_TEST_TMPDIR/nosuch/dump.sql.gz" run/openmrs-db.sql.gz
+    initialize --from run
+    assert_failure
+    assert_output --partial "run/openmrs-db.sql.gz doesn't exist on the host"
+    assert_equal "$(volumes)" ""
+    assert_equal "$(containers)" ""
+    [ ! -e "$BATS_TEST_TMPDIR/nosuch" ] || fail "a directory was made for the missing entry"
 }
 
 @test "two entries for one service is an error" {
@@ -139,6 +164,26 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     [ -n "$(image_id "$SEED_IMAGE")" ] || fail "the seed image, here before initialize, was removed"
 }
 
+@test "--from-image with an old-format seed says so and how to rebuild it" {
+    local ctx="$BATS_TEST_TMPDIR/old-seed" image
+    image="$(res old-seed)"
+    mkdir -p "$ctx"
+    write_tiny_dump "$ctx/dump.sql" && gzip "$ctx/dump.sql"
+    tar czf "$ctx/data.tar.gz" -C "$BATS_FILE_TMPDIR/data" .
+    printf 'FROM alpine:3.21\nCOPY dump.sql.gz data.tar.gz /seed/\n' > "$ctx/Dockerfile"
+    docker build -q -t "$image" "$ctx" >/dev/null
+    create openmrs-db,openmrs
+    initialize --from-image "$image"
+    docker rmi -f "$image" >/dev/null
+    assert_failure
+    assert_output --partial "error: $image isn't a seed this version restores"
+    assert_output --partial "old-format seed"
+    assert_output --partial "openmrs/seed/Dockerfile"
+    refute_output --partial "$PIHX_HOME/."
+    assert_equal "$(find "$PIHX_HOME" -maxdepth 1 -name ".$NAME-seed-*")" ""
+    assert_equal "$(volumes)" ""
+}
+
 @test "a failed restore leaves no volumes" {
     create openmrs-db,openmrs
     write_tiny_dump run/openmrs-db.sql
@@ -153,4 +198,23 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     assert_equal "$(containers)" ""
     run grep OPENMRS_DB_CREATED_EMPTY "$PIHX_HOME/$NAME/openmrs-db.env"
     assert_failure
+}
+
+@test "openmrs' prepare gives the restored openmrs-data to the user its image runs as" {
+    OPENMRS_IMAGE_NAME=alpine OPENMRS_IMAGE_TAG=3.21 create openmrs-db,openmrs
+    make_data_fixture run/openmrs
+    OPENMRS_DATA_OWNER= initialize --from run
+    assert_success
+    assert_output --partial 'Changed the owner of the restored openmrs-data to 0:0'
+}
+
+@test "a failing prepare is an error naming the service and hook, before any volume exists" {
+    create openmrs-db,openmrs
+    make_data_fixture run/openmrs
+    # placeholder/openmrs can't be run to find its user.
+    OPENMRS_DATA_OWNER= initialize --from run
+    assert_failure
+    assert_output --partial 'set OPENMRS_DATA_OWNER=<uid>:<gid>'
+    assert_output --partial 'error: openmrs: restore/prepare failed'
+    assert_equal "$(volumes)" ""
 }

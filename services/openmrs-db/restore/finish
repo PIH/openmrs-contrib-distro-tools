@@ -1,0 +1,7 @@
+#!/bin/sh
+# initialize, once openmrs-db is restored: records that the database didn't start empty, so the
+# openmrs service doesn't create its tables (see its compose.yaml).
+set -eu
+PYTHONPATH="$PIHX_TOOLS" python3 -m pihx.envfile set "$PIHX_INSTANCE_DIR/openmrs-db.env" \
+    OPENMRS_DB_CREATED_EMPTY false
+echo "Set OPENMRS_DB_CREATED_EMPTY=false in $PIHX_INSTANCE_DIR/openmrs-db.env" >&2

@@ -4,9 +4,10 @@
 services:
   openmrs-db:
     volumes:
-      - ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}:/docker-entrypoint-initdb.d/${OPENMRS_DB_RESTORE_NAME:?OPENMRS_DB_RESTORE_NAME must be set}:ro
-
-x-pihx:
-  # The database isn't empty, so OpenMRS mustn't create its tables (see the openmrs service).
-  env:
-    OPENMRS_DB_CREATED_EMPTY: "false"
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}
+        target: /docker-entrypoint-initdb.d/${OPENMRS_DB_RESTORE_NAME:?OPENMRS_DB_RESTORE_NAME must be set}
+        read_only: true
+        bind:
+          create_host_path: false

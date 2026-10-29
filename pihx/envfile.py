@@ -12,7 +12,11 @@ Compose's rules, checked against `docker compose config` in pihx-runtime:
   looked up in the process environment first (it wins outright), then in values read before.
 """
 
+import os
 import re
+import sys
+import tempfile
+from pathlib import Path
 
 NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 LINE = re.compile(r"\s*(?:export\s+)?([^=\s]*)\s*=\s*(.*)")
@@ -161,3 +165,51 @@ def format_line(name, value):
         raise ValueError(f"{name} ends with a backslash, which an env file can't hold (Compose "
                          "would read it as escaping the closing quote)")
     return f"{name}='{value}'"
+
+
+def set_value(path, name, value):
+    """Sets <name> to <value> in the env file <path> (format_line), replacing every line that
+    defines it, or appending one. The file keeps its mode (a new one is 0600) and is replaced in one
+    step; one Compose can't read is refused, untouched."""
+    path = Path(path)
+    new = format_line(name, value)
+    text = path.read_text() if path.exists() else ""
+    parse(text)
+    defining = {number for number, n, _, _ in _entries(text) if n == name}
+    lines, written = [], False
+    for number, line in enumerate(text.splitlines(), 1):
+        if number in defining:
+            if not written:
+                lines.append(new)
+                written = True
+            continue
+        lines.append(line)
+    if not written:
+        lines.append(new)
+    mode = path.stat().st_mode & 0o777 if path.exists() else 0o600
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write("".join(line + "\n" for line in lines))
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+
+
+def main(argv):
+    """python3 -m pihx.envfile set <file> <NAME> <value>, for service scripts."""
+    if len(argv) != 4 or argv[0] != "set":
+        print("usage: python3 -m pihx.envfile set <file> <NAME> <value>", file=sys.stderr)
+        return 2
+    try:
+        set_value(argv[1], argv[2], argv[3])
+    except (OSError, ValueError) as e:
+        print(f"error: {argv[1]}: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -4,16 +4,16 @@
 
 services:
   reset-mysql-accounts:
-    image: ${OPENMRS_DB_IMAGE_NAME}:${OPENMRS_DB_IMAGE_TAG}
+    image: ${OPENMRS_DB_IMAGE_NAME:?OPENMRS_DB_IMAGE_NAME must be set}:${OPENMRS_DB_IMAGE_TAG:?OPENMRS_DB_IMAGE_TAG must be set}
     container_name: ${SERVICE_NAME}-reset-mysql-accounts
     depends_on:
       restore-mysql-volume:
         condition: service_completed_successfully
     entrypoint: ["bash", "/reset-mysql-accounts.sh"]
     environment:
-      MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD}
-      MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD}
-      RESET_DB_USER: ${OPENMRS_DB_USER}
+      MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD:?OPENMRS_DB_ROOT_PASSWORD must be set}
+      MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD:?OPENMRS_DB_PASSWORD must be set}
+      RESET_DB_USER: ${OPENMRS_DB_USER:?OPENMRS_DB_USER must be set}
       RESET_DB_NAME: openmrs
     volumes:
       - db-data:/var/lib/mysql

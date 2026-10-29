@@ -6,12 +6,13 @@ services:
     image: ${ALPINE_IMAGE:?ALPINE_IMAGE must be set}
     container_name: ${SERVICE_NAME}-restore-mysql-volume
     volumes:
-      - ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}:/source:ro
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}
+        target: /source
+        read_only: true
+        bind:
+          create_host_path: false
       - db-data:/target
     # 999:999 is the mysql user in the official mysql images.
     command: ["sh", "-c", "cp -a /source/. /target/ && chown -R 999:999 /target"]
-
-x-pihx:
-  # The database isn't empty, so OpenMRS mustn't create its tables (see the openmrs service).
-  env:
-    OPENMRS_DB_CREATED_EMPTY: "false"

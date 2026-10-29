@@ -16,7 +16,8 @@ restore would write exists, so it can't overwrite data.
 
 The folder holds at most one entry per service, named after the service, in a form that service's
 manifest (`services/<svc>/service.yaml`, `restore:`) accepts. A service with no entry starts empty.
-An entry that no service of the instance accepts, or two entries for one service, is an error.
+An entry that no service of the instance accepts, or two entries for one service, is an error;
+so is anything else in the folder, hidden files (e.g. `.DS_Store`) included.
 
 | Service | Entry | Restored |
 |---|---|---|
@@ -26,7 +27,8 @@ An entry that no service of the instance accepts, or two entries for one service
 | `openmrs-db` | `openmrs-db.datadir/` | a ready MySQL data directory, copied in, then the accounts reset |
 | `openmrs` | `openmrs.7z`, `openmrs.tar.gz`, `openmrs.tgz`, `openmrs.tar`, `openmrs.zip`, `openmrs/` | `openmrs-data`, from an archive (e.g. from `backup-openmrs-data-directory`) or a directory |
 
-An entry may be a link: its host path is what the restore containers mount. A relative `--from`
+An entry may be a link: its host path is what the restore containers mount, and one that doesn't
+resolve on the host is an error before anything runs. A relative `--from`
 is the caller's directory's. `--from-image` copies the image's `/seed` folder (a distribution's
 seed image, built by `.github/workflows/build-seeded-image.yml` from `openmrs/seed/Dockerfile`,
 holds `openmrs-db.sql.gz` and `openmrs.tar.gz`) to a temporary folder under `PIHX_HOME` and restores
@@ -51,8 +53,11 @@ pihx <name> initialize --from-image partnersinhealth/pihemr-seed-haiti:<version>
 Each service's restore steps are compose overlays in `services/<svc>/restore/`, added to the
 instance's files for this one run: `initialize` brings up the containers they name, waits for each
 with a healthcheck (the database) to turn healthy and for the others to exit, brings everything
-down, and removes the staging volumes the overlays declare. If anything fails, it removes the
-containers and every volume it made. Archives are extracted by
+down, and removes the staging volumes the overlays declare. A restored service may also have
+`restore/prepare`, run first, whose `KEY=value` output is used for that run only (`openmrs`'s finds
+the owner for `openmrs-data`), and `restore/finish`, run once the restore has worked (`openmrs-db`'s
+records `OPENMRS_DB_CREATED_EMPTY=false`). If anything fails, it removes the containers and every
+volume it made, and undoes what a `finish` wrote to the instance's env files. Archives are extracted by
 `utils/lib/in-container/extract.sh`, into a volume, never onto the host.
 
 ## `openmrs-docker initialize`

@@ -11,7 +11,13 @@ services:
       - ARCHIVE_NAME=${OPENMRS_RESTORE_ARCHIVE:?OPENMRS_RESTORE_ARCHIVE must be set}
       - OWNER=${OPENMRS_DATA_OWNER:?OPENMRS_DATA_OWNER must be set}
     volumes:
-      - ${OPENMRS_RESTORE_PATH:?OPENMRS_RESTORE_PATH must be set}:/source/${OPENMRS_RESTORE_ARCHIVE:?OPENMRS_RESTORE_ARCHIVE must be set}:ro
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${OPENMRS_RESTORE_PATH:?OPENMRS_RESTORE_PATH must be set}
+        target: /source/${OPENMRS_RESTORE_ARCHIVE:?OPENMRS_RESTORE_ARCHIVE must be set}
+        read_only: true
+        bind:
+          create_host_path: false
       - ${PIHX_TOOLS}/utils/lib/in-container/extract.sh:/extract.sh:ro
       - ${PIHX_TOOLS}/services/openmrs/scripts/finish-data-restore.sh:/finish-data-restore.sh:ro
       - openmrs-data:/target
@@ -25,7 +31,3 @@ services:
         find "$$ROOT" -mindepth 1 -maxdepth 1 -exec mv {} /target/ \;
         rm -rf "$$STAGING"
         sh /finish-data-restore.sh
-
-x-pihx:
-  # The owner for the restored files: the user the openmrs image runs as, unless set.
-  image-user: {variable: OPENMRS_DATA_OWNER, service: openmrs}

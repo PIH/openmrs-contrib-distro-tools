@@ -64,9 +64,15 @@ def _variable_prefix(service_name):
     return service_name.upper().replace("-", "_")
 
 
-def choose(inst, folder, entries):
+class EntryError(CliError):
+    """The folder's entries don't fit the instance's services."""
+
+
+def choose(inst, folder, entries, label=None):
     """The Choice for each of <entries> ((name, "dir" | "file" | None if unknown), in <folder>).
-    An entry no service of the instance accepts, or a second entry for one service, is an error."""
+    An entry no service of the instance accepts, or a second entry for one service, is an
+    EntryError, naming the folder as <label> if given."""
+    where = label or str(folder)
     accepted = {}
     for svc in inst.services:
         for restore in svc.manifest.restore:
@@ -82,19 +88,20 @@ def choose(inst, folder, entries):
     for name, kind in sorted(entries):
         if name not in accepted:
             if name in others:
-                raise CliError(f"{folder / name} is for {others[name]}, which isn't part of "
-                               f"{inst.name} (add it with 'pihx {inst.name} add-service "
-                               f"{others[name]}', or leave the entry out)")
-            raise CliError(f"{folder / name} matches no service of {inst.name}: each entry is "
-                           "named as a service's manifest accepts (its `restore` names)")
+                raise EntryError(f"{where}/{name} is for {others[name]}, which isn't part of "
+                                 f"{inst.name} (add it with 'pihx {inst.name} add-service "
+                                 f"{others[name]}', or leave the entry out)")
+            raise EntryError(f"{where}/{name} matches no service of {inst.name}: each entry is "
+                             "named as a service's manifest accepts (its `restore` names), and "
+                             "nothing else may be in the folder")
         svc, restore, is_dir = accepted[name]
         if kind == "file" and is_dir:
-            raise CliError(f"{folder / name} must be a directory for {svc.name}")
+            raise EntryError(f"{where}/{name} must be a directory for {svc.name}")
         if kind == "dir" and not is_dir:
-            raise CliError(f"{folder / name} must be a file for {svc.name}")
+            raise EntryError(f"{where}/{name} must be a file for {svc.name}")
         if svc.name in chosen:
-            raise CliError(f"{folder} has two entries for {svc.name}: {chosen[svc.name].entry} "
-                           f"and {name}; keep one")
+            raise EntryError(f"{where} has two entries for {svc.name}: "
+                             f"{chosen[svc.name].entry} and {name}; keep one")
         chosen[svc.name] = Choice(svc, restore, name, folder / name)
     return list(chosen.values())
 
@@ -196,6 +203,24 @@ def tool_images(inst):
     return dict(re.findall(r"^([A-Z][A-Z0-9_]*_IMAGE)=(\S+)", text, re.MULTILINE))
 
 
+def _bind(path, target):
+    """docker run's --mount for <path> on the host, read-only. Unlike -v, it fails when the path
+    doesn't exist (e.g. a dangling link), instead of mounting a new empty directory."""
+    return ["--mount", f'type=bind,"source={path}",target={target},readonly']
+
+
+def check_entries(env, images, choices):
+    """Each entry exists on the host, as the daemon sees it: a link here may point to a path that
+    isn't mounted in pihx's container, and a missing one would otherwise restore nothing."""
+    for choice in choices:
+        result = _docker(env, "run", "--rm", *_bind(choice.path, "/entry"),
+                         images["ALPINE_IMAGE"], "true")
+        if result.returncode != 0:
+            raise CliError(f"{choice.path} doesn't exist on the host (a dangling link?), so "
+                           f"there's nothing to restore {choice.service.name} from: "
+                           f"{result.stderr.strip()}")
+
+
 # --- disk space -----------------------------------------------------------------------------------
 
 _SIZE_SCRIPT = r'''
@@ -214,8 +239,8 @@ def _size_kb(env, images, choice):
     archive's contents, extracted before it is imported or copied. None if it can't be told."""
     path, archive = str(choice.path), archive_name_for(choice.entry)
     if archive in ("archive.7z", "archive.zip"):
-        result = _docker(env, "run", "--rm", "-i", "-e", "ARCHIVE_PASSWORD", "-v",
-                         f"{path}:/a/{archive}:ro", images["P7ZIP_IMAGE"], "sh", "-c",
+        result = _docker(env, "run", "--rm", "-e", "ARCHIVE_PASSWORD",
+                         *_bind(path, f"/a/{archive}"), images["P7ZIP_IMAGE"], "sh", "-c",
                          f'printf "%s\\n" "${{ARCHIVE_PASSWORD:-}}" | 7z l -slt /a/{archive}')
         if result.returncode != 0:
             return None
@@ -223,7 +248,7 @@ def _size_kb(env, images, choice):
         return 2 * ((total + 1023) // 1024)
     mode = ("dir" if _is_dir_entry(choice) else
             "gz" if choice.entry.endswith((".gz", ".tgz")) else "file")
-    result = _docker(env, "run", "--rm", "-v", f"{path}:/s:ro", images["ALPINE_IMAGE"],
+    result = _docker(env, "run", "--rm", *_bind(path, "/s"), images["ALPINE_IMAGE"],
                      "sh", "-c", _SIZE_SCRIPT, "sh", mode)
     kb = result.stdout.strip()
     if result.returncode != 0 or not kb.isdigit():
@@ -295,59 +320,104 @@ class Restore:
             for name in referenced_variables(overlay):
                 if name not in self.config and name not in self.extra and os.environ.get(name):
                     self.extra[name] = os.environ[name]
-        self.compose = compose_module.Compose(inst, extra_files=self.overlays,
-                                              extra_env=self.extra)
         self.data = {o: services_module.read_overlay(o) for o in self.overlays}
+        self.compose = self._compose()
+
+    def _compose(self):
+        return compose_module.Compose(self.inst, extra_files=self.overlays, extra_env=self.extra)
 
     def env(self):
         return self.compose.environment()
+
+    def _exists(self, volume):
+        return _docker(self.env(), "volume", "inspect", volume).returncode == 0
 
     def project_volumes(self):
         result = _docker(self.env(), "volume", "ls", "-q", "--filter",
                          f"label=com.docker.compose.project={self.inst.name}")
         return set(result.stdout.split())
 
-    def refuse_existing_volumes(self):
-        """Every volume a restore the instance's services declare would write must be new."""
-        volumes = set()
+    def volumes_to_be_new(self):
+        """The volumes of every service of the instance that declares a restore: those its own
+        containers mount and those its overlays mount or declare. External volumes aren't the
+        instance's (e.g. a shared backups volume), so they're left out."""
+        config = json.loads(self.base.run("--profile", "*", "config", "--format", "json",
+                                          stdout=subprocess.PIPE, text=True).stdout or "{}")
+        top = config.get("volumes") or {}
+
+        def name_of(volume):
+            spec = top.get(volume) or {}
+            if spec.get("external"):
+                return None
+            return spec.get("name") or f"{self.inst.name}_{volume}"
+
+        names = set()
         for svc in self.inst.services:
+            if not svc.manifest.restore:
+                continue
+            own = services_module.parse_yaml(svc.compose_file.read_text()).get("services") or {}
+            for container in own:
+                for volume in (config.get("services", {}).get(container) or {}).get("volumes", []):
+                    if volume.get("type") == "volume" and volume.get("source"):
+                        names.add(name_of(volume["source"]))
             for overlay in svc.restore_overlays():
                 declared, mounted = services_module.overlay_volumes(
                     services_module.read_overlay(overlay))
-                volumes |= declared | mounted
-        for vol in sorted(volumes):
-            full = f"{self.inst.name}_{vol}"
-            if _docker(self.env(), "volume", "inspect", full).returncode == 0:
-                raise CliError(f"{full} already exists -- initialize only runs against a "
+                names |= {name_of(v) for v in declared | mounted}
+        return sorted(n for n in names if n)
+
+    def refuse_existing_volumes(self):
+        for volume in self.volumes_to_be_new():
+            if self._exists(volume):
+                raise CliError(f"{volume} already exists -- initialize only runs against a "
                                "brand-new instance with no existing data. Run "
                                f"'pihx {self.inst.name} destroy' first if you really want to "
                                "start over.")
 
-    def resolve_image_users(self):
-        """x-pihx image-user: a variable the instance and the caller leave unset becomes the
-        <uid>:<gid> the service's image runs as. Before any volume exists, so an image that can't
-        be run fails first."""
-        for overlay, data in self.data.items():
-            user = data.get(services_module.EXTENSION, {}).get("image-user")
-            if not user:
-                continue
-            variable, service = user["variable"], user["service"]
-            if self.config.get(variable) or self.extra.get(variable):
-                continue
-            config = self.base.run("config", "--format", "json", stdout=subprocess.PIPE,
-                                   text=True)
-            image = (json.loads(config.stdout).get("services", {}).get(service) or {}).get("image")
-            if not image:
-                raise CliError(f"{overlay}: x-pihx image-user names {service}, which has no image "
-                               f"in {self.inst.name}")
-            result = _docker(self.env(), "run", "--rm", "--entrypoint", "sh", image, "-c",
-                             'echo "$(id -u):$(id -g)"')
-            owner = result.stdout.strip()
-            if result.returncode != 0 or not re.fullmatch(r"\d+:\d+", owner):
-                sys.stderr.write(result.stderr)
-                raise CliError(f"couldn't determine the user {image} runs as -- set "
-                               f"{variable}=<uid>:<gid> to choose it explicitly")
-            self.extra[variable] = owner
+    # --- hooks: services/<svc>/restore/prepare and finish, run in pihx's container ---------------
+
+    def _hook_env(self):
+        """The service script environment (PIHX_*, SERVICE_NAME, COMPOSE_* for the instance without
+        the overlays), with the instance's values and this run's."""
+        compose = compose_module.Compose(self.inst, extra_env=self.extra)
+        return {**self.config, **compose.environment()}
+
+    def _run_hook(self, svc, hook):
+        path = svc.dir / "restore" / hook
+        if not path.is_file():
+            return None
+        try:
+            result = subprocess.run([str(path)], env=self._hook_env(), stdout=subprocess.PIPE,
+                                    text=True)
+        except OSError as e:
+            raise CliError(f"{svc.name}: restore/{hook} couldn't run: {e}") from None
+        if result.returncode != 0:
+            raise CliError(f"{svc.name}: restore/{hook} failed (exit {result.returncode})")
+        return result.stdout
+
+    def prepare(self):
+        """Each restored service's restore/prepare, before anything is created: its KEY=value lines
+        are values for this run only (e.g. openmrs' OPENMRS_DATA_OWNER)."""
+        for choice in self.choices:
+            out = self._run_hook(choice.service, "prepare")
+            for line in (out or "").splitlines():
+                if not line.strip():
+                    continue
+                match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)", line)
+                if not match:
+                    raise CliError(f"{choice.service.name}: restore/prepare printed '{line}', "
+                                   "not KEY=value")
+                self.extra[match.group(1)] = match.group(2)
+        self.compose = self._compose()
+
+    def finish(self):
+        """Each restored service's restore/finish, once its volumes are filled."""
+        for choice in self.choices:
+            out = self._run_hook(choice.service, "finish")
+            if out:
+                sys.stderr.write(out)
+
+    # --- the run ----------------------------------------------------------------------------------
 
     def containers(self):
         """The containers the overlays name, which `up` starts (with their dependencies)."""
@@ -384,42 +454,48 @@ class Restore:
                 raise CliError(f"{svc} didn't become healthy")
         self.compose.run("down")
 
-    def remove_restore_volumes(self):
+    def remove_volumes(self, names):
+        """Removes those of <names> that exist; returns those still there."""
+        present = [n for n in names if self._exists(n)]
+        if present:
+            _docker(self.env(), "volume", "rm", *present)
+        return [n for n in present if self._exists(n)]
+
+    def restore_volumes(self):
         declared = set()
         for data in self.data.values():
             declared |= services_module.overlay_volumes(data)[0]
-        names = [f"{self.inst.name}_{v}" for v in sorted(declared)]
-        if names:
-            _docker(self.env(), "volume", "rm", *names)
-
-    def write_env(self):
-        """x-pihx env: written to the restored service's <svc>.env unless it sets them."""
-        for choice in self.choices:
-            env_file = self.inst.dir / f"{choice.service.name}.env"
-            for overlay in choice.overlays():
-                values = self.data[overlay].get(services_module.EXTENSION, {}).get("env", {})
-                current = envfile.parse(env_file.read_text()) if env_file.is_file() else {}
-                lines = [envfile.format_line(k, v) for k, v in values.items() if k not in current]
-                if lines:
-                    with open(env_file, "a") as f:
-                        f.write("".join(line + "\n" for line in lines))
-                    note(f"Set {', '.join(k for k in values if k not in current)} in {env_file}")
+        return [f"{self.inst.name}_{v}" for v in sorted(declared)]
 
 
-def _restore(inst, folder):
-    choices = choose(inst, folder, _entries(folder))
+def _leftovers(volumes):
+    text = ", ".join(volumes)
+    if any(v.endswith("_db-init") for v in volumes):
+        text += " (db-init holds a full copy of the restored dump)"
+    return text
+
+
+def _restore(inst, folder, label=None):
+    choices = choose(inst, folder, _entries(folder), label)
     if not choices:
-        raise CliError(f"{folder} holds nothing to restore for {inst.name}")
+        raise CliError(f"{label or folder} holds nothing to restore for {inst.name}")
     for choice in choices:
         note(f"{choice.service.name}: {choice.entry}")
     restore = Restore(inst, choices)
     restore.refuse_existing_volumes()
+    check_entries(restore.env(), restore.images, choices)
     check_space(restore.env(), restore.images, choices)
-    restore.resolve_image_users()
+    restore.prepare()
     before = restore.project_volumes()
+    env_files = {p: p.read_bytes() for p in inst.dir.glob("*.env")}
     try:
         restore.run()
-        restore.remove_restore_volumes()
+        left = restore.remove_volumes(restore.restore_volumes())
+        if left:
+            # The restore itself worked: destroy would remove it too.
+            note(f"warning: couldn't remove the staging volume(s) {_leftovers(left)}; remove "
+                 "them with 'docker volume rm'.")
+        restore.finish()
     except BaseException as e:
         if isinstance(e, compose_module.ComposeError):
             # `up` failed on a container it waited for, whose output (e.g. 7z's "Wrong password")
@@ -429,15 +505,22 @@ def _restore(inst, folder):
             sys.stderr.write(logs.stdout or "")
         restore.compose.run("down", check=False, stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL)
-        restore.remove_restore_volumes()
-        made = sorted(restore.project_volumes() - before)
-        if made:
-            _docker(restore.env(), "volume", "rm", *made)
+        made = sorted(set(restore.restore_volumes()) | (restore.project_volumes() - before))
+        left = restore.remove_volumes(made)
+        # A finish hook may have written to an env file before a later one failed.
+        for path in inst.dir.glob("*.env"):
+            if path not in env_files:
+                path.unlink()
+        for path, content in env_files.items():
+            if path.read_bytes() != content:
+                path.write_bytes(content)
         if not isinstance(e, Exception):
             raise
+        if left:
+            raise CliError(f"initialize failed: {e}. Couldn't remove {_leftovers(left)}: run "
+                           f"'pihx {inst.name} destroy' before retrying.") from None
         raise CliError(f"initialize failed: {e}. The containers and volumes it made are "
                        "removed.") from None
-    restore.write_env()
 
 
 # --- seed images ----------------------------------------------------------------------------------
@@ -480,7 +563,14 @@ def cmd_initialize(name, args):
             env = compose_module.Compose(inst).environment()
             folder, pulled = _copy_seed(inst, value, env)
             try:
-                _restore(inst, folder)
+                _restore(inst, folder, label=f"{value}:{SEED_DIR}")
+            except EntryError as e:
+                held = ", ".join(sorted(os.listdir(folder))) or "nothing"
+                raise CliError(f"{value} isn't a seed this version restores: its {SEED_DIR} holds "
+                               f"{held} ({e}). It's probably an old-format seed (dump.sql.gz, "
+                               "data.tar.gz): rebuild it from openmrs/seed/Dockerfile, which "
+                               "holds files named after the services (openmrs-db.sql.gz, "
+                               "openmrs.tar.gz)") from None
             finally:
                 shutil.rmtree(folder, ignore_errors=True)
             # A seed is used once: removed if this run pulled it, kept if it was here already
