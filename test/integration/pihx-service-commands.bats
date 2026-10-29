@@ -135,6 +135,11 @@ YAML
     assert_failure
     assert_output --partial "nothing to summarize"
     assert_equal "$(ls)" run
+    mkdir adir
+    run "$BIN/pihx" "$NAME" summary --output=adir
+    assert_failure
+    assert_output --partial "error: adir is a directory"
+    assert_equal "$(ls adir)" ""
 }
 
 in_volume() { # <volume> <sh command>
@@ -202,6 +207,16 @@ in_volume() { # <volume> <sh command>
     run "$BIN/pihx" "$NAME" openmrs-db reset-accounts
     assert_failure
     assert_output --partial "openmrs-db-accounts failed"
+}
+
+@test "_start is refused from a shell, even with PIHX_LOCK_HELD set" {
+    "$BIN/pihx" "$NAME" create --services=openmrs-db >/dev/null
+    run "$BIN/pihx" "$NAME" _start
+    assert_failure 2
+    PIHX_LOCK_HELD="$NAME" run "$BIN/pihx" "$NAME" _start
+    assert_failure 2
+    assert_output --partial "error: _start is for service commands that hold the lock"
+    assert_equal "$(docker ps -aq --filter "label=com.docker.compose.project=$NAME")" ""
 }
 
 @test "a service command holds the instance lock" {

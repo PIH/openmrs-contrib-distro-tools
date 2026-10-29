@@ -113,6 +113,10 @@ if [ "${2-}" = initialize ]; then
     fi
 fi
 
+# Only a service command that holds an instance's lock sets this, for its own children: never taken
+# from the caller (see lifecycle.cmd_start_locked).
+unset PIHX_LOCK_HELD
+
 # summary --output <file>: the launcher writes the file, on the host, as the caller, from pihx's
 # standard output (the option is taken out of pihx's arguments), so nothing needs mounting. It is
 # written whole or not at all.
@@ -136,7 +140,12 @@ if [ "${2-}" = summary ]; then
     $take && die "--output needs a file"
     set -- "$inst" summary "$@"
     if [ -n "$output" ]; then
+        [ ! -d "$output" ] || die "$output is a directory"
         output_tmp=$(mktemp "$output.XXXXXX" 2>/dev/null) || die "can't write $output"
+        # Not left behind however the launcher ends.
+        trap 'rm -f "$output_tmp"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
     fi
 fi
 

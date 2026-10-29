@@ -275,7 +275,12 @@ class StartLockedTest(LifecycleTest):
         self.assertEqual(status, 2)
         self.assertIn("use 'start'", err)
         self.assertEqual(self.compose_calls, [])
+        # The variable alone isn't enough: the lock must be held.
         self.set_env({lifecycle.LOCK_HELD: "kz"})
+        status, _, err = self.run_pihx("kz", "_start")
+        self.assertEqual(status, 2)
+        self.assertIn("use 'start'", err)
+        self.assertEqual(self.compose_calls, [])
         with lock.hold(self.inst(), 0, command="x"):
             status, _, err = self.run_pihx("kz", "_start")
         self.assertEqual(status, 0, err)

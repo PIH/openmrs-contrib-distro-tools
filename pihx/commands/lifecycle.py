@@ -126,9 +126,16 @@ def cmd_start_locked(name, args):
     (e.g. openmrs-db's reset-accounts, which stops the instance and starts it again): the same
     start, with every service's setup checked."""
     _no_arguments(args, "_start")
-    if os.environ.get(LOCK_HELD) != name:
-        raise CliError("_start is for service commands that hold the lock; use 'start'", status=2)
     inst = _open(name)
+    # The variable is only a hint: the lock must really be held (by the command that ran this).
+    held = False
+    if os.environ.get(LOCK_HELD) == name:
+        try:
+            lock.check(inst)
+        except lock.LockError:
+            held = True
+    if not held:
+        raise CliError("_start is for service commands that hold the lock; use 'start'", status=2)
     start_stack(inst, compose_module.Compose(inst))
     return 0
 
