@@ -67,5 +67,6 @@ runs them one at a time). Tests create everything under a unique name prefix (a 
 random host ports, a placeholder OpenMRS image -- `initialize` only ever starts the database) and
 remove it all afterwards, so they don't touch existing instances.
 
-`.github/workflows/test.yml` runs `static`, `args` and `integration` on pushes to `main` and on pull
-requests that touch `bin/`, `lib/`, `utils/`, `images/`, `test/`, `docs/` or the README.
+`.github/workflows/test.yml` runs `unit`, `static`, `args` and `integration` on pushes to `main` and on pull
+requests that touch `bin/`, `lib/`, `utils/`, `pihx/`, `services/`, `openmrs/`, `images/`,
+`instance.env.defaults`, `test/`, `docs/` or the README.
