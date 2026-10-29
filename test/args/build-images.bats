@@ -131,3 +131,18 @@ STUB
     run cat "$STUB_LOG"
     refute_output --partial "build"
 }
+
+@test "build-images doesn't take a bare 'not found' for a missing tag, and bounds the repository check" {
+    cat > "$BATS_TEST_TMPDIR/bin/docker" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$STUB_LOG"
+[ "$1 $2" = "manifest inspect" ] && { echo "error: registry mirror not found" >&2; exit 1; }
+exit 0
+STUB
+    RETRY_DELAY=0 STUB_REPO_CODE=200 PUSH=true build
+    assert_failure
+    assert_output --partial "Can't tell whether"
+    run cat "$STUB_LOG"
+    refute_output --partial "buildx build"
+    assert_line --regexp "^curl .*--max-time 30 "
+}
