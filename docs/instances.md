@@ -101,8 +101,7 @@ command holds it, naming that command:
 error: <name> is busy: initialize (pid 12345, started 2026-09-30 11:39:19) -- run this again once that finishes.
 ```
 
-So on a puppet-managed host, the `pull && start` or `update` puppet runs on every apply fails, and
-changes nothing, while an `initialize`, `reset-accounts` or PETL run is in progress. With
+So on a puppet-managed host, the `update` puppet runs on every apply fails, and changes nothing, while an `initialize`, `reset-accounts` or PETL run is in progress. With
 `PIHX_LOCK_WAIT=<seconds>` set, a command waits up to that long for the lock instead, and then fails
 naming the holder (puppet's deploys wait an hour). A job (PETL) holds the lock for its whole run, so a
 deploy can't restart MySQL under a PETL run. Such a run is against the running instance: it runs the
