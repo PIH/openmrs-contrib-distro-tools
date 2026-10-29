@@ -1,16 +1,16 @@
-# initialize, RESTORE_MYSQL_DUMP_PATH (.7z or .zip): extracts the archive's one dump (.sql or .sql.gz)
-# into db-init, where MySQL's entrypoint imports it on first start. See README.md here.
+# initialize, openmrs-db.sql.7z or openmrs-db.sql.zip: extracts the archive's one dump (.sql or
+# .sql.gz) into db-init, where MySQL's entrypoint imports it on first start.
 
 services:
   restore-mysql-dump-archive:
     image: ${P7ZIP_IMAGE:?P7ZIP_IMAGE must be set}
-    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-restore-mysql-dump-archive
+    container_name: ${SERVICE_NAME}-restore-mysql-dump-archive
     environment:
       - ARCHIVE_PASSWORD
-      - ARCHIVE_NAME=${RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME:?RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME must be set}
+      - ARCHIVE_NAME=${OPENMRS_DB_RESTORE_ARCHIVE:?OPENMRS_DB_RESTORE_ARCHIVE must be set}
     volumes:
-      - ${RESTORE_MYSQL_DUMP_PATH:?RESTORE_MYSQL_DUMP_PATH must be set}:/source/${RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME:?RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME must be set}:ro
-      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/extract.sh:/extract.sh:ro
+      - ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}:/source/${OPENMRS_DB_RESTORE_ARCHIVE:?OPENMRS_DB_RESTORE_ARCHIVE must be set}:ro
+      - ${PIHX_TOOLS}/utils/lib/in-container/extract.sh:/extract.sh:ro
       - db-init:/target
     command:
       - sh
@@ -39,3 +39,8 @@ services:
 
 volumes:
   db-init:
+
+x-pihx:
+  # The database isn't empty, so OpenMRS mustn't create its tables (see the openmrs service).
+  env:
+    OPENMRS_DB_CREATED_EMPTY: "false"

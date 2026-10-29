@@ -41,11 +41,11 @@ closure() {
 
 # docker compose on the instance <dir> with the services given, as `pihx` runs it: env files in
 # override order, the environment pihx sets and nothing else. Extra arguments for Compose follow the
-# services' own after `--`; files named docker/modes/* after `+` are added as overlays.
+# services' own after `--`; files after `+` (relative to the checkout) are added as overlays.
 instance_compose() { # <dir> <service,...> [+overlay...] -- <compose args...>
     local dir=$1 services=${2//,/ } svc other with args=() overlays=() env=()
     shift 2
-    while [ "$1" != -- ]; do overlays+=("$REPO_ROOT/docker/modes/${1#+}"); shift; done
+    while [ "$1" != -- ]; do overlays+=("$REPO_ROOT/${1#+}"); shift; done
     shift
     args=(-p config --project-directory "$dir" --env-file "$REPO_ROOT/instance.env.defaults")
     for svc in $services; do args+=(--env-file "$REPO_ROOT/services/$svc/env.defaults"); done
@@ -159,16 +159,14 @@ ENV
     assert_output '13306:3306'
 }
 
-# The overlays under docker/modes/ stay until the services take over their restore steps and the
-# OpenMRS front end its dev and build overlays; they're checked against the services as before.
-overlay_config() { # <overlay...>
-    EXTRA_ENV=(SEED_IMAGE_NAME=placeholder/seed SEED_IMAGE_TAG=latest
-        RESTORE_MYSQL_DUMP_PATH=/tmp/dump.sql RESTORE_MYSQL_DUMP_FILENAME=dump.sql
-        RESTORE_MYSQL_DUMP_ARCHIVE_FILENAME=archive.7z RESTORE_MYSQL_DATA_PATH=/tmp/datadir
-        RESTORE_MYSQL_PERCONA_PATH=/tmp/percona.7z RESTORE_MYSQL_PERCONA_NAME=archive.7z
-        DISTRO_TOOLS_UTILS_DIR="$REPO_ROOT/utils" DISTRO_SOURCE_DIR=/tmp/distro
-        P7ZIP_IMAGE=placeholder/p7zip PERCONA_IMAGE=placeholder/percona
-        RESTORE_OPENMRS_DATA_PATH=/tmp/data RESTORE_OPENMRS_DATA_ARCHIVE_FILENAME=archive.tar.gz)
+# The dev and build overlays under docker/modes/ stay until the OpenMRS front end takes them; the
+# services' restore overlays (services/<svc>/restore/) are checked with the values initialize sets.
+overlay_config() { # <overlay...>, under docker/modes/ or services/
+    EXTRA_ENV=(OPENMRS_DB_RESTORE_PATH=/tmp/openmrs-db.sql OPENMRS_DB_RESTORE_NAME=openmrs-db.sql
+        OPENMRS_DB_RESTORE_ARCHIVE=archive.7z OPENMRS_RESTORE_PATH=/tmp/openmrs.7z
+        OPENMRS_RESTORE_NAME=openmrs.7z OPENMRS_RESTORE_ARCHIVE=archive.7z OPENMRS_DATA_OWNER=1:1
+        DISTRO_SOURCE_DIR=/tmp/distro ALPINE_IMAGE=placeholder/alpine P7ZIP_IMAGE=placeholder/p7zip
+        PERCONA_IMAGE=placeholder/percona)
     local dir="$BATS_TEST_TMPDIR/instance"
     make_instance "$dir"
     instance_compose "$dir" "${ALL_SERVICES// /,}" "${@/#/+}" -- config -q
@@ -176,18 +174,18 @@ overlay_config() { # <overlay...>
 
 @test "dev, build and every restore overlay is valid with the services" {
     local o failures=""
-    for o in dev build restore-mysql-volume-from-dump restore-mysql-volume-from-dump-archive \
-            restore-mysql-volume-from-seed restore-openmrs-data-volume-from-backup \
-            restore-openmrs-data-volume-from-archive restore-openmrs-data-volume-from-seed; do
-        run overlay_config "$o.yaml"
+    for o in docker/modes/dev.yaml docker/modes/build.yaml services/openmrs-db/restore/dump.yaml \
+            services/openmrs-db/restore/dump-archive.yaml services/openmrs/restore/archive.yaml \
+            services/openmrs/restore/directory.yaml; do
+        run overlay_config "$o"
         if [ "$status" -ne 0 ] || [[ "$output" == *'variable is not set'* ]]; then failures+="$o: $output"$'\n'; fi
     done
-    run overlay_config restore-mysql-volume-from-data-dir.yaml reset-mysql-accounts.yaml
-    [ "$status" -eq 0 ] || failures+="data-dir: $output"$'\n'
-    run overlay_config restore-mysql-volume-from-percona.yaml reset-mysql-accounts.yaml
+    run overlay_config services/openmrs-db/restore/datadir.yaml services/openmrs-db/restore/reset-accounts.yaml
+    [ "$status" -eq 0 ] || failures+="datadir: $output"$'\n'
+    run overlay_config services/openmrs-db/restore/percona.yaml services/openmrs-db/restore/reset-accounts.yaml
     [ "$status" -eq 0 ] || failures+="percona: $output"$'\n'
-    run overlay_config restore-mysql-volume-from-seed.yaml restore-openmrs-data-volume-from-seed.yaml
-    [ "$status" -eq 0 ] || failures+="seeds: $output"$'\n'
+    run overlay_config services/openmrs-db/restore/dump-archive.yaml services/openmrs/restore/archive.yaml
+    [ "$status" -eq 0 ] || failures+="both: $output"$'\n'
     [ -z "$failures" ] || fail "$failures"
 }
 

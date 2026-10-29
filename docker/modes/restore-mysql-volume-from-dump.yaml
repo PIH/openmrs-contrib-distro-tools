@@ -1,7 +1,0 @@
-# initialize, RESTORE_MYSQL_DUMP_PATH (.sql or .sql.gz): mounts the dump where MySQL's entrypoint
-# imports it on first start. See README.md here.
-
-services:
-  openmrs-db:
-    volumes:
-      - ${RESTORE_MYSQL_DUMP_PATH:?RESTORE_MYSQL_DUMP_PATH must be set}:/docker-entrypoint-initdb.d/${RESTORE_MYSQL_DUMP_FILENAME:?RESTORE_MYSQL_DUMP_FILENAME must be set}:ro

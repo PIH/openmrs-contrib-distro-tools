@@ -1,17 +1,64 @@
 # Initializing an instance
 
-`initialize` fills a new instance's two volumes, `db-data` and `openmrs-data`, before its first
+`initialize` fills a new instance's volumes, e.g. `db-data` and `openmrs-data`, before its first
 start: much faster than letting OpenMRS build them up from nothing, and the way to move a server's
 data onto an instance.
 
 ```bash
-openmrs-docker <name> initialize
+pihx <name> initialize --from <folder>
+pihx <name> initialize --from-image <image>
 ```
 
-It runs only on an instance that has never been started, and refuses if any of its volumes exists,
-so it can't overwrite data.
+It runs only on an instance that has never been started, and refuses if any volume a service's
+restore would write exists, so it can't overwrite data.
 
-## Sources
+## The folder
+
+The folder holds at most one entry per service, named after the service, in a form that service's
+manifest (`services/<svc>/service.yaml`, `restore:`) accepts. A service with no entry starts empty.
+An entry that no service of the instance accepts, or two entries for one service, is an error.
+
+| Service | Entry | Restored |
+|---|---|---|
+| `openmrs-db` | `openmrs-db.sql`, `openmrs-db.sql.gz` | a dump, imported by MySQL on first start |
+| `openmrs-db` | `openmrs-db.sql.7z`, `openmrs-db.sql.zip` | an archive holding one dump (e.g. from `backup-mysqldump`) |
+| `openmrs-db` | `openmrs-db.percona.7z`, `openmrs-db.percona/` | a Percona/xtrabackup backup ([below](#percona-backups)), then the [accounts reset](#database-accounts-after-a-physical-restore) |
+| `openmrs-db` | `openmrs-db.datadir/` | a ready MySQL data directory, copied in, then the accounts reset |
+| `openmrs` | `openmrs.7z`, `openmrs.tar.gz`, `openmrs.tgz`, `openmrs.tar`, `openmrs.zip`, `openmrs/` | `openmrs-data`, from an archive (e.g. from `backup-openmrs-data-directory`) or a directory |
+
+An entry may be a link: its host path is what the restore containers mount. A relative `--from`
+is the caller's directory's. `--from-image` copies the image's `/seed` folder (a distribution's
+seed image, built by `.github/workflows/build-seeded-image.yml` from `openmrs/seed/Dockerfile`,
+holds `openmrs-db.sql.gz` and `openmrs.tar.gz`) to a temporary folder under `PIHX_HOME` and restores
+from that; it removes the image afterwards if it pulled it.
+
+| Variable | |
+|---|---|
+| `ARCHIVE_PASSWORD` | the password for a protected `.7z`/`.zip`; passed to the restore containers by name, never on a command line or into a file |
+| `OPENMRS_DATA_OWNER` | `<uid>:<gid>` for a restored `openmrs-data` ([below](#openmrs-data-after-a-restore)) |
+| `PIHX_INITIALIZE_TIMEOUT` | seconds to wait for a restored database to become healthy (default 3600: a large import, or crash recovery of a large data directory, can take long) |
+| `SKIP_DISK_SPACE_CHECK=true` | skips the free-space check: initialize refuses, before any volume exists, if Docker's volumes clearly haven't room (directories and contents as they are, archives twice, plus 10%) |
+
+```bash
+# the database from a dump, openmrs-data from a backup archive
+mkdir run && ln -s /backups/nightly.sql.gz run/openmrs-db.sql.gz && ln -s /backups/data.7z run/openmrs.7z
+ARCHIVE_PASSWORD=<password> pihx <name> initialize --from run
+
+# the distribution's nightly seed
+pihx <name> initialize --from-image partnersinhealth/pihemr-seed-haiti:<version>
+```
+
+Each service's restore steps are compose overlays in `services/<svc>/restore/`, added to the
+instance's files for this one run: `initialize` brings up the containers they name, waits for each
+with a healthcheck (the database) to turn healthy and for the others to exit, brings everything
+down, and removes the staging volumes the overlays declare. If anything fails, it removes the
+containers and every volume it made. Archives are extracted by
+`utils/lib/in-container/extract.sh`, into a volume, never onto the host.
+
+## `openmrs-docker initialize`
+
+The OpenMRS front end keeps today's variables: it assembles a `--from` folder from the `RESTORE_*`
+paths, and `SEED_IMAGE_NAME` becomes `--from-image`.
 
 Each volume's source is chosen separately, so e.g. the database can come from a backup while
 `openmrs-data` comes from the nightly seed image. By default (only `SEED_IMAGE_NAME` set) both come
@@ -26,7 +73,7 @@ command line, not in `env`.
 | `RESTORE_MYSQL_PERCONA_PATH` | `db-data` | a Percona/xtrabackup backup: a `.7z`/`.zip`/`.tar.gz`/`.tgz`/`.tar` (e.g. a legacy nightly `percona.7z`, or `backup-percona --output=<name>.7z`) or a directory ([below](#percona-backups)) |
 | `RESTORE_OPENMRS_DATA_PATH` | `openmrs-data` | a directory, or a `.tar.gz`/`.tgz`/`.tar`/`.7z`/`.zip` of one (e.g. from `backup-openmrs-data-directory`) |
 | `ARCHIVE_PASSWORD` | | the password for a protected `.7z`/`.zip` |
-| `INITIALIZE_DB_TIMEOUT` | | seconds to wait for the restored database to become healthy (default 3600: a large import, or crash recovery of a large data directory, can take long) |
+| `INITIALIZE_DB_TIMEOUT` | | `PIHX_INITIALIZE_TIMEOUT`: seconds to wait for the restored database to become healthy (default 3600: a large import, or crash recovery of a large data directory, can take long) |
 
 `db-data` needs exactly one source. `openmrs-data` needs none: without `RESTORE_OPENMRS_DATA_PATH`
 or `SEED_IMAGE_NAME`, OpenMRS builds it up on its first start, as on a fresh install (e.g. for a
@@ -102,9 +149,10 @@ It also moves a restored `openmrs-runtime.properties` aside to `openmrs-runtime.
 settings, which would win over this instance's: openmrs-core 2.6+ only merges `OMRS_EXTRA_*` into an
 existing file. OpenMRS writes a fresh one from the instance's `env` on its first start.
 
-With no runtime properties in `openmrs-data` (set aside, or nothing restored or seeded), OpenMRS
-would take the database for a new install and create every table again, so `initialize` adds
-`OPENMRS_CREATE_TABLES=false` to `env` (unless it's already set).
+With no runtime properties in `openmrs-data` (set aside, or nothing restored), OpenMRS would take
+the database for a new install and create every table again, so once `openmrs-db` is restored,
+`initialize` adds `OPENMRS_DB_CREATED_EMPTY=false` to `openmrs-db.env`, and the `openmrs` service
+then sets `create_tables` to false (`OPENMRS_CREATE_TABLES`, if set, decides instead).
 
 ### Carrying over runtime properties
 
@@ -179,10 +227,10 @@ diff before.txt after.txt
 
 Before creating any volume, `initialize` estimates what the restore will write and stops if Docker's
 volume filesystem has less free than that plus 10%, rather than failing part way with half-filled
-volumes. The estimate is a data directory's size, a dump's uncompressed size (twice for a
-`.7z`/`.zip`, which is extracted into a temporary volume first), a Percona backup's (twice:
-extracted, then copied in), and an `openmrs-data` directory's or archive's uncompressed size; a seed
-image isn't counted. A dump import usually needs more than the dump itself (MySQL builds the indexes
+volumes. The estimate is each entry's size as it is (a directory, a dump), or uncompressed, and
+twice an archive's contents (`.7z`, `.zip`, `.tar.gz`, `.tgz`, `.tar`), which is extracted before
+it is imported or copied in. A Percona directory is extracted and copied too, so it needs about twice
+what is counted; an `openmrs-data` archive, extracted within its volume, about half. A dump import usually needs more than the dump itself (MySQL builds the indexes
 too), so for dumps this catches "nowhere near enough" rather than a tight fit. `extract-archive`,
 `backup-percona`, `convert-percona-backup` and `backup-openmrs-data-directory` check their output's
 filesystem the same way. `SKIP_DISK_SPACE_CHECK=true` goes ahead anyway.

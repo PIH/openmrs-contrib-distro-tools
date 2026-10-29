@@ -4,7 +4,7 @@ import os
 import sys
 
 from pihx import __version__, runtime
-from pihx.commands import CliError, instance_cmds, lifecycle
+from pihx.commands import CliError, initialize, instance_cmds, lifecycle
 from pihx.compose import ComposeError
 from pihx.instance import InstanceError, instance_name_error
 from pihx.lock import LockError
@@ -35,6 +35,9 @@ Commands:
                              the images replaced
   run-service [--pull] <service> [command...]
                              Run a service once (a job holds the lock); exits with its exit code
+  initialize --from <folder> | --from-image <image>
+                             Fill a new instance's volumes from a folder with an entry per service
+                             (or an image's /seed folder), before its first start
   destroy [--force]          Remove its containers, volumes and directory (asks first)
   help                       Show this help
   version                    Show pihx's version and the checkout it runs from
@@ -76,6 +79,7 @@ INSTANCE_COMMANDS = {
     "pull": lifecycle.cmd_pull,
     "update": lifecycle.cmd_update,
     "run-service": lifecycle.cmd_run_service,
+    "initialize": initialize.cmd_initialize,
     "destroy": lifecycle.cmd_destroy,
 }
 

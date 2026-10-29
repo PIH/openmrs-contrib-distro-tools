@@ -14,9 +14,12 @@ class ComposeError(Exception):
 
 
 class Compose:
-    def __init__(self, instance, extra_files=()):
+    def __init__(self, instance, extra_files=(), extra_env=None):
+        """<extra_env>: values for one command only (e.g. initialize's restore paths), which win
+        over the instance's files in Compose's interpolation."""
         self.instance = instance
         self.extra_files = list(extra_files)
+        self.extra_env = dict(extra_env or {})
 
     def env_files(self):
         return self.instance.env_files()
@@ -60,9 +63,9 @@ class Compose:
 
     def environment(self):
         """The whole environment to run Compose (or a service script) with: env() plus only
-        PASSED_THROUGH from the caller's."""
+        PASSED_THROUGH from the caller's, and extra_env."""
         passed = {name: os.environ[name] for name in PASSED_THROUGH if name in os.environ}
-        return {**passed, **self.env()}
+        return {**passed, **self.extra_env, **self.env()}
 
     def run(self, *args, check=True, **kwargs):
         """Runs `docker compose <options> <args>` in environment(); kwargs go to subprocess.run.

@@ -1,18 +1,19 @@
-# initialize, RESTORE_MYSQL_PERCONA_PATH (an archive or a directory): extracts the backup into
+# initialize, openmrs-db.percona.7z or openmrs-db.percona/: extracts the backup into
 # percona-staging (a legacy flat percona.7z, or one <name>-percona/ folder), prepares it if it isn't
-# already (innobackupex --apply-log; legacy nightly backups are), and copies it into db-data. See
-# README.md here.
+# already (innobackupex --apply-log; legacy nightly backups are), and copies it into db-data. The
+# manifest runs reset-accounts.yaml after it.
 
 services:
   extract-percona-backup:
     image: ${P7ZIP_IMAGE:?P7ZIP_IMAGE must be set}
-    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-extract-percona-backup
+    container_name: ${SERVICE_NAME}-extract-percona-backup
     environment:
       - ARCHIVE_PASSWORD
-      - SOURCE_NAME=${RESTORE_MYSQL_PERCONA_NAME:?RESTORE_MYSQL_PERCONA_NAME must be set}
+      # A directory is mounted as backup, which extract.sh copies.
+      - SOURCE_NAME=${OPENMRS_DB_RESTORE_ARCHIVE:-backup}
     volumes:
-      - ${RESTORE_MYSQL_PERCONA_PATH:?RESTORE_MYSQL_PERCONA_PATH must be set}:/source/${RESTORE_MYSQL_PERCONA_NAME:?RESTORE_MYSQL_PERCONA_NAME must be set}:ro
-      - ${DISTRO_TOOLS_UTILS_DIR:?DISTRO_TOOLS_UTILS_DIR must be set}/lib/in-container/extract.sh:/extract.sh:ro
+      - ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}:/source/${OPENMRS_DB_RESTORE_ARCHIVE:-backup}:ro
+      - ${PIHX_TOOLS}/utils/lib/in-container/extract.sh:/extract.sh:ro
       - percona-staging:/staging
     command:
       - sh
@@ -28,7 +29,7 @@ services:
 
   restore-mysql-volume:
     image: ${PERCONA_IMAGE:?PERCONA_IMAGE must be set}
-    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-restore-mysql-volume
+    container_name: ${SERVICE_NAME}-restore-mysql-volume
     depends_on:
       extract-percona-backup:
         condition: service_completed_successfully
@@ -52,3 +53,8 @@ services:
 
 volumes:
   percona-staging:
+
+x-pihx:
+  # The database isn't empty, so OpenMRS mustn't create its tables (see the openmrs service).
+  env:
+    OPENMRS_DB_CREATED_EMPTY: "false"

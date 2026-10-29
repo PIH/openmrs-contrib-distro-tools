@@ -123,6 +123,44 @@ class ServicesTest(TempDirTest):
                     services.all(self.tools)
                 shutil.rmtree(self.tools / "services" / name)
 
+    def test_restore_overlays_their_volumes_and_extension(self):
+        db = self.tools / "services" / "db"
+        (db / "restore" / "dump.yaml").write_text(
+            "services:\n  db:\n    volumes:\n      - ${DB_RESTORE_PATH}:/init/x.sql:ro\n"
+            "      - db-data:/var/lib/db\n  unpack:\n    volumes: [db-init:/t, '/abs:/abs']\n"
+            "volumes:\n  db-init:\n"
+            "x-pihx:\n  env: {DB_CREATED_EMPTY: 'false'}\n")
+        (db / "restore" / "reset.yaml").write_text(
+            "services:\n  reset:\n    volumes:\n      - type: volume\n        source: db-data\n"
+            "        target: /d\n"
+            "x-pihx:\n  image-user: {variable: DB_OWNER, service: db}\n")
+        svc = services.load(self.tools, "db")
+        self.assertEqual(svc.restore_overlays(), [db / "restore" / "dump.yaml",
+                                                  db / "restore" / "datadir.yaml",
+                                                  db / "restore" / "reset.yaml"])
+        self.assertEqual(svc.restore_volumes(), {"db-init"})
+        self.assertEqual(services.overlay_volumes(services.read_overlay(db / "restore" / "dump.yaml")),
+                         ({"db-init"}, {"db-data", "db-init"}))
+        self.assertEqual(services.overlay_volumes(services.read_overlay(db / "restore" / "reset.yaml")),
+                         (set(), {"db-data"}))
+        self.assertEqual(services.read_overlay(db / "restore" / "dump.yaml")["x-pihx"],
+                         {"env": {"DB_CREATED_EMPTY": "false"}})
+        # An empty overlay is an empty mapping.
+        self.assertEqual(services.read_overlay(db / "restore" / "datadir.yaml"), {})
+
+    def test_a_bad_overlay_extension_is_an_error(self):
+        dump = self.tools / "services" / "db" / "restore" / "dump.yaml"
+        for text, fragment in [("x-pihx: {owner: x}\n", "owner"),
+                               ("x-pihx: {env: {not a name: x}}\n", "not a name"),
+                               ("x-pihx: {env: {A: 1}}\n", "string"),
+                               ("x-pihx: {image-user: {variable: A}}\n", "service"),
+                               ("x-pihx: {image-user: {variable: A, service: b, x: c}}\n", "'x'"),
+                               ("- a list\n", "mapping"),
+                               ("services: [\n", "line")]:
+            with self.subTest(text=text):
+                dump.write_text(text)
+                self.assert_service_error("db", "dump.yaml", fragment)
+
     def test_service_names_follow_the_name_rule(self):
         add_service(self.tools, "Bad_Name", "description: x\n")
         self.assert_service_error("Bad_Name", "Bad_Name")

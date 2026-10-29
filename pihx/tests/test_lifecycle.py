@@ -163,6 +163,9 @@ class DestroyTest(LifecycleTest):
 
     def test_force_removes_volumes_and_the_directory_but_not_a_tools_link(self):
         (self.home / "kz" / "tools").symlink_to(self.tools)
+        # Volumes only the restore overlays declare go too.
+        write(self.tools / "services" / "db" / "restore" / "dump.yaml",
+              "volumes:\n  db-init:\n  percona-staging:\n")
         status, out, err = self.run_pihx("kz", "destroy", "--force")
         self.assertEqual(status, 0, err)
         self.assertEqual(self.compose_calls, [("--profile", "*", "down", "-v", "--remove-orphans")])

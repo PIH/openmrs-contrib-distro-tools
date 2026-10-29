@@ -12,10 +12,6 @@ from pihx.commands import CliError
 from pihx.commands.instance_cmds import tools_dir
 from pihx.instance import Instance, InstanceError
 
-# Volumes the restore overlays create, which no compose file declares: `down -v` doesn't know them.
-RESTORE_VOLUMES = ("db-init", "percona-staging")
-
-
 def exit_status(returncode):
     """A process's exit status as a shell reports it: 128+n when signal n killed it."""
     return 128 - returncode if returncode < 0 else returncode
@@ -334,7 +330,10 @@ def cmd_destroy(name, args):
             volumes = _docker(compose, "volume", "ls", "-q", "--filter", label).stdout.split()
             if volumes:
                 _docker(compose, "volume", "rm", *volumes)
-        _docker(compose, "volume", "rm", *(f"{inst.name}_{v}" for v in RESTORE_VOLUMES))
+        # Volumes only restore overlays declare (initialize's staging): `down -v` doesn't know them.
+        restore_volumes = sorted({v for s in inst.services for v in s.restore_volumes()})
+        if restore_volumes:
+            _docker(compose, "volume", "rm", *(f"{inst.name}_{v}" for v in restore_volumes))
         message = _remove_directory(inst, compose)
     print(message)
     return 0

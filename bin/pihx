@@ -88,9 +88,35 @@ if [ "${2-}" = use-tools ] && [ -n "${3-}" ] && [ -d "$3" ]; then
     esac
 fi
 
+# initialize --from <folder> reads the folder, so it is resolved here, as on the host (a relative
+# path against the caller's directory), and mounted read-only at that path when it's elsewhere; the
+# restore containers mount its entries by the same host paths. pihx gets it as PIHX_FROM.
+unset PIHX_FROM
+from_mount=
+if [ "${2-}" = initialize ]; then
+    from=
+    take=false
+    for arg in "$@"; do
+        if $take; then from=$arg; take=false; continue; fi
+        case $arg in
+            --from) take=true ;;
+            --from=*) from=${arg#--from=} ;;
+        esac
+    done
+    if [ -n "$from" ] && [ -d "$from" ]; then
+        PIHX_FROM=$(cd -P "$from" && pwd)
+        export PIHX_FROM
+        case $PIHX_FROM/ in
+            "$PIHX_TOOLS"/* | "$PIHX_HOME"/*) ;;
+            *) from_mount=$PIHX_FROM:$PIHX_FROM:ro ;;
+        esac
+    fi
+fi
+
 # From here "$@" is the container's command, so options for docker run can go in front of it.
 set -- "$image" python3 -m pihx "$@"
 [ -z "$use_tools_mount" ] || set -- -v "$use_tools_mount" "$@"
+[ -z "$from_mount" ] || set -- -v "$from_mount" "$@"
 
 # The caller's Docker config, for registry credentials (Puppet writes the instance user's). Mounted
 # aside, read-only: pihx installs a copy without credential helpers, whose binaries the image lacks,
