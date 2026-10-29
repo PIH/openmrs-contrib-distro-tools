@@ -1,24 +1,16 @@
 #!/usr/bin/env bats
-# openmrs-db's server options come from OPENMRS_DB_OPT_* variables in the env file; binary logging
-# is one such option, and purge-binlogs lets the server clean up before it's turned off.
+# openmrs-db's server options come from OPENMRS_DB_OPT_* variables (its defaults and openmrs-db.env);
+# binary logging is one such option, and purge-binlogs lets the server clean up before it's turned
+# off.
 
 load ../helpers
 
 teardown() {
-    local name
-    name="$(instance)"
-    [ -d "$OPENMRS_DOCKER_HOME/$name" ] && db_compose "$name" down -v >/dev/null 2>&1
-    rm -rf "${OPENMRS_DOCKER_HOME:?}/$name"
+    destroy_instance "$(instance)"
     common_teardown
 }
 
-db_compose() { # <instance> <compose args...>
-    local dir="$OPENMRS_DOCKER_HOME/$1"; shift
-    docker compose --env-file "$dir/env" -f "$dir/openmrs-db.yaml" "$@"
-}
-
 start_db() { # <instance>
-    # Through openmrs-docker, which regenerates openmrs-db.env from env first.
     "$BIN/openmrs-docker" "$1" start >/dev/null 2>&1
     wait_for_mysql "$1-openmrs-db" root openmrs
 }
@@ -73,7 +65,8 @@ binlog_files() { # <instance>
     run binlog_files "$name"
     assert_output 2 # the current binlog and the index
 
-    env="$OPENMRS_DOCKER_HOME/$name/env"
+    env="$(env_file_of "$name" openmrs-db)"
+    grep -q '^OPENMRS_DB_OPT_log_bin=' "$env"
     sed -i '/^OPENMRS_DB_OPT_log_bin=/d; /^OPENMRS_DB_OPT_expire_logs_days=/d' "$env"
     start_db "$name"
     run mysql_exec "$name-openmrs-db" openmrs 'SELECT @@log_bin'
@@ -125,12 +118,11 @@ binlog_files() { # <instance>
 }
 
 @test "an existing data directory starts regardless (its accounts were set by other means)" {
-    local name env
+    local name
     name="$(instance)"
     SERVICES=openmrs-db create_instance "$name"
     start_db "$name"
-    env="$OPENMRS_DOCKER_HOME/$name/env"
-    sed -i "s/^OPENMRS_DB_ROOT_PASSWORD=.*/OPENMRS_DB_ROOT_PASSWORD='bs\\\\x'/" "$env"
+    set_env_value "$name" openmrs-db OPENMRS_DB_ROOT_PASSWORD 'bs\x'
     "$BIN/openmrs-docker" "$name" start >/dev/null 2>&1
     wait_for_mysql "$name-openmrs-db" root openmrs
 }

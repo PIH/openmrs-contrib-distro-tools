@@ -40,7 +40,7 @@ assert_initializes_to() { # <source> <expected tree> [VAR=value...]
     assert_output "${tree/.\/openmrs-runtime.properties/./openmrs-runtime.properties.restored}"
 }
 
-env_file() { echo "$OPENMRS_DOCKER_HOME/$NAME/env"; }
+env_file() { env_file_of "$NAME" openmrs-db; }
 
 # --- backup + extract-archive ----------------------------------------------------------------------
 
@@ -267,39 +267,53 @@ FIXTURE_TREE_EXCLUDING="./.openmrs-lib-cache
     assert_output 'connection.url=jdbc:mysql://x/openmrs'
 }
 
-@test "initialize sets OPENMRS_CREATE_TABLES=false after restoring openmrs-data" {
-    assert_initializes_to "$BATS_TEST_TMPDIR/data" "$FIXTURE_TREE"
-    run grep '^OPENMRS_CREATE_TABLES=' "$(env_file)"
-    assert_output "OPENMRS_CREATE_TABLES='false'"
+# OpenMRS creates its tables only for a database that started empty (OPENMRS_DB_CREATED_EMPTY,
+# which initialize sets to false in openmrs-db.env), unless OPENMRS_CREATE_TABLES says otherwise.
+create_tables_setting() { # what the openmrs container gets
+    instance_compose_of "$NAME" config --format json | jq -r '.services.openmrs.environment.OMRS_CONFIG_CREATE_TABLES'
 }
 
-@test "initialize sets OPENMRS_CREATE_TABLES=false when openmrs-data is neither restored nor seeded" {
+@test "initialize records that the database didn't start empty after restoring openmrs-data" {
+    assert_initializes_to "$BATS_TEST_TMPDIR/data" "$FIXTURE_TREE"
+    run grep '^OPENMRS_DB_CREATED_EMPTY=' "$(env_file)"
+    assert_output "OPENMRS_DB_CREATED_EMPTY='false'"
+    run create_tables_setting
+    assert_output false
+}
+
+@test "initialize records that the database didn't start empty when openmrs-data is neither restored nor seeded" {
     NAME="$(instance)"
     create_instance "$NAME"
     run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
     assert_success
-    run grep '^OPENMRS_CREATE_TABLES=' "$(env_file)"
-    assert_output "OPENMRS_CREATE_TABLES='false'"
+    run grep '^OPENMRS_DB_CREATED_EMPTY=' "$(env_file)"
+    assert_output "OPENMRS_DB_CREATED_EMPTY='false'"
+    run create_tables_setting
+    assert_output false
 }
 
-@test "initialize keeps an OPENMRS_CREATE_TABLES already in the env file" {
+@test "initialize keeps an OPENMRS_CREATE_TABLES already in openmrs.env, which decides" {
     NAME="$(instance)"
     create_instance "$NAME"
-    echo 'OPENMRS_CREATE_TABLES=true' >> "$(env_file)"
+    echo 'OPENMRS_CREATE_TABLES=true' >> "$(env_file_of "$NAME" openmrs)"
     run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data"
     assert_success
-    run grep '^OPENMRS_CREATE_TABLES=' "$(env_file)"
+    run grep '^OPENMRS_CREATE_TABLES=' "$(env_file_of "$NAME" openmrs)"
     assert_output 'OPENMRS_CREATE_TABLES=true'
+    run create_tables_setting
+    assert_output true
 }
 
-@test "initialize with a failed restore leaves OPENMRS_CREATE_TABLES unset" {
+@test "initialize with a failed restore leaves OPENMRS_DB_CREATED_EMPTY unset" {
     ARCHIVE_PASSWORD=pw backup data.7z >/dev/null 2>&1
     NAME="$(instance)"
     create_instance "$NAME"
     run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH=data.7z ARCHIVE_PASSWORD=wrong
     assert_failure
-    run grep '^OPENMRS_CREATE_TABLES=' "$(env_file)"
+    run grep '^OPENMRS_DB_CREATED_EMPTY=' "$(env_file)"
     assert_failure
+    run create_tables_setting
+    assert_output true
 }
 
 # --- initialize: ownership of a restored openmrs-data ----------------------------------------------
@@ -351,13 +365,16 @@ not_owned_by() { # <volume> <uid> <gid>
     assert_output "${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.properties.restored}"
 }
 
-@test "initialize failing after the restore says to destroy before retrying" {
+@test "initialize failing after the restore removes what it made, so it can be retried without a destroy" {
     NAME="$(instance)"
     create_instance "$NAME"
     run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data" \
         OPENMRS_DATA_OWNER=no-such-user:no-such-group
     assert_failure
-    assert_output --partial "run '$BIN/openmrs-docker $NAME destroy' before retrying"
+    assert_output --partial "initialize failed"
+    assert_equal "$(docker volume ls -q --filter "name=^${NAME}_")" ""
+    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data"
+    assert_success
 }
 
 @test "ARCHIVE_PASSWORD never appears in any process's command line, in or out of containers" {

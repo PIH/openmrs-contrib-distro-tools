@@ -11,13 +11,13 @@ setup() {
 teardown() { destroy_instance "$NAME"; common_teardown; }
 
 @test "run-service --pull pulls the service's image first, even a profiled one" {
-    # A service that doesn't hold the lock, so nothing else of the instance is involved.
-    printf 'name: ${SERVICE_NAME:?SERVICE_NAME must be set}\nservices:\n  job:\n    image: alpine:3.21\n    profiles: ["job"]\n' > "$OPENMRS_DOCKER_HOME/$NAME/job.yaml"
-    record_docker_argv
+    # A container that doesn't hold the lock, so nothing else of the instance is involved, added by
+    # an override file (the instance's own Compose additions).
+    printf 'services:\n  job:\n    image: alpine:3.21\n    profiles: ["job"]\n' > "$PIHX_HOME/$NAME/openmrs-db.override.yaml"
     run "$BIN/openmrs-docker" "$NAME" run-service --pull job true
     assert_success
-    run grep -E '^compose .* pull job$' "$DOCKER_ARGV_LOG"
-    assert_success
+    # Compose's pull runs in pihx's container, so its output, not a host command line, shows it
+    assert_output --regexp 'job[[:space:]]+Pulled'
 }
 
 @test "run-service --pull needs a service" {

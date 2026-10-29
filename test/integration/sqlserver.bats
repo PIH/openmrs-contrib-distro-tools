@@ -16,7 +16,7 @@ PW='pa$s "w;d`x-1A'
 setup() {
     NAME="$(instance)"
     SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 SERVICES=sqlserver create_instance "$NAME"
-    ENV="$OPENMRS_DOCKER_HOME/$NAME/env"
+    ENV="$(env_file_of "$NAME" sqlserver)"
 }
 teardown() { destroy_instance "$NAME"; common_teardown; }
 
@@ -82,7 +82,7 @@ sqlcmd_as() { # <login> <password> <query>
     NAME="$(instance)-petl"
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 \
         SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 SERVICES=openmrs-db,petl,sqlserver create_instance "$NAME"
-    printf "SQLSERVER_LOGIN_BAD_USER='reports'\nSQLSERVER_LOGIN_BAD_PASSWORD='Rpt-pw-9'\n" >> "$OPENMRS_DOCKER_HOME/$NAME/env"   # no databases
+    printf "SQLSERVER_LOGIN_BAD_USER='reports'\nSQLSERVER_LOGIN_BAD_PASSWORD='Rpt-pw-9'\n" >> "$(env_file_of "$NAME" sqlserver)"   # no databases
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1 || true   # fails on the same login; leaves the instance up
     run "$BIN/openmrs-docker" "$NAME" run-service petl sh -c 'echo PETL-RAN'
     assert_failure

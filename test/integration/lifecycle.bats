@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# start, wait, status, restart, stop, pull, update, and the drift warning and sync, against a stub
+# start, wait, status, restart, stop, pull, update, and sync (no longer needed), against a stub
 # OpenMRS image (see build_stub_openmrs_image).
 
 load ../helpers
@@ -9,7 +9,7 @@ setup_file() { build_stub_openmrs_image; }
 setup() {
     cd "$BATS_TEST_TMPDIR"
     NAME="$(instance)"
-    DIR="$OPENMRS_DOCKER_HOME/$NAME"
+    DIR="$PIHX_HOME/$NAME"
 }
 teardown() {
     destroy_instance "$NAME"
@@ -49,16 +49,14 @@ running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.p
     assert_output --partial 'OpenMRS did not become ready'
 }
 
-@test "start notes a fragment that differs from the tool's; sync restores it, and update then starts quietly" {
+@test "sync says it's no longer needed and changes nothing (the instance uses its checkout's files), and update starts it" {
     SERVICES=openmrs-db create_instance "$NAME"
-    echo '# changed by hand' >> "$DIR/openmrs-db.yaml"
-    run "$BIN/openmrs-docker" "$NAME" start
-    assert_success
-    assert_output --partial 'newer service definitions available for: openmrs-db.yaml'
+    local before
+    before=$(cd "$DIR" && ls -A && cat ./*.env)
     run "$BIN/openmrs-docker" "$NAME" sync
     assert_success
-    assert_output --partial 'Synced openmrs-db.yaml'
-    cmp "$DIR/openmrs-db.yaml" "$REPO_ROOT/docker/services/openmrs-db.yaml"
+    assert_output --partial 'sync is no longer needed'
+    assert_equal "$(cd "$DIR" && ls -A && cat ./*.env)" "$before"
     run "$BIN/openmrs-docker" "$NAME" update
     assert_success
     refute_output --partial 'newer service definitions'

@@ -62,17 +62,18 @@ volume it made, and undoes what a `finish` wrote to the instance's env files. Ar
 
 ## `openmrs-docker initialize`
 
-The OpenMRS front end keeps today's variables: it assembles a `--from` folder from the `RESTORE_*`
-paths, and `SEED_IMAGE_NAME` becomes `--from-image`.
+The OpenMRS front end keeps today's variables: it assembles a temporary `--from` folder from the
+`RESTORE_*` paths (links to them, named as the services accept them), with the seed image's
+entries for what they don't restore ([openmrs/README.md](../openmrs/README.md)).
 
 Each volume's source is chosen separately, so e.g. the database can come from a backup while
 `openmrs-data` comes from the nightly seed image. By default (only `SEED_IMAGE_NAME` set) both come
 from the seed image. A `RESTORE_*` variable replaces one volume's source for that run; set it on the
-command line, not in `env`.
+command line (it is never written to the instance).
 
 | Variable | Fills | Source |
 |---|---|---|
-| `SEED_IMAGE_NAME` / `SEED_IMAGE_TAG` (in `env`) | either, if not given below | the distro's nightly seed image |
+| `SEED_IMAGE_NAME` / `SEED_IMAGE_TAG` (the instance's `instance.env`, else yours) | either, if not given below | the distro's nightly seed image |
 | `RESTORE_MYSQL_DUMP_PATH` | `db-data` | a `.sql`/`.sql.gz` dump, imported by MySQL on first start; or a `.7z`/`.zip` holding one (e.g. from `backup-mysqldump`) |
 | `RESTORE_MYSQL_DATA_PATH` | `db-data` | a ready MySQL data directory, copied in before MySQL starts (much faster for a large database) |
 | `RESTORE_MYSQL_PERCONA_PATH` | `db-data` | a Percona/xtrabackup backup: a `.7z`/`.zip`/`.tar.gz`/`.tgz`/`.tar` (e.g. a legacy nightly `percona.7z`, or `backup-percona --output=<name>.7z`) or a directory ([below](#percona-backups)) |
@@ -214,19 +215,25 @@ holds the source's secrets).
 
 ## Checking a restore
 
-Fingerprint the source before the backup with `openmrs-utils fingerprint`, and the new instance after
-`initialize` and before its first start with `openmrs-docker <name> fingerprint`, then `diff`. The
-instance command reads its stopped volumes with the instance's own database image and
-`OPENMRS_DB_OPT_*` options, so `[server]` shows what the running instance will have. Expect
-`[accounts]` to differ, a physical restore to bring along other databases the source had, and
-`[server]` to differ only where the two servers are configured differently:
+Fingerprint the source before the backup with `openmrs-utils fingerprint`, and the new instance
+after `initialize` and before its first start with `pihx <name> summary` (or
+`openmrs-docker <name> fingerprint --data-dir --exclude-distribution-artifacts`, the same summary),
+then `diff`. With the instance stopped, `summary` reads its volumes with the instance's own
+database image and `OPENMRS_DB_OPT_*` options, so `[server]` shows what the running instance will
+have; once it runs, it reads the running database instead. Summarize before the first start, so
+the database is as restored (OpenMRS's first start changes it). Expect `[accounts]` to differ, a
+physical restore to bring along other databases the source had, and `[server]` to differ only where
+the two servers are configured differently:
 
 ```bash
 MYSQL_PASSWORD=<root password> openmrs-utils fingerprint --container=<source db container> \
-    --data-dir=<source data dir> --output=before.txt
-openmrs-docker <name> fingerprint --data-dir --exclude-distribution-artifacts --output=after.txt
+    --data-dir=<source data dir> --exclude-distribution-artifacts --output=before.txt
+pihx <name> summary --output=after.txt
 diff before.txt after.txt
 ```
+
+`summary` leaves out what the distribution supplies (modules, owa, configuration, frontend) from
+the `[data-dir]` section by default; `--include-distribution-artifacts` keeps it.
 
 ## Disk space
 

@@ -4,32 +4,33 @@
 
 load ../helpers
 
-# Seed images as build-seeded-image.yml makes them, from docker/Dockerfile.seed: a dump with marker
-# 7, and data.tar.gz from backup-openmrs-data-directory holding seed-only.txt and runtime properties
-# (in one data/ folder).
-# FLAT_SEED_IMAGE's data.tar.gz is flat, as the workflow made them before.
+# Seed images as build-seeded-image.yml makes them, from openmrs/seed/Dockerfile: openmrs-db.sql.gz
+# with marker 7, and openmrs.tar.gz from backup-openmrs-data-directory holding seed-only.txt and
+# runtime properties (in one data/ folder). FLAT_SEED_IMAGE's openmrs.tar.gz is flat.
 setup_file() {
     export SEED_IMAGE="$(file_res seed)" FLAT_SEED_IMAGE="$(file_res flat-seed)"
     local ctx="$BATS_FILE_TMPDIR/seed" flat="$BATS_FILE_TMPDIR/flat-seed"
     mkdir -p "$ctx" "$BATS_FILE_TMPDIR/data/complex_obs"
     echo seed > "$BATS_FILE_TMPDIR/data/complex_obs/seed-only.txt"
     echo 'connection.username=openmrs' > "$BATS_FILE_TMPDIR/data/openmrs-runtime.properties"
-    chmod 750 "$BATS_FILE_TMPDIR/data"   # not what a new volume's root gets (root, 755)
-    printf 'CREATE TABLE marker (id INT);\nINSERT INTO marker VALUES (7);\n' | gzip > "$ctx/dump.sql.gz"
-    "$UTILS/backup-openmrs-data-directory.sh" --volume="$BATS_FILE_TMPDIR/data" --output="$ctx/data.tar.gz" 2>/dev/null
-    cp "$REPO_ROOT/docker/seed-entrypoint.sh" "$UTILS/lib/in-container/extract.sh" "$ctx/"
+    printf 'CREATE TABLE marker (id INT);\nINSERT INTO marker VALUES (7);\n' | gzip > "$ctx/openmrs-db.sql.gz"
+    "$UTILS/backup-openmrs-data-directory.sh" --volume="$BATS_FILE_TMPDIR/data" --output="$ctx/openmrs.tar.gz" 2>/dev/null
     cp -r "$ctx" "$flat"
-    tar czf "$flat/data.tar.gz" -C "$BATS_FILE_TMPDIR/data" .
-    docker build -q -t "$SEED_IMAGE" -f "$REPO_ROOT/docker/Dockerfile.seed" "$ctx" >/dev/null
-    docker build -q -t "$FLAT_SEED_IMAGE" -f "$REPO_ROOT/docker/Dockerfile.seed" "$flat" >/dev/null
+    tar czf "$flat/openmrs.tar.gz" -C "$BATS_FILE_TMPDIR/data" .
+    docker build -q -t "$SEED_IMAGE" -f "$REPO_ROOT/openmrs/seed/Dockerfile" "$ctx" >/dev/null
+    docker build -q -t "$FLAT_SEED_IMAGE" -f "$REPO_ROOT/openmrs/seed/Dockerfile" "$flat" >/dev/null
 }
-SEED_DATA_TREE="$(printf '%s\n' ./complex_obs ./complex_obs/seed-only.txt ./openmrs-runtime.properties)"
+# The seed's tree, with openmrs-runtime.properties moved aside by initialize (it holds the source's
+# connection settings).
+SEED_DATA_TREE="$(printf '%s\n' ./complex_obs ./complex_obs/seed-only.txt ./openmrs-runtime.properties.restored)"
 
-# The seeded openmrs-data's root has the backed-up folder's owner and mode, as OpenMRS's non-root
-# user needs to write there (e.g. to replace openmrs-runtime.properties).
+# The seeded openmrs-data's root belongs to the user OpenMRS runs as (OPENMRS_DATA_OWNER, here the
+# test runner's ids), who must be able to write there (e.g. a new openmrs-runtime.properties).
 assert_seeded_root_owner() {
-    run docker run --rm -v "${NAME}_openmrs-data:/d:ro" alpine:3.21 stat -c %u:%g:%a /d
-    assert_output "$(stat -c %u:%g:%a "$BATS_FILE_TMPDIR/data")"
+    run docker run --rm -v "${NAME}_openmrs-data:/d:ro" alpine:3.21 stat -c %u:%g "/d"
+    assert_output "$OPENMRS_DATA_OWNER"
+    run docker run --rm -v "${NAME}_openmrs-data:/d:ro" alpine:3.21 stat -c %A "/d"
+    assert_output --regexp '^d.w'
 }
 
 teardown_file() {
@@ -46,7 +47,8 @@ teardown() {
     common_teardown
 }
 
-# SEED_IMAGE_NAME at create: initialize reads it from the instance's env, which wins over the shell.
+# SEED_IMAGE_NAME at create: initialize reads it from the instance's instance.env, which wins over
+# the shell.
 create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs create_instance "$NAME"; }
 
 @test "initialize fills both volumes from a seed image" {
@@ -61,9 +63,9 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     # A seed image that was here before initialize is kept.
     refute_output --partial 'pulled for this command'
     [ -n "$(image_id "$SEED_IMAGE")" ] || fail "the seed image, here before initialize, was removed"
-    # A seeded openmrs-data has its runtime properties, so OpenMRS knows the tables exist.
-    run grep -c '^OPENMRS_CREATE_TABLES=' "$OPENMRS_DOCKER_HOME/$NAME/env"
-    assert_output 0
+    # The seeded database isn't empty, so OpenMRS doesn't create its tables.
+    run grep '^OPENMRS_DB_CREATED_EMPTY=' "$(env_file_of "$NAME" openmrs-db)"
+    assert_output "OPENMRS_DB_CREATED_EMPTY='false'"
 }
 
 @test "initialize removes a seed image it pulled" {
@@ -80,7 +82,7 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     assert_output 7
 }
 
-@test "a seed image with a flat data.tar.gz still fills openmrs-data" {
+@test "a seed image with a flat openmrs.tar.gz still fills openmrs-data" {
     SEED_IMAGE_NAME="$FLAT_SEED_IMAGE" SERVICES=openmrs-db,openmrs create_instance "$NAME"
     run_initialize "$NAME"
     assert_success
@@ -118,10 +120,12 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql INITIALIZE_DB_TIMEOUT=5
     assert_failure
     assert_output --partial 'timed out after 5s'
-    assert_output --partial "initialize failed -- run"
+    assert_output --partial "initialize failed"
     assert_equal "$(docker ps -aq --filter "label=com.docker.compose.project=$NAME")" ""
     run docker volume inspect "${NAME}_db-init"
     assert_failure
+    # nothing to destroy before retrying
+    assert_equal "$(docker volume ls -q --filter "label=com.docker.compose.project=$NAME")" ""
 }
 
 @test "reset-openmrs-db-accounts works on an instance with no openmrs-data volume" {
@@ -129,7 +133,7 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     write_tiny_dump dump.sql
     run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
     assert_success
-    sed -i "s/^OPENMRS_DB_PASSWORD=.*/OPENMRS_DB_PASSWORD='rotated-pw'/" "$OPENMRS_DOCKER_HOME/$NAME/env"
+    set_env_value "$NAME" openmrs-db OPENMRS_DB_PASSWORD rotated-pw
     run "$BIN/openmrs-docker" "$NAME" reset-openmrs-db-accounts
     assert_success
     assert_output --partial "Set the password of openmrs@%"

@@ -21,7 +21,7 @@ teardown() {
     done
     run "$BIN/openmrs-docker" "$NAME" start
     assert_failure
-    assert_output --partial "$NAME is busy: initialize (pid"
+    assert_output --partial "$NAME is busy: pihx $NAME initialize (pid"
     wait "$init"
     run "$BIN/openmrs-docker" "$NAME" start
     assert_success
@@ -34,14 +34,14 @@ teardown() {
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1   # a PETL run is against the running instance
     "$BIN/openmrs-docker" "$NAME" run-service petl sleep 8 > petl.log 2>&1 3>&- &
     local petl=$!
-    until grep -q 'run-service' "$OPENMRS_DOCKER_HOME/$NAME/.lock" 2>/dev/null && docker ps --format '{{.Names}}' | grep -q "^$NAME-petl"; do
+    until grep -q 'run-service' "$PIHX_HOME/$NAME/.lock" 2>/dev/null && docker ps --format '{{.Names}}' | grep -q "^$NAME-petl"; do
         kill -0 "$petl" 2>/dev/null || { cat petl.log; fail "run-service ended early"; }
         sleep 0.2
     done
     run "$BIN/openmrs-docker" "$NAME" start
     assert_failure
-    assert_output --partial "$NAME is busy: run-service"
-    run env OPENMRS_DOCKER_LOCK_WAIT=60 "$BIN/openmrs-docker" "$NAME" start
+    assert_output --partial "$NAME is busy: pihx $NAME run-service"
+    run env PIHX_LOCK_WAIT=60 "$BIN/openmrs-docker" "$NAME" start
     assert_success
     wait "$petl"
 }

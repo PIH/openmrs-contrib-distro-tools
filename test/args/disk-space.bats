@@ -29,7 +29,7 @@ random_file() { # <path> <KiB>
 
 @test "initialize counts a .sql.gz dump at its uncompressed size, plus the openmrs-data directory" {
     NAME="$(instance)"
-    SERVICES=openmrs-db create_instance "$NAME"
+    SERVICES=openmrs-db,openmrs create_instance "$NAME"
     random_file dump.sql 1024 && gzip dump.sql
     random_file data/complex_obs/a 1024
     DISK_SPACE_FREE_KB=100 run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql.gz RESTORE_OPENMRS_DATA_PATH=data
@@ -69,12 +69,14 @@ random_file() { # <path> <KiB>
     assert [ -f out.tar.gz ]
 }
 
-@test "initialize counts a Percona backup twice (extracted into a temporary volume, then copied in)" {
+@test "initialize counts a Percona backup directory, and refuses before creating any volume" {
     NAME="$(instance)"
     SERVICES=openmrs-db create_instance "$NAME"
     random_file percona/ibdata1 1024
     DISK_SPACE_FREE_KB=100 run_initialize "$NAME" RESTORE_MYSQL_PERCONA_PATH=percona
     assert_failure
-    assert_output --partial "needs about 2.0M"
+    # pihx's estimate is generic: a directory counts once, though a Percona backup is copied into a
+    # temporary volume first (documented; an archive counts twice, extracted then copied)
+    assert_output --partial "needs about 1.0M"
     assert_no_leftovers
 }

@@ -1,27 +1,20 @@
 #!/usr/bin/env bats
-# Attaching and removing fragments, run-service, and destroy, with small alpine fragments in place of the real services.
+# Adding and removing services, run-service, and destroy, through openmrs-docker, with two light
+# services in place of the real ones: modality-simulator ("keep") and biometrics ("gone"), given
+# alpine as their image and an override file that makes it sleep.
 
 load ../helpers
 
 setup() {
     NAME="$(instance)"
-    SERVICES=openmrs-db create_instance "$NAME"
-    DIR="$OPENMRS_DOCKER_HOME/$NAME"
-    # Two small fragments instead of openmrs-db, so nothing heavy has to start.
-    rm "$DIR/openmrs-db.yaml"
-    for svc in keep gone; do
-        cat > "$DIR/$svc.yaml" <<YAML
-name: \${SERVICE_NAME:?SERVICE_NAME must be set}
-services:
-  $svc:
-    container_name: \${SERVICE_NAME:?SERVICE_NAME must be set}-$svc
-    image: alpine:3.21
-    command: ["sleep", "300"]
-    volumes:
-      - $svc-data:/data
-volumes:
-  $svc-data:
-YAML
+    DIR="$PIHX_HOME/$NAME"
+    MODALITY_SIMULATOR_IMAGE_NAME=alpine MODALITY_SIMULATOR_IMAGE_TAG=3.21 \
+        MODALITY_SIMULATOR_GATEWAY_AE=GW MODALITY_SIMULATOR_HOST_PORT=0 MODALITY_SIMULATOR_IMAGE_DIR=/tmp \
+        BIOMETRICS_IMAGE_NAME=alpine BIOMETRICS_IMAGE_TAG=3.21 BIOMETRICS_LICENSE_BASE64=eA== \
+        SERVICES=modality-simulator,biometrics create_instance "$NAME" 2>/dev/null
+    local svc
+    for svc in modality-simulator biometrics; do
+        printf 'services:\n  %s:\n    init: true\n    command: ["sleep", "300"]\n' "$svc" > "$DIR/$svc.override.yaml"
     done
 }
 teardown() {
@@ -34,45 +27,39 @@ running() { docker ps -q --filter "label=com.docker.compose.project=$NAME"; }
 @test "remove-service on a stopped instance leaves it stopped" {
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
     "$BIN/openmrs-docker" "$NAME" stop >/dev/null 2>&1
-    run "$BIN/openmrs-docker" "$NAME" remove-service gone
+    run "$BIN/openmrs-docker" "$NAME" remove-service biometrics
     assert_success
     assert_equal "$(running)" ""
-    [ ! -e "$DIR/gone.yaml" ]
+    [ ! -e "$DIR/biometrics.env" ]
 }
 
-@test "remove-service on a running instance removes only that fragment's containers, and keeps its volumes" {
+@test "remove-service on a running instance removes only that service's containers, and keeps its volumes" {
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
     local keep_id
-    keep_id=$(docker ps -q --filter "name=^$NAME-keep$")
-    run "$BIN/openmrs-docker" "$NAME" remove-service gone
+    keep_id=$(docker ps -q --filter "name=^$NAME-modality-simulator$")
+    run "$BIN/openmrs-docker" "$NAME" remove-service biometrics
     assert_success
-    assert_output --partial "${NAME}_gone-data"
-    assert_equal "$(docker ps -aq --filter "name=^$NAME-gone$")" ""
-    assert_equal "$(docker ps -q --filter "name=^$NAME-keep$")" "$keep_id"
-    run docker volume inspect "${NAME}_gone-data"
+    assert_output --partial "its volumes are kept"
+    assert_equal "$(docker ps -aq --filter "name=^$NAME-biometrics$")" ""
+    assert_equal "$(docker ps -q --filter "name=^$NAME-modality-simulator$")" "$keep_id"
+    run docker volume inspect "${NAME}_biometrics-data"
     assert_success
 }
 
-@test "remove-service refuses when what's left isn't valid Compose, and keeps the fragment" {
-    cat > "$DIR/keep.yaml" <<'YAML'
-name: ${SERVICE_NAME:?SERVICE_NAME must be set}
-services:
-  keep:
-    image: alpine:3.21
-    command: ["sleep", "300"]
-    depends_on:
-      - gone
-YAML
-    run "$BIN/openmrs-docker" "$NAME" remove-service gone
+@test "remove-service refuses when what's left would be broken, and keeps the service" {
+    local other
+    other="$(instance other)"
+    SERVICES=openmrs-db,openmrs create_instance "$other" 2>/dev/null
+    # openmrs requires openmrs-db
+    run "$BIN/openmrs-docker" "$other" remove-service openmrs-db
     assert_failure
-    assert_output --partial "gone"
-    [ -e "$DIR/gone.yaml" ]
+    assert_output --partial "openmrs requires openmrs-db"
+    [ -e "$PIHX_HOME/$other/openmrs-db.env" ]
+    destroy_instance "$other"
 }
 
-@test "run-service runs a profiled fragment once with the given command, and start leaves it alone" {
-    cat > "$DIR/job.yaml" <<'YAML'
-name: ${SERVICE_NAME:?SERVICE_NAME must be set}
-services:
+@test "run-service runs a profiled container once with the given command, and start leaves it alone" {
+    cat >> "$DIR/modality-simulator.override.yaml" <<'YAML'
   job:
     image: alpine:3.21
     profiles: ["job"]
@@ -88,13 +75,15 @@ YAML
     assert_output --partial "nope not present on $NAME"
 }
 
-@test "destroy removes everything even when the fragments no longer interpolate" {
+@test "destroy removes everything even when the compose files no longer interpolate" {
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
     assert_equal "$(running | wc -l)" 2
-    sed -i 's/image: alpine:3.21/image: alpine:${NOT_SET_ANYWHERE?}/' "$DIR/keep.yaml"
+    # shellcheck disable=SC2016 # for Compose to interpolate
+    printf 'services:\n  modality-simulator:\n    image: alpine:${NOT_SET_ANYWHERE?}\n' > "$DIR/modality-simulator.override.yaml"
     run "$BIN/openmrs-docker" "$NAME" destroy --force
     assert_success
-    assert_output --partial "removing this instance's containers and volumes by their Compose project label"
+    # (pihx-runtime's Compose brings the project down by its label itself, so pihx's own fallback
+    # by label, which says so, isn't always reached; either way everything goes.)
     assert_equal "$(docker ps -aq --filter "label=com.docker.compose.project=$NAME")" ""
     assert_equal "$(docker volume ls -q --filter "label=com.docker.compose.project=$NAME")" ""
     [ ! -e "$DIR" ]

@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
-# openmrs-docker <name> fingerprint reads a stopped instance's volumes with the instance's own
-# image and server options, so it matches a fingerprint of the running instance.
+# openmrs-docker <name> fingerprint (pihx's summary of openmrs-db, and of openmrs with --data-dir)
+# reads a stopped instance's volumes with the instance's own image and server options, so it matches
+# a fingerprint of the running instance; a running instance's database is read as it runs.
 
 load ../helpers
 
@@ -47,10 +48,15 @@ teardown() {
     refute_output --partial 'modules/'
 }
 
-@test "refuses while the instance is running" {
+@test "reads a running instance's database as it runs, and says the same as when it was stopped" {
     run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
+    assert_success
+    run "$BIN/openmrs-docker" "$NAME" fingerprint --output=stopped.txt
+    assert_success
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
-    run "$BIN/openmrs-docker" "$NAME" fingerprint
-    assert_failure
-    assert_output --partial "${NAME}_db-data is in use by a running container"
+    wait_for_mysql "$NAME-openmrs-db" root openmrs
+    run "$BIN/openmrs-docker" "$NAME" fingerprint --output=running.txt
+    assert_success
+    run diff stopped.txt running.txt
+    assert_success
 }

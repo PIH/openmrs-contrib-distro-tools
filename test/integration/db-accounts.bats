@@ -12,7 +12,7 @@ teardown() { destroy_instance "$NAME"; common_teardown; }
 new_instance() { # [image name] [image tag]
     NAME="$(instance)"
     OPENMRS_DB_IMAGE_NAME="${1:-mysql}" OPENMRS_DB_IMAGE_TAG="${2:-5.6}" SERVICES=openmrs-db create_instance "$NAME"
-    ENV="$OPENMRS_DOCKER_HOME/$NAME/env"
+    ENV="$(env_file_of "$NAME" openmrs-db)"
 }
 
 declare_account() { # <id> <user> <password> <grants> [databases]
