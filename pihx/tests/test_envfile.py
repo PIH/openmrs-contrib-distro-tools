@@ -127,9 +127,20 @@ class MergeTest(TempDirTest):
         f = self.write("f", "A=1\nB=${UNSET:?needs it}\n")
         with self.assertRaises(ValueError) as raised:
             envfile.merge([f], {})
-        self.assertIn(f"{f}: line 2: required variable UNSET is missing a value: needs it",
+        self.assertIn(f"{f}: line 2 (B): required variable UNSET is missing a value: needs it",
                       str(raised.exception))
         self.assertEqual(envfile.merge([self.write("g", "B=${A?x}\n")], {"A": "1"}), {"B": "1"})
+
+    def test_expansion_errors_name_the_variable_never_a_value(self):
+        for text, message in [("P=hunter2${A\n", "line 1 (P): unterminated ${"),
+                              ("P=${A!hunter2}\n", "line 1 (P): bad substitution of A"),
+                              ("P=${!hunter2}\n", "line 1 (P): bad substitution"),
+                              ("S=hunter2\nP=${UNSET:?no $S}\n",
+                               "line 2 (P): required variable UNSET is missing a value: no $S")]:
+            with self.subTest(text=text), self.assertRaises(ValueError) as raised:
+                envfile.merge([self.write("f", text)], {})
+            self.assertIn(message, str(raised.exception))
+            self.assertNotIn("hunter2", str(raised.exception))
 
 
 

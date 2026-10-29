@@ -50,7 +50,7 @@ def merge(paths, environ):
                     if quote != "'":
                         body = expand(body, lookup).replace(ESCAPED_DOLLAR, "$")
                 except ValueError as e:
-                    raise ValueError(f"line {number}: {e}") from None
+                    raise ValueError(f"line {number} ({name}): {e}") from None
                 values[name] = body
         except (OSError, ValueError) as e:
             raise ValueError(f"{path}: {e}") from None
@@ -121,7 +121,8 @@ def expand(text, lookup):
                     depth -= 1
                 end += 1
             if depth:
-                raise ValueError(f"unterminated ${{ in {text}")
+                # Never the text: it may hold a secret.
+                raise ValueError("unterminated ${")
             out.append(_braced(text[i + 2:end - 1], lookup))
             i = end
         else:
@@ -138,7 +139,8 @@ def expand(text, lookup):
 def _braced(inner, lookup):
     match = BRACED.fullmatch(inner)
     if not match:
-        raise ValueError(f"bad substitution ${{{inner}}}")
+        named = NAME.match(inner)
+        raise ValueError(f"bad substitution of {named.group()}" if named else "bad substitution")
     name, op, word = match.groups()
     value = lookup(name)
     if not op:
@@ -149,7 +151,8 @@ def _braced(inner, lookup):
     if op.endswith("+"):
         return expand(word, lookup) if active else ""
     if not active:
-        raise ValueError(f"required variable {name} is missing a value: {expand(word, lookup)}")
+        # The message as written: expanded, it could show another variable's value.
+        raise ValueError(f"required variable {name} is missing a value: {word}")
     return value
 
 
