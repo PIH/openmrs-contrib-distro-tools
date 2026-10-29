@@ -58,3 +58,16 @@ class TempDirTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
+
+
+def two_service_instance(root, name="kz"):
+    """An instance <name> under <root>/home of two_service_tools, with an app override.
+    Returns (home, tools)."""
+    tools = two_service_tools(root)
+    home = Path(root) / "home"
+    write(home / name / "db.env", "DB_PASSWORD='secret $x'\n")
+    write(home / name / "app.env", "APP_PORT=9090\n")
+    write(home / name / "instance.env", "TZ=Africa/Kigali\nSHARED=instance\n")
+    write(home / name / "app.override.yaml", "services: {}\n")
+    write(home / name / "notes.txt", "not an env file\n")
+    return home, tools
