@@ -1,6 +1,8 @@
 import contextlib
 import io
+import os
 import unittest
+from unittest import mock
 
 from pihx import cli
 
@@ -13,7 +15,32 @@ def run(argv):
     return status, out.getvalue(), err.getvalue()
 
 
+def run_raising(error, environ=None):
+    """cli.main with a dispatcher that raises <error>: (status, stderr)."""
+    def dispatcher(argv):
+        raise error
+    err = io.StringIO()
+    with mock.patch.dict(os.environ, environ or {}), contextlib.redirect_stderr(err):
+        os.environ.pop("PIHX_DOCKER_CONFIG", None)
+        status = cli.main([], dispatcher=dispatcher)
+    return status, err.getvalue()
+
+
 class CliTest(unittest.TestCase):
+    def test_ctrl_c_is_one_line_and_exit_130(self):
+        self.assertEqual(run_raising(KeyboardInterrupt()), (130, "error: interrupted\n"))
+
+    def test_an_unexpected_error_is_one_line_with_its_traceback_only_under_pihx_debug(self):
+        with mock.patch.dict(os.environ):
+            os.environ.pop("PIHX_DEBUG", None)
+            status, err = run_raising(KeyError("x"))
+        self.assertEqual(status, 1)
+        self.assertEqual(err, "error: 'x' (PIHX_DEBUG=1 shows where)\n")
+        status, err = run_raising(ZeroDivisionError(), {"PIHX_DEBUG": "1"})
+        self.assertEqual(status, 1)
+        self.assertIn("Traceback", err)
+        self.assertTrue(err.endswith("error: ZeroDivisionError (PIHX_DEBUG=1 shows where)\n"))
+
     def test_global_commands(self):
         status, out, _ = run(["version"])
         self.assertEqual(status, 0)

@@ -2,6 +2,7 @@
 
 import os
 import sys
+import traceback
 
 from pihx import __version__, runtime
 from pihx.commands import (CliError, initialize, instance_cmds, lifecycle, service_cmds, summary,
@@ -117,7 +118,8 @@ def dispatch(argv):
 
 def main(argv, dispatcher=None):
     """Runs a command line (through <dispatcher>, default pihx's own dispatch: a front end such as
-    openmrs-docker passes its own), reporting an error as an `error:` line and an exit status."""
+    openmrs-docker passes its own), reporting an error as an `error:` line and an exit status. Ctrl-C
+    exits 130; anything unexpected is one `error:` line too, with its traceback under PIHX_DEBUG=1."""
     try:
         # The launcher mounts the caller's Docker config here; set up before any docker command.
         docker_config = os.environ.get("PIHX_DOCKER_CONFIG")
@@ -128,3 +130,11 @@ def main(argv, dispatcher=None):
             OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return getattr(e, "status", 1)
+    except KeyboardInterrupt:
+        print("error: interrupted", file=sys.stderr)
+        return 130
+    except Exception as e:
+        if os.environ.get("PIHX_DEBUG") == "1":
+            traceback.print_exc()
+        print(f"error: {str(e) or type(e).__name__} (PIHX_DEBUG=1 shows where)", file=sys.stderr)
+        return 1

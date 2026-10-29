@@ -248,7 +248,7 @@ tty=
 # output into place.
 if [ -n "$output" ]; then
     # shellcheck disable=SC2086
-    if docker run --rm -i \
+    if docker run --rm -i --init \
         -u "$(id -u):$(id -g)" --group-add "$socket_gid" \
         -v "$socket:/var/run/docker.sock" \
         -v "$PIHX_TOOLS:$PIHX_TOOLS:ro" -v "$PIHX_HOME:$PIHX_HOME" \
@@ -268,7 +268,7 @@ if [ -n "$output" ]; then
     fi
 fi
 # shellcheck disable=SC2086
-exec docker run --rm -i $tty \
+exec docker run --rm -i --init $tty \
     -u "$(id -u):$(id -g)" --group-add "$socket_gid" \
     -v "$socket:/var/run/docker.sock" \
     -v "$PIHX_TOOLS:$PIHX_TOOLS:ro" -v "$PIHX_HOME:$PIHX_HOME" \

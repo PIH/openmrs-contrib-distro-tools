@@ -65,6 +65,11 @@ copy_tools() { # <dir>
     refute_output --regexp '^[0-9a-f]{12}$'
 }
 
+@test "the launcher runs pihx under an init process, so Ctrl-C reaches it" {
+    run grep -c 'docker run --rm -i --init' "$BIN/pihx"
+    assert_output 2
+}
+
 @test "pihx version prints a version and exits 0" {
     run "$BIN/pihx" version
     assert_success
