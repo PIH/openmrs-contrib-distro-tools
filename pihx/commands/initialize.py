@@ -549,6 +549,11 @@ def _copy_seed(inst, image, env):
     return folder, pulled
 
 
+class SeedError(CliError):
+    """An image's /seed folder holds entries no service of the instance restores (a front end may
+    say what such a seed probably is)."""
+
+
 def restore_image(inst, image, adjust=None):
     """Restores <inst>'s services from <image>'s /seed folder, copied into a temporary folder;
     <adjust>(folder), if given, may change that copy first (a front end adding its own entries).
@@ -561,11 +566,8 @@ def restore_image(inst, image, adjust=None):
         restore_folder(inst, folder, label=f"{image}:{SEED_DIR}")
     except EntryError as e:
         held = ", ".join(sorted(os.listdir(folder))) or "nothing"
-        raise CliError(f"{image} isn't a seed this version restores: its {SEED_DIR} holds "
-                       f"{held} ({e}). It's probably an old-format seed (dump.sql.gz, "
-                       "data.tar.gz): rebuild it from openmrs/seed/Dockerfile, which "
-                       "holds files named after the services (openmrs-db.sql.gz, "
-                       "openmrs.tar.gz)") from None
+        raise SeedError(f"{image} isn't a seed this version restores: its {SEED_DIR} holds "
+                        f"{held} ({e})") from None
     finally:
         shutil.rmtree(folder, ignore_errors=True)
     # A seed is used once: removed if this run pulled it, kept if it was here already (e.g. built

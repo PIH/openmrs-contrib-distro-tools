@@ -80,6 +80,10 @@ DEFAULT_SERVICES = "openmrs-db,openmrs"
 # defaults are the front end's (DISTRO_SOURCE_DIR none, SEED_IMAGE_TAG latest).
 FRONT_END_VALUES = ("DISTRO_SOURCE_DIR", "SEED_IMAGE_NAME", "SEED_IMAGE_TAG")
 DEFAULT_SEED_IMAGE_TAG = "latest"
+# What a seed image pihx can't restore from probably is.
+OLD_SEED_HINT = ("It's probably an old-format seed (dump.sql.gz, data.tar.gz): rebuild it from "
+                 "openmrs/seed/Dockerfile, which holds files named after the services "
+                 "(openmrs-db.sql.gz, openmrs.tar.gz)")
 
 # initialize's RESTORE_* variables. bin/pihx resolves each path that exists on the host, mounts it
 # at its own path, and passes it as PIHX_RESOLVED_<variable>.
@@ -442,7 +446,10 @@ def cmd_initialize(name, args):
 
     with lock.hold(inst, lock.wait_seconds(), command="initialize"):
         if from_seed:
-            initialize.restore_image(inst, seed, adjust)
+            try:
+                initialize.restore_image(inst, seed, adjust)
+            except initialize.SeedError as e:
+                raise CliError(f"{e}. {OLD_SEED_HINT}") from None
         else:
             # In the instance directory: PIHX_HOME (e.g. /home) may not be writable.
             folder = Path(tempfile.mkdtemp(prefix=".restore-", dir=inst.dir))

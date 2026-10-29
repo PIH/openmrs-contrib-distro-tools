@@ -157,7 +157,7 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     [ -n "$(image_id "$SEED_IMAGE")" ] || fail "the seed image, here before initialize, was removed"
 }
 
-@test "--from-image with an old-format seed says so and how to rebuild it" {
+@test "--from-image with a seed it can't restore says what the seed holds" {
     local ctx="$BATS_TEST_TMPDIR/old-seed" image
     image="$(res old-seed)"
     mkdir -p "$ctx"
@@ -169,10 +169,11 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     initialize --from-image "$image"
     docker rmi -f "$image" >/dev/null
     assert_failure
-    assert_output --partial "error: $image isn't a seed this version restores"
-    assert_output --partial "old-format seed"
-    assert_output --partial "openmrs/seed/Dockerfile"
+    assert_output --partial "error: $image isn't a seed this version restores: its /seed holds data.tar.gz, dump.sql.gz"
+    # What an OpenMRS seed it can't restore probably is, openmrs-docker says (openmrs/front.py).
+    refute_output --partial "openmrs/seed/Dockerfile"
     refute_output --partial "$PIHX_HOME/."
+    refute_output --partial "/.seed-"
     assert_equal "$(find "$PIHX_HOME" "$PIHX_HOME/$NAME" -maxdepth 1 -name "*seed-*")" ""
     assert_equal "$(volumes)" ""
 }

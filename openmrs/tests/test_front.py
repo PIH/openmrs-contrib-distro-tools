@@ -372,6 +372,18 @@ class InitializeTest(FrontTest):
         self.assertEqual(calls, [("folder", ["openmrs", "openmrs-db.sql"], None)])
         self.assertEqual([p for p in self.home.iterdir() if p.name.startswith(".")], [])
 
+    def test_a_seed_pihx_can_not_restore_gets_the_old_format_hint(self):
+        self.make(instance="SEED_IMAGE_NAME='pih/seed'\n")
+
+        def restore_image(inst, image, adjust=None):
+            raise initialize.SeedError("pih/seed:latest isn't a seed this version restores")
+        self.set_env({})
+        with mock.patch.object(initialize, "restore_image", restore_image):
+            status, _, err = self.front("kz", "initialize")
+        self.assertEqual(status, 1)
+        self.assertIn("isn't a seed this version restores. It's probably an old-format seed", err)
+        self.assertIn("openmrs/seed/Dockerfile", err)
+
     def test_the_seed_gives_what_no_restore_path_does(self):
         self.make(instance="SEED_IMAGE_NAME='pih/seed'\nSEED_IMAGE_TAG='v1'\n")
         status, err, calls = self.initialize(**self.dump())
