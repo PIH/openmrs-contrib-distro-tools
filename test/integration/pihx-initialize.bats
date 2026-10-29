@@ -153,7 +153,7 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     run tree_of_volume "${NAME}_openmrs-data"
     assert_output "$(printf '%s\n' ./complex_obs ./complex_obs/seed-only.txt ./openmrs-runtime.properties.restored)"
     # The copy of the seed's folder is gone; a seed image that was here before is kept.
-    assert_equal "$(find "$PIHX_HOME" -maxdepth 1 -name ".$NAME-seed-*")" ""
+    assert_equal "$(find "$PIHX_HOME" "$PIHX_HOME/$NAME" -maxdepth 1 -name "*seed-*")" ""
     [ -n "$(image_id "$SEED_IMAGE")" ] || fail "the seed image, here before initialize, was removed"
 }
 
@@ -173,7 +173,7 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     assert_output --partial "old-format seed"
     assert_output --partial "openmrs/seed/Dockerfile"
     refute_output --partial "$PIHX_HOME/."
-    assert_equal "$(find "$PIHX_HOME" -maxdepth 1 -name ".$NAME-seed-*")" ""
+    assert_equal "$(find "$PIHX_HOME" "$PIHX_HOME/$NAME" -maxdepth 1 -name "*seed-*")" ""
     assert_equal "$(volumes)" ""
 }
 

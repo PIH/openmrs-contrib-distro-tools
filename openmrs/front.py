@@ -444,7 +444,8 @@ def cmd_initialize(name, args):
         if from_seed:
             initialize.restore_image(inst, seed, adjust)
         else:
-            folder = Path(tempfile.mkdtemp(prefix=f".{name}-restore-", dir=_home()))
+            # In the instance directory: PIHX_HOME (e.g. /home) may not be writable.
+            folder = Path(tempfile.mkdtemp(prefix=".restore-", dir=inst.dir))
             try:
                 add_entries(folder, entries)
                 initialize.restore_folder(inst, folder, label="the RESTORE_* paths")

@@ -31,7 +31,7 @@ An entry may be a link: its host path is what the restore containers mount, and 
 resolve on the host is an error before anything runs. A relative `--from`
 is the caller's directory's. `--from-image` copies the image's `/seed` folder (a distribution's
 seed image, built by `.github/workflows/build-seeded-image.yml` from `openmrs/seed/Dockerfile`,
-holds `openmrs-db.sql.gz` and `openmrs.tar.gz`) to a temporary folder under `PIHX_HOME` and restores
+holds `openmrs-db.sql.gz` and `openmrs.tar.gz`) to a temporary folder in the instance directory and restores
 from that; it removes the image afterwards if it pulled it.
 
 | Variable | |

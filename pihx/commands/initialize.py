@@ -521,15 +521,16 @@ def restore_folder(inst, folder, label=None):
 # --- seed images ----------------------------------------------------------------------------------
 
 def _copy_seed(inst, image, env):
-    """Copies <image>'s /seed folder into a new temporary folder under PIHX_HOME (mounted at its
-    host path, so the restore containers can mount what's in it). Returns (folder, pulled)."""
+    """Copies <image>'s /seed folder into a new temporary folder in the instance directory (under
+    PIHX_HOME, mounted at its host path, so the restore containers can mount what's in it; and the
+    instance's own, so writable where PIHX_HOME isn't, e.g. /home). Returns (folder, pulled)."""
     pulled = _docker(env, "image", "inspect", image).returncode != 0
     if pulled:
         note(f"Pulling {image}")
         result = _docker(env, "pull", "-q", image)
         if result.returncode != 0:
             raise CliError(f"couldn't pull {image}: {result.stderr.strip()}")
-    folder = Path(tempfile.mkdtemp(prefix=f".{inst.name}-seed-", dir=instance_module.home()))
+    folder = Path(tempfile.mkdtemp(prefix=".seed-", dir=inst.dir))
     try:
         created = _docker(env, "create", image, "none")
         if created.returncode != 0:
