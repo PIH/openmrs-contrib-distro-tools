@@ -218,11 +218,14 @@ class ConfigAndListTest(CommandTest):
     def test_config_masks_secrets(self):
         write(self.home / "kz" / "db.env",
               "DB_PASSWORD='hunter2'\nDB_API_KEY=k\nDB_TOKEN=t\nDB_CLIENT_SECRET=s\nDB_SAS=x\n"
-              "DB_KEYS=visible\nDB_PORT=1\n")
+              "DB_KEYS=visible\nDB_PORT=1\nOMRS_EXTRA_db_password=p\nOMRS_EXTRA_smtp_passwd=p\n"
+              "BIOMETRICS_LICENSE_BASE64=l\nOMRS_EXTRA_api_token_value=t\nDB_ROOTPASSWORD=r\n")
         status, out, _ = self.run_pihx("kz", "config")
         self.assertEqual(status, 0)
         self.assertNotIn("hunter2", out)
-        for name in ("DB_PASSWORD", "DB_API_KEY", "DB_TOKEN", "DB_CLIENT_SECRET", "DB_SAS"):
+        for name in ("DB_PASSWORD", "DB_API_KEY", "DB_TOKEN", "DB_CLIENT_SECRET", "DB_SAS",
+                     "OMRS_EXTRA_db_password", "OMRS_EXTRA_smtp_passwd", "BIOMETRICS_LICENSE_BASE64",
+                     "OMRS_EXTRA_api_token_value", "DB_ROOTPASSWORD"):
             self.assertIn(f"{name}=********", out.splitlines())
         self.assertIn("DB_KEYS=visible", out.splitlines())
         self.assertIn("DB_PORT=1", out.splitlines())

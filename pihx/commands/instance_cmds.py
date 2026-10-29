@@ -16,8 +16,10 @@ REFERENCE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
 # Names pihx sets itself (see Compose.env): never an instance's values, whatever the caller has.
 OWN_PREFIXES = ("PIHX_", "COMPOSE_")
 OWN_NAMES = frozenset({"SERVICE_NAME"})
-# Their values are masked by `config` unless --show-secrets.
-SECRET_NAME = re.compile(r".*(PASSWORD|SECRET|SAS|TOKEN|KEY)$")
+# Their values are masked by `config` unless --show-secrets: a name ending in one of these words, or
+# with one as a `_`-separated part, in any case (OMRS_EXTRA_db_password, BIOMETRICS_LICENSE_BASE64).
+_SECRET_WORDS = "PASSWORD|PASSWD|SECRET|SAS|TOKEN|KEY|LICENSE"
+SECRET_NAME = re.compile(rf"(?:{_SECRET_WORDS})$|(?:^|_)(?:{_SECRET_WORDS})(?:_|$)", re.IGNORECASE)
 MASK = "********"
 # Env files hold secrets: readable by their owner only.
 FILE_MODE = 0o600
@@ -213,7 +215,7 @@ def cmd_config(name, args):
     values = instance_module.open(instance_module.home(), name, tools=tools_dir()).config()
     for key in sorted(values):
         value = values[key]
-        if not show and value and SECRET_NAME.fullmatch(key):
+        if not show and value and SECRET_NAME.search(key):
             value = MASK
         print(f"{key}={value}")
     return 0
