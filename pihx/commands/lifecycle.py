@@ -106,30 +106,31 @@ def start_values(inst, compose):
     """What the services' start-env scripts print (run with <compose>'s files and values), as
     KEY=value lines: values for this start's Compose only, never written anywhere. Each script sets
     only the variables its manifest entry declares (`sets`); any other is dropped with a warning,
-    and pihx's own names (compose.RESERVED_NAMES) never. A script that fails or prints a malformed
-    line gives nothing, with a warning, so Compose falls back to its compose file's default: a
-    start-env value's default must be the safe one."""
+    and pihx's own names (compose.RESERVED_NAMES) never. Every declared variable is passed, empty
+    unless the script printed it, so a value in an env file can't stand in for it: a script that
+    fails or prints a malformed line gives them all empty, with a warning, and Compose falls back to
+    its compose file's default, which must be the safe one."""
     values = {}
     for svc in inst.services:
         for entry in svc.manifest.start_env:
             label = f"{svc.name}: {entry.script}"
             declared = [n for n in entry.sets if n not in compose_module.RESERVED_NAMES]
-            given = {}
+            given = dict.fromkeys(declared, "")
             result = script.run(inst, svc.dir / entry.script, service=svc, label=label,
                                 extra_env=compose.extra_env, extra_files=compose.extra_files,
                                 stdout=subprocess.PIPE, text=True)
             lines = [line for line in result.stdout.splitlines() if line.strip()]
             matches = [VALUE_LINE.fullmatch(line) for line in lines]
             if result.returncode != 0:
-                note(f"warning: {label} failed (exit {result.returncode}); starting without its "
-                     "values")
+                note(f"warning: {label} failed (exit {result.returncode}); starting with "
+                     f"{', '.join(declared)} empty")
             elif not all(matches):
                 # Never the line: it may hold a secret.
-                note(f"warning: {label} printed a malformed line (not KEY=value); starting "
-                     "without its values")
+                note(f"warning: {label} printed a malformed line (not KEY=value); starting with "
+                     f"{', '.join(declared)} empty")
             else:
                 for name, value in (m.groups() for m in matches):
-                    if name in declared:
+                    if name in given:
                         given[name] = value
                     else:
                         note(f"warning: {label} printed {name}, which its manifest doesn't let it "

@@ -28,6 +28,27 @@ class InstanceTest(TempDirTest):
         write(self.home / "kz" / ".app.env", "X=1\n")
         self.assertEqual([s.name for s in self.open().services], ["app", "db"])
 
+    def test_a_variable_a_start_env_script_sets_is_refused_in_any_env_file(self):
+        write(self.tools / "services" / "app" / "start" / "values", "")
+        manifest = self.tools / "services" / "app" / "service.yaml"
+        manifest.write_text(manifest.read_text() + "start-env:\n  - script: start/values\n"
+                            "    sets: [APP_FOUND]\n")
+        self.open()
+        for file_name in ("instance.env", "db.env", "app.env"):
+            with self.subTest(file=file_name):
+                path = self.home / "kz" / file_name
+                before = path.read_text()
+                path.write_text(before + "APP_FOUND='true'\n")
+                with self.assertRaises(instance.InstanceError) as raised:
+                    self.open()
+                self.assertEqual(str(raised.exception),
+                                 f"{path}: APP_FOUND can't be set in a file: app's start/values "
+                                 "decides it at each start. Remove it from the file.")
+                path.write_text(before)
+        # A dotfile isn't the instance's.
+        write(self.home / "kz" / ".env", "APP_FOUND=true\n")
+        self.open()
+
     def test_unknown_service_env_file_is_an_error(self):
         write(self.home / "kz" / "opnmrs.env", "")
         with self.assertRaises(instance.InstanceError) as raised:

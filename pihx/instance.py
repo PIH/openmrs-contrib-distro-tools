@@ -92,7 +92,29 @@ def open(home, name, tools=None):
             found.append(services_module.load(tools, svc))
         except services_module.ServiceError as e:
             raise InstanceError(f"{env_file}: {e}") from None
+    _refuse_start_values(instance_dir, found)
     return Instance(name=name, dir=instance_dir, tools=tools, services=found)
+
+
+def _refuse_start_values(instance_dir, services):
+    """A variable a service's start-env script sets (e.g. OPENMRS_DB_FOUND_EMPTY) is decided at
+    each start: in an env file it would stand in whenever the script gives none, or for a plain
+    `docker compose up`. A file that can't be parsed is left for config() to report."""
+    owners = {name: (svc, entry.script) for svc in services for entry in svc.manifest.start_env
+              for name in entry.sets}
+    if not owners:
+        return
+    for env_file in sorted(instance_dir.glob("*.env")):
+        if env_file.name.startswith("."):
+            continue
+        try:
+            names = envfile.parse(env_file.read_text())
+        except (OSError, ValueError):
+            continue
+        for name in sorted(set(names) & set(owners)):
+            svc, script = owners[name]
+            raise InstanceError(f"{env_file}: {name} can't be set in a file: {svc.name}'s "
+                                f"{script} decides it at each start. Remove it from the file.")
 
 
 def home():

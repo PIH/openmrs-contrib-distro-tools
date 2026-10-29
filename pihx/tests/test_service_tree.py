@@ -80,6 +80,12 @@ class ServiceTreeTest(unittest.TestCase):
                     self.assertNotRegex(line, r"=\s*[\"']?\$\{[A-Za-z_]+:?[-?]",
                                         f"{name}/env.defaults:{number}: a ${{VAR:-default}} wrapper")
 
+    def test_no_defaults_set_what_a_start_env_script_sets(self):
+        start_values = {n for s in SERVICES.values() for e in s.manifest.start_env for n in e.sets}
+        self.assertIn("OPENMRS_DB_FOUND_EMPTY", start_values)
+        for name, svc in SERVICES.items():
+            self.assertFalse(start_values & set(svc.defaults), name)
+
     def test_no_variable_is_defined_by_two_services(self):
         owner = {}
         for name, svc in SERVICES.items():

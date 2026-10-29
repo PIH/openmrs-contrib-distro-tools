@@ -24,7 +24,9 @@ every `pihx <name> start` and `update`, [`start/create-tables`](start/create-tab
 `start-env`) starts `openmrs-db` and counts, as root, the tables in the OpenMRS schema. A count of
 zero gives true, for that start only; anything else -- tables, a failed or timed-out query,
 `openmrs-db` not healthy, unexpected output -- gives false, with a line saying why. Nothing is
-recorded, and a plain `docker compose up` that bypasses pihx gets false. `OPENMRS_CREATE_TABLES`
+recorded, and a plain `docker compose up` that bypasses pihx gets false. If the script fails,
+pihx passes `OPENMRS_DB_FOUND_EMPTY` empty, which is false too, and an instance whose env files set
+`OPENMRS_DB_FOUND_EMPTY` is refused, so no file can stand in for the check. `OPENMRS_CREATE_TABLES`
 in `openmrs.env`, if set, decides instead.
 
 An existing `openmrs` container keeps its value, so a start or update doesn't recreate it for this,

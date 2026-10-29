@@ -303,8 +303,8 @@ class StartLockedTest(LifecycleTest):
 
 class StartEnvTest(LifecycleTest):
     """start-env scripts' values reach that start's `up` only, and only those their manifest entry
-    declares; a failed or malformed one gives nothing, so the compose file's (safe) default
-    applies."""
+    declares; a failed or malformed one gives its declared values empty, so the compose file's
+    (safe) default applies."""
 
     def setUp(self):
         super().setUp()
@@ -341,14 +341,15 @@ class StartEnvTest(LifecycleTest):
                 self.up_env.clear()
                 status, _, err = self.start(command, "APP_FOUND=true\n\n")
                 self.assertEqual(status, 0, err)
-                self.assertEqual(self.declared(), {"APP_FOUND": "true", "APP_OTHER": None})
+                # A declared variable it didn't print is passed empty.
+                self.assertEqual(self.declared(), {"APP_FOUND": "true", "APP_OTHER": ""})
 
     def test_only_declared_variables_are_set_and_never_pihx_own(self):
         self.set_env({"PATH": "/usr/bin"})
         status, _, err = self.start("start", "APP_FOUND=true\nAPP_STRAY=x\nPATH=/evil\n"
                                     "PIHX_TOOLS=/evil\nCOMPOSE_FILE=/evil\nSERVICE_NAME=evil\n")
         self.assertEqual(status, 0, err)
-        self.assertEqual(self.declared(), {"APP_FOUND": "true", "APP_OTHER": None})
+        self.assertEqual(self.declared(), {"APP_FOUND": "true", "APP_OTHER": ""})
         env = self.up_env[0]
         self.assertNotIn("APP_STRAY", env)
         self.assertEqual(env["PATH"], "/usr/bin")
@@ -360,16 +361,16 @@ class StartEnvTest(LifecycleTest):
                           "let it set; ignored", err)
         self.assertNotIn("/evil", err)
 
-    def test_a_failed_script_gives_nothing(self):
+    def test_a_failed_script_gives_its_variables_empty(self):
         status, _, err = self.start("start", "APP_FOUND=true\n", returncode=1)
         self.assertEqual(status, 0, err)
-        self.assertIn("warning: app: start/values failed (exit 1); starting without its values",
-                      err)
-        self.assertEqual(self.declared(), {"APP_FOUND": None, "APP_OTHER": None})
+        self.assertIn("warning: app: start/values failed (exit 1); starting with APP_FOUND, "
+                      "APP_OTHER empty", err)
+        self.assertEqual(self.declared(), {"APP_FOUND": "", "APP_OTHER": ""})
 
-    def test_a_malformed_line_gives_nothing_and_is_not_shown(self):
+    def test_a_malformed_line_gives_its_variables_empty_and_is_not_shown(self):
         status, _, err = self.start("start", "APP_FOUND=true\nsecret-ish words\n")
         self.assertEqual(status, 0, err)
         self.assertIn("printed a malformed line", err)
         self.assertNotIn("secret-ish", err)
-        self.assertEqual(self.declared(), {"APP_FOUND": None, "APP_OTHER": None})
+        self.assertEqual(self.declared(), {"APP_FOUND": "", "APP_OTHER": ""})
