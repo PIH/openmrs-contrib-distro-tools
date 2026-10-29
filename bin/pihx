@@ -1,0 +1,84 @@
+#!/bin/sh
+# Usage: pihx <instance> <command> [args...] | pihx list | help | version
+#
+# Runs the pihx package from this checkout inside pihx-runtime, so the host needs only Docker and a
+# POSIX shell. The checkout and PIHX_HOME (default ~/pihx) are mounted at their host paths, so paths
+# pihx hands to Compose resolve on the host. pihx <instance> ... runs the instance's own checkout
+# (its tools link), whichever bin/pihx was typed.
+set -eu
+
+die() { echo "error: $*" >&2; exit 1; }
+
+# This checkout, following a link to this script (e.g. from a bin directory on PATH).
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case $link in
+        /*) self=$link ;;
+        *) self=$(dirname "$self")/$link ;;
+    esac
+done
+PIHX_TOOLS=$(cd -P "$(dirname "$self")/.." && pwd)
+
+PIHX_HOME=${PIHX_HOME:-$HOME/pihx}
+# Made here, not by docker run, which would make it root-owned.
+mkdir -p "$PIHX_HOME"
+PIHX_HOME=$(cd -P "$PIHX_HOME" && pwd)
+
+# Hand-off: an instance runs the checkout its tools link names. Only for a valid instance name, so
+# the argument can't point outside PIHX_HOME. A tools link that resolves nowhere is pihx's to report.
+case ${1-} in
+    '' | [!a-z0-9]* | *[!a-z0-9_-]*) ;;
+    *)
+        if instance_tools=$(cd -P "$PIHX_HOME/$1/tools" 2>/dev/null && pwd) \
+                && [ "$instance_tools" != "$PIHX_TOOLS" ]; then
+            [ -x "$instance_tools/bin/pihx" ] || die "$PIHX_HOME/$1/tools has no bin/pihx"
+            exec "$instance_tools/bin/pihx" "$@"
+        fi
+        ;;
+esac
+
+image=pihx-runtime:$("$PIHX_TOOLS/lib/image-tag.sh" "$PIHX_TOOLS/images/pihx-runtime")
+if ! docker image inspect "$image" >/dev/null 2>&1; then
+    echo "Building $image" >&2
+    docker build -q -t "$image" "$PIHX_TOOLS/images/pihx-runtime" >/dev/null
+fi
+
+socket=/var/run/docker.sock
+case ${DOCKER_HOST-} in unix://*) socket=${DOCKER_HOST#unix://} ;; esac
+# GNU stat, then BSD (macOS).
+socket_gid=$(stat -c %g "$socket" 2>/dev/null || stat -f %g "$socket" 2>/dev/null) \
+    || die "can't read the Docker socket $socket"
+
+# The container's working directory is the caller's when it's mounted; PIHX_CWD carries it anyway,
+# so relative paths can be resolved as on the host.
+PIHX_CWD=$(pwd -P)
+case $PIHX_CWD/ in
+    "$PIHX_TOOLS"/* | "$PIHX_HOME"/*) workdir=$PIHX_CWD ;;
+    *) workdir=/ ;;
+esac
+
+# The variables pihx reads, passed by name (-e NAME) so values, secrets included, stay off the
+# command line.
+export PIHX_TOOLS PIHX_HOME PIHX_CWD
+PIHX_RUNTIME_IMAGE=$image
+export PIHX_RUNTIME_IMAGE
+env_args=
+for name in $(env | awk -F= '/^(PIHX|OPENMRS|RESTORE|SEED|MYSQL)_[A-Za-z0-9_]*=/ ||
+        /^(ARCHIVE_PASSWORD|TZ|SERVICES)=/ { print $1 }'); do
+    env_args="$env_args -e $name"
+done
+
+tty=
+[ -t 0 ] && [ -t 1 ] && tty=-t
+
+# Exec, so pihx's exit status is the launcher's. env_args and tty are unquoted on purpose: a list of
+# options of variable names, or nothing.
+# shellcheck disable=SC2086
+exec docker run --rm -i $tty \
+    -u "$(id -u):$(id -g)" --group-add "$socket_gid" \
+    -v "$socket:/var/run/docker.sock" \
+    -v "$PIHX_TOOLS:$PIHX_TOOLS:ro" -v "$PIHX_HOME:$PIHX_HOME" \
+    -w "$workdir" \
+    -e HOME=/tmp -e PYTHONPATH="$PIHX_TOOLS" -e PYTHONDONTWRITEBYTECODE=1 $env_args \
+    "$image" python3 -m pihx "$@"

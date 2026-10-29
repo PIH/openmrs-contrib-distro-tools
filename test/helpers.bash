@@ -24,6 +24,8 @@ export RUN_PREFIX="${RUN_PREFIX:-odt${BATS_ROOT_PID}}"
 # openmrs-docker instances live in a throwaway home, use a placeholder OpenMRS image (initialize
 # only ever starts openmrs-db) and random host ports, so tests never collide with a real instance.
 export OPENMRS_DOCKER_HOME="$BATS_RUN_TMPDIR/openmrs-home"
+# pihx's instances too; never the caller's ~/pihx.
+export PIHX_HOME="$BATS_RUN_TMPDIR/pihx-home"
 export OPENMRS_IMAGE_NAME=placeholder/openmrs
 export OPENMRS_DB_PORT=0
 # As openmrs-docker exports it, for tests that run docker compose on an instance's fragments directly.

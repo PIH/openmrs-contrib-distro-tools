@@ -12,7 +12,7 @@ run_shellcheck() {
 }
 
 scripts() {
-    (cd "$REPO_ROOT" && ls bin/* utils/*.sh utils/lib/in-container/*.sh docker/*.sh test/run)
+    (cd "$REPO_ROOT" && ls bin/* lib/image-tag.sh utils/*.sh utils/lib/in-container/*.sh docker/*.sh test/run)
 }
 
 @test "all shell scripts pass shellcheck" {

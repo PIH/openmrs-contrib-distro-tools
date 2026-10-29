@@ -1,15 +1,28 @@
 #!/bin/bash
 # Runs this project's test suite. Usage:
 #   test/run [static|args|integration|all|<test file or dir>] [extra bats args...]
+#   test/run unit [extra unittest args...]
 #
-# Needs docker, git, jq, curl and perl: bats and GNU parallel are fetched at pinned versions into
-# test/.deps on first run. Tests run TEST_JOBS at a time (default: the number of CPUs, up to 8;
-# TEST_JOBS=1 runs them one at a time). Every test names its Docker resources after its own
+# unit runs pihx's Python unit tests inside pihx-runtime, so needs only docker; all runs it first. The
+# other layers need docker, git, jq, curl and perl: bats and GNU parallel are fetched at pinned
+# versions into test/.deps on first run. Tests run TEST_JOBS at a time (default: the number of CPUs,
+# up to 8; TEST_JOBS=1 runs them one at a time). Every test names its Docker resources after its own
 # suite-wide number, so they don't collide.
 set -euo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$TEST_DIR/.." && pwd)"
 DEPS_DIR="$TEST_DIR/.deps"
+
+# Runs pihx's unit tests in pihx-runtime, the image pihx itself runs in, building it if missing.
+run_unit() {
+    local image
+    image="pihx-runtime:$("$REPO_ROOT/lib/image-tag.sh" "$REPO_ROOT/images/pihx-runtime")"
+    docker image inspect "$image" >/dev/null 2>&1 \
+        || docker build -q -t "$image" "$REPO_ROOT/images/pihx-runtime" >/dev/null
+    docker run --rm -u "$(id -u):$(id -g)" -v "$REPO_ROOT:$REPO_ROOT:ro" -w "$REPO_ROOT" \
+        -e PYTHONDONTWRITEBYTECODE=1 "$image" python3 -m unittest discover -s pihx/tests "$@"
+}
 
 fetch() {
     local repo=$1 tag=$2 dir
@@ -19,26 +32,28 @@ fetch() {
         git clone -q --depth 1 --branch "$tag" "https://github.com/$repo.git" "$dir" 2>/dev/null
     fi
 }
-fetch bats-core/bats-core v1.14.0
-fetch bats-core/bats-support v0.3.0
-fetch bats-core/bats-assert v2.2.4
 
 LAYER="${1:-all}"
 [ $# -gt 0 ] && shift
 case "$LAYER" in
+    unit) run_unit "$@"; exit ;;
     static|args|integration) TARGETS=("$TEST_DIR/$LAYER") ;;
-    all) TARGETS=("$TEST_DIR/static" "$TEST_DIR/args" "$TEST_DIR/integration") ;;
+    all) run_unit; TARGETS=("$TEST_DIR/static" "$TEST_DIR/args" "$TEST_DIR/integration") ;;
     *)
         if [ -e "$LAYER" ]; then
             TARGETS=("$LAYER")
         elif [ -e "$TEST_DIR/$LAYER" ]; then
             TARGETS=("$TEST_DIR/$LAYER")
         else
-            echo "usage: $0 [static|args|integration|all|<test file or dir>] [bats args...]" >&2
+            echo "usage: $0 [unit|static|args|integration|all|<test file or dir>] [bats args...]" >&2
             exit 1
         fi
         ;;
 esac
+
+fetch bats-core/bats-core v1.14.0
+fetch bats-core/bats-support v0.3.0
+fetch bats-core/bats-assert v2.2.4
 
 # bats runs tests in parallel through GNU parallel, a single perl script.
 PARALLEL_VERSION=20240922
