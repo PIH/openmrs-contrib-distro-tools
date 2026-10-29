@@ -77,6 +77,12 @@ jobs:
               elif grep -q -i -E 'no such manifest|manifest unknown|not found' <<< "$err"; then
                 published=no; break
               fi
+              # A repository that doesn't exist yet (its first publish) answers "denied", like an auth
+              # failure does. Docker Hub's API says which: 404 means no repository, so no tag.
+              if code=$(curl -sS -o /dev/null -w '%{http_code}' \
+                  "https://hub.docker.com/v2/repositories/$image/") && [ "$code" = 404 ]; then
+                published=no; break
+              fi
               echo "docker manifest inspect $image:$tag failed (attempt $attempt): $err" >&2
               sleep $((attempt * ${RETRY_DELAY:-5}))
             done
