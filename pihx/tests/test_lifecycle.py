@@ -232,7 +232,7 @@ class DestroyTest(LifecycleTest):
 
     def test_an_unknown_instance_is_an_error(self):
         status, _, err = self.run_pihx("nope", "destroy", "--force")
-        self.assertEqual(status, 1)
+        self.assertEqual(status, 2)
         self.assertIn("no instance 'nope'", err)
 
 
@@ -267,3 +267,16 @@ class RunServiceTest(LifecycleTest):
         self.assertEqual(status, 0, err)
         self.assertIn(("pull", "app"), self.compose_calls)
         self.assertIn(("run", "--rm", "app", "echo", "hi"), self.compose_calls)
+
+
+class StartLockedTest(LifecycleTest):
+    def test__start_is_start_without_the_lock_for_commands_that_hold_it(self):
+        status, _, err = self.run_pihx("kz", "_start")
+        self.assertEqual(status, 2)
+        self.assertIn("use 'start'", err)
+        self.assertEqual(self.compose_calls, [])
+        self.set_env({lifecycle.LOCK_HELD: "kz"})
+        with lock.hold(self.inst(), 0, command="x"):
+            status, _, err = self.run_pihx("kz", "_start")
+        self.assertEqual(status, 0, err)
+        self.assertEqual(self.compose_calls[0], ("up", "-d"))

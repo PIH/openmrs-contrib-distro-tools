@@ -397,11 +397,9 @@ class Restore:
                     continue
                 match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)", line, re.DOTALL)
                 if not match:
-                    # Only what precedes '=': the line may hold a secret.
-                    name = line.split("=", 1)[0][:40] if "=" in line else None
-                    shown = f" a line starting '{name}='" if name else " a line"
-                    raise CliError(f"{choice.service.name}: restore/prepare printed{shown} that "
-                                   "isn't KEY=value")
+                    # Never the line: it may hold a secret.
+                    raise CliError(f"{choice.service.name}: restore/prepare printed a malformed "
+                                   "line (not KEY=value)")
                 self.extra[match.group(1)] = match.group(2)
         self.compose = self._compose()
 

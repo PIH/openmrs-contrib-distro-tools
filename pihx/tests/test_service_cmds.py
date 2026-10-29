@@ -84,6 +84,11 @@ class CommandsTest(ServiceCommandTest):
             self.assertIn("kz is busy: pihx kz initialize", err)
             self.assertEqual(run(["kz", "app", "bye"])[0], 0)
 
+    def test_the_no_lock_marker_may_be_indented_or_trailed_by_spaces(self):
+        script(self.app / "commands" / "hello", "#!/bin/sh\n  # pihx: no-lock  \nexit 0\n")
+        with lock.hold(self.inst(), 0, command="initialize"):
+            self.assertEqual(run(["kz", "app", "hello"])[0], 0)
+
     def test_the_lock_names_the_command_not_its_arguments(self):
         seen = self.root / "lock"
         script(self.app / "commands" / "hello", f'cat "$PIHX_INSTANCE_DIR/.lock" > {seen}\n')

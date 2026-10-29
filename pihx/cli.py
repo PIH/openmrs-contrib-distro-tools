@@ -80,6 +80,7 @@ INSTANCE_COMMANDS = {
     "remove-service": instance_cmds.cmd_remove_service,
     "use-tools": instance_cmds.cmd_use_tools,
     "start": lifecycle.cmd_start,
+    "_start": lifecycle.cmd_start_locked,
     "stop": lifecycle.cmd_stop,
     "restart": lifecycle.cmd_restart,
     "status": lifecycle.cmd_status,

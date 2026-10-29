@@ -61,9 +61,9 @@ copy_tools() { # <dir>
 }
 
 @test "exit status is passed through" {
-    run "$BIN/pihx" nosuch frobnicate
+    run "$BIN/pihx" nosuch status
     assert_failure 2
-    assert_output --partial 'error:'
+    assert_output --partial "error: no instance 'nosuch'"
 }
 
 @test "files pihx writes are owned by the caller" {

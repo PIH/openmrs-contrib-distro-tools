@@ -35,7 +35,7 @@ def containers_to_wait_for(inst, compose):
     ids = []
     for status in ("running", "restarting"):
         ids += _docker(compose, "ps", "-q", "--filter", f"status={status}", "--filter",
-                       f"label=com.docker.compose.project={inst.name}").stdout.split()
+                       f"label=com.docker.compose.project={compose.environment()['COMPOSE_PROJECT_NAME']}").stdout.split()
     if not ids:
         raise CliError(f"{inst.name} has no running containers (start it: "
                        f"'pihx {inst.name} start')")

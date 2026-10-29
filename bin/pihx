@@ -113,28 +113,30 @@ if [ "${2-}" = initialize ]; then
     fi
 fi
 
-# summary --output <file> writes the file, so its directory is resolved here and mounted (writable)
-# at that path when it's elsewhere, for the files to be written as the caller. pihx gets the file
-# as PIHX_OUTPUT.
-unset PIHX_OUTPUT
-output_mount=
+# summary --output <file>: the launcher writes the file, on the host, as the caller, from pihx's
+# standard output (the option is taken out of pihx's arguments), so nothing needs mounting. It is
+# written whole or not at all.
+output=
 if [ "${2-}" = summary ]; then
-    output=
+    inst=$1
+    shift 2
+    n=$#
     take=false
-    for arg in "$@"; do
+    while [ "$n" -gt 0 ]; do
+        arg=$1
+        shift
+        n=$((n - 1))
         if $take; then output=$arg; take=false; continue; fi
         case $arg in
             --output) take=true ;;
             --output=*) output=${arg#--output=} ;;
+            *) set -- "$@" "$arg" ;;
         esac
     done
-    if [ -n "$output" ] && output_dir=$(cd -P "$(dirname -- "$output")" 2>/dev/null && pwd); then
-        PIHX_OUTPUT=$output_dir/$(basename -- "$output")
-        export PIHX_OUTPUT
-        case $output_dir/ in
-            "$PIHX_TOOLS"/* | "$PIHX_HOME"/*) ;;
-            *) output_mount=$output_dir:$output_dir ;;
-        esac
+    $take && die "--output needs a file"
+    set -- "$inst" summary "$@"
+    if [ -n "$output" ]; then
+        output_tmp=$(mktemp "$output.XXXXXX" 2>/dev/null) || die "can't write $output"
     fi
 fi
 
@@ -142,7 +144,6 @@ fi
 set -- "$image" python3 -m pihx "$@"
 [ -z "$use_tools_mount" ] || set -- -v "$use_tools_mount" "$@"
 [ -z "$from_mount" ] || set -- -v "$from_mount" "$@"
-[ -z "$output_mount" ] || set -- -v "$output_mount" "$@"
 
 # The caller's Docker config, for registry credentials (Puppet writes the instance user's). Mounted
 # aside, read-only: pihx installs a copy without credential helpers, whose binaries the image lacks,
@@ -180,8 +181,30 @@ done
 tty=
 [ -t 0 ] && [ -t 1 ] && tty=-t
 
-# Exec, so pihx's exit status is the launcher's. env_args and tty are unquoted on purpose: a list of
-# options of variable names, or nothing.
+# env_args and tty are unquoted on purpose: a list of options of variable names, or nothing.
+# Exec, so pihx's exit status is the launcher's, except for summary --output, which then moves its
+# output into place.
+if [ -n "$output" ]; then
+    # shellcheck disable=SC2086
+    if docker run --rm -i \
+        -u "$(id -u):$(id -g)" --group-add "$socket_gid" \
+        -v "$socket:/var/run/docker.sock" \
+        -v "$PIHX_TOOLS:$PIHX_TOOLS:ro" -v "$PIHX_HOME:$PIHX_HOME" \
+        -w "$workdir" \
+        -e HOME=/tmp -e PYTHONPATH="$PIHX_TOOLS" -e PYTHONDONTWRITEBYTECODE=1 $env_args \
+        "$@" > "$output_tmp"; then
+        chmod 644 "$output_tmp" && mv -f "$output_tmp" "$output" || {
+            rm -f "$output_tmp"
+            die "can't write $output"
+        }
+        echo "Wrote $output." >&2
+        exit 0
+    else
+        status=$?
+        rm -f "$output_tmp"
+        exit "$status"
+    fi
+fi
 # shellcheck disable=SC2086
 exec docker run --rm -i $tty \
     -u "$(id -u):$(id -g)" --group-add "$socket_gid" \

@@ -206,8 +206,8 @@ class InitializeCommandTest(InitializeTest):
         self.assertEqual(self.hook_envs["prepare"]["PIHX_INSTANCE"], "kz")
         self.assertEqual(self.hook_envs["prepare"]["DB_PASSWORD"], "secret $x")
         for result, fragment in [(done(returncode=3), "db: restore/prepare failed (exit 3)"),
-                                 (done("not a value\n"), "printed a line that isn't KEY=value"),
-                                 (done("BAD NAME=s3cret\n"), "a line starting 'BAD NAME='")]:
+                                 (done("not a value\n"), "printed a malformed line"),
+                                 (done("BAD NAME=s3cret\n"), "printed a malformed line")]:
             with self.subTest(fragment=fragment):
                 self.compose_calls.clear()
                 self.hooks["prepare"] = lambda: result
@@ -215,6 +215,7 @@ class InitializeCommandTest(InitializeTest):
                 self.assertEqual(status, 1)
                 self.assertIn(fragment, err)
                 self.assertNotIn("not a value", err)
+                self.assertNotIn("BAD NAME", err)
                 self.assertNotIn("s3cret", err)
                 self.assertEqual(self.up_calls(), [])
 

@@ -117,6 +117,22 @@ def cmd_start(name, args):
     return 0
 
 
+# Set (to the instance's name) in the environment of a service command that holds the lock.
+LOCK_HELD = "PIHX_LOCK_HELD"
+
+
+def cmd_start_locked(name, args):
+    """Internal: `start` without taking the lock, for a service command that already holds it
+    (e.g. openmrs-db's reset-accounts, which stops the instance and starts it again): the same
+    start, with every service's setup checked."""
+    _no_arguments(args, "_start")
+    if os.environ.get(LOCK_HELD) != name:
+        raise CliError("_start is for service commands that hold the lock; use 'start'", status=2)
+    inst = _open(name)
+    start_stack(inst, compose_module.Compose(inst))
+    return 0
+
+
 def cmd_update(name, args):
     _no_arguments(args, "update")
     inst = _open(name)

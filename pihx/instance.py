@@ -27,7 +27,12 @@ def instance_name_error(name):
 
 
 class InstanceError(Exception):
-    """An instance is missing or its files are invalid; the message names the file."""
+    """An instance is missing or its files are invalid; the message names the file. A usage error
+    (e.g. no such instance) exits 2."""
+
+    def __init__(self, message, status=1):
+        super().__init__(message)
+        self.status = status
 
 
 @dataclasses.dataclass
@@ -68,7 +73,7 @@ def open(home, name, tools=None):
         raise InstanceError(error)
     instance_dir = Path(home).absolute() / name
     if not instance_dir.is_dir():
-        raise InstanceError(f"no instance '{name}': {instance_dir} doesn't exist")
+        raise InstanceError(f"no instance '{name}': {instance_dir} doesn't exist", status=2)
     if tools is None:
         tools = os.environ.get("PIHX_TOOLS")
         if not tools:

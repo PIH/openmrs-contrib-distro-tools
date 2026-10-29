@@ -80,41 +80,61 @@ YAML
     assert_output --partial "PIHX_WAIT_TIMEOUT must be a positive number of seconds, not 'soon'"
 }
 
-@test "summary matches fingerprint's output, a data directory section after the database's" {
+@test "summary matches fingerprint's output, running or stopped, a data directory section after the database's" {
     OPENMRS_IMAGE_NAME="$STUB_OPENMRS_IMAGE" OPENMRS_IMAGE_TAG=latest \
         "$BIN/pihx" "$NAME" create --services=openmrs-db,openmrs >/dev/null
+    run "$BIN/pihx" "$NAME" summary
+    assert_failure
+    assert_output --partial "${NAME}_db-data doesn't exist -- nothing to summarize"
+    assert_output --partial "openmrs-db: summary.sh failed"
     write_tiny_dump run/openmrs-db.sql
     make_data_fixture run/openmrs
     run timeout 300 "$BIN/pihx" "$NAME" initialize --from "$BATS_TEST_TMPDIR/run"
     assert_success
-    # not started: there's nothing to read the database from
-    run "$BIN/pihx" "$NAME" summary
-    assert_failure
-    assert_output --partial "$NAME-openmrs-db isn't running"
-    assert_output --partial "openmrs-db: summary.sh failed"
-    "$BIN/pihx" "$NAME" start >/dev/null 2>&1
-    wait_for_mysql "$NAME-openmrs-db" root openmrs
-    run "$BIN/pihx" "$NAME" summary --output=summary.txt
+    # stopped, right after initialize: read from the volume with the instance's image and options
+    run "$BIN/pihx" "$NAME" summary --output=stopped.txt
     assert_success
-    assert_output --partial "Wrote summary.txt."
-    MYSQL_PASSWORD=openmrs "$UTILS/fingerprint.sh" --container="$NAME-openmrs-db" \
-        --data-dir="${NAME}_openmrs-data" --exclude-distribution-artifacts --output=fingerprint.txt 2>/dev/null
-    run diff fingerprint.txt summary.txt
-    assert_success
-    run cat summary.txt
+    assert_output --partial "Wrote stopped.txt."
+    # the file is the caller's, even outside the mounted paths, and no temporary file is left
+    assert_equal "$(stat -c %U stopped.txt)" "$(id -un)"
+    assert_equal "$(ls | grep -c 'stopped.txt.')" 0
+    run cat stopped.txt
+    # the instance's OPENMRS_DB_OPT_character_set_server, not the image's default (latin1 on 5.6)
     assert_line 'character_set_server utf8'
     assert_line 'openmrs.marker 1'
     assert_line 'complex_obs/ files=1 bytes=4'
     refute_output --partial 'modules/'
-    assert_equal "$(grep '^\[' summary.txt | paste -sd' ' -)" \
+    assert_equal "$(grep '^\[' stopped.txt | paste -sd' ' -)" \
         "[server] [databases] [rows] [objects] [recent] [accounts] [data-dir]"
-    # what the image supplies is included on request
+    "$BIN/pihx" "$NAME" start >/dev/null 2>&1
+    wait_for_mysql "$NAME-openmrs-db" root openmrs
+    run "$BIN/pihx" "$NAME" summary --output running.txt
+    assert_success
+    MYSQL_PASSWORD=openmrs "$UTILS/fingerprint.sh" --container="$NAME-openmrs-db" \
+        --data-dir="${NAME}_openmrs-data" --exclude-distribution-artifacts --output=fingerprint.txt 2>/dev/null
+    run diff fingerprint.txt running.txt
+    assert_success
+    run diff stopped.txt running.txt
+    assert_success
+    # what the image supplies is included on request; without --output it prints
     run "$BIN/pihx" "$NAME" summary --include-distribution-artifacts
     assert_success
     assert_line 'modules/ files=1 bytes=5'
     run "$BIN/pihx" "$NAME" summary --bogus
     assert_failure
     assert_output --partial "unknown option '--bogus' for summary"
+}
+
+@test "summary --output fails with an error line when the file can't be written, and leaves nothing" {
+    "$BIN/pihx" "$NAME" create --services=openmrs-db >/dev/null
+    run "$BIN/pihx" "$NAME" summary --output=/nosuchdir/summary.txt
+    assert_failure
+    assert_output --partial "error: can't write /nosuchdir/summary.txt"
+    # a failing summary leaves no file either
+    run "$BIN/pihx" "$NAME" summary --output=out.txt
+    assert_failure
+    assert_output --partial "nothing to summarize"
+    assert_equal "$(ls)" run
 }
 
 in_volume() { # <volume> <sh command>
@@ -170,6 +190,18 @@ in_volume() { # <volume> <sh command>
     assert_output --partial "Set the password of openmrs@%"
     refute_output --partial "openmrs-runtime.properties"
     wait_for_mysql "$NAME-openmrs-db" openmrs rotated-pw
+}
+
+@test "reset-accounts starts the instance with its setup checked, and a failing setup fails it" {
+    "$BIN/pihx" "$NAME" create --services=openmrs-db >/dev/null
+    write_tiny_dump run/openmrs-db.sql
+    run timeout 300 "$BIN/pihx" "$NAME" initialize --from "$BATS_TEST_TMPDIR/run"
+    assert_success
+    printf '%s\n' "OPENMRS_DB_ACCOUNT_BAD_USER='reports'" "OPENMRS_DB_ACCOUNT_BAD_PASSWORD=''" \
+        "OPENMRS_DB_ACCOUNT_BAD_GRANTS='ALL ON *.*'" >> "$DIR/openmrs-db.env"
+    run "$BIN/pihx" "$NAME" openmrs-db reset-accounts
+    assert_failure
+    assert_output --partial "openmrs-db-accounts failed"
 }
 
 @test "a service command holds the instance lock" {

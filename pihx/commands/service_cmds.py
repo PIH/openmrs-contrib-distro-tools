@@ -8,6 +8,7 @@ import contextlib
 from pihx import instance as instance_module, lock, script, services as services_module
 from pihx.commands import CliError
 from pihx.commands.instance_cmds import tools_dir
+from pihx.commands import lifecycle
 from pihx.commands.lifecycle import exit_status
 
 NO_LOCK = "# pihx: no-lock"
@@ -20,7 +21,7 @@ def _header(path):
 
 
 def wants_lock(path):
-    return NO_LOCK not in _header(path)
+    return NO_LOCK not in [line.strip() for line in _header(path)]
 
 
 def description(path):
@@ -53,8 +54,12 @@ def cmd_service(name, service, args):
         raise CliError(f"{service} has no command '{command}' (see 'pihx {name} {service}')",
                        status=2)
     path = svc.commands[command]
+    locked = wants_lock(path)
     holding = (lock.hold(inst, lock.wait_seconds(), command=f"{service} {command}")
-               if wants_lock(path) else contextlib.nullcontext())
+               if locked else contextlib.nullcontext())
+    # Tells a pihx the command runs (e.g. `_start`) that this process holds the lock.
+    extra = {lifecycle.LOCK_HELD: inst.name} if locked else None
     with holding:
-        result = script.run(inst, path, rest, service=svc, label=f"{service} {command}")
+        result = script.run(inst, path, rest, extra_env=extra, service=svc,
+                            label=f"{service} {command}")
     return exit_status(result.returncode)

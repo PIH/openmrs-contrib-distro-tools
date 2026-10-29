@@ -54,9 +54,8 @@ def cmd_summary(name, args):
     if output is None:
         sys.stdout.write(text)
         return 0
-    # The launcher resolves the file and mounts its directory (PIHX_OUTPUT); otherwise it's the
-    # caller's, if that's where pihx can write.
-    target = os.environ.get("PIHX_OUTPUT") or os.path.join(os.environ.get("PIHX_CWD", ""), output)
+    # (bin/pihx handles --output itself, on the host; this is for running pihx directly.)
+    target = os.path.join(os.environ.get("PIHX_CWD", ""), output)
     try:
         with open(target, "w") as f:
             f.write(text)
