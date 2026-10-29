@@ -4,6 +4,11 @@ import os
 import subprocess
 
 
+# All Compose (and later, service scripts) get from the caller's environment: anything else would
+# beat the instance's env files in Compose's interpolation.
+PASSED_THROUGH = ("PATH", "HOME", "DOCKER_CONFIG", "DOCKER_HOST")
+
+
 class ComposeError(Exception):
     """A docker compose command failed (Compose has already printed why)."""
 
@@ -28,8 +33,9 @@ class Compose:
         return files + self.extra_files
 
     def args(self):
-        """docker compose's options for the instance, in override order."""
-        args = ["-p", self.instance.name]
+        """docker compose's options for the instance, in override order. Relative paths in compose
+        files resolve against the instance directory."""
+        args = ["-p", self.instance.name, "--project-directory", str(self.instance.dir)]
         for f in self.env_files():
             args += ["--env-file", str(f)]
         for f in self.compose_files():
@@ -49,11 +55,22 @@ class Compose:
             "PIHX_INSTANCE": self.instance.name,
         }
 
+    def environment(self):
+        """The whole environment to run Compose (or a service script) with: env() plus only
+        PASSED_THROUGH from the caller's."""
+        passed = {name: os.environ[name] for name in PASSED_THROUGH if name in os.environ}
+        return {**passed, **self.env()}
+
     def run(self, *args, check=True, **kwargs):
-        """Runs `docker compose <options> <args>`; kwargs go to subprocess.run. With check, a
-        failure raises ComposeError."""
+        """Runs `docker compose <options> <args>` in environment(); kwargs go to subprocess.run.
+        With check, a failure raises ComposeError."""
         result = subprocess.run(["docker", "compose", *self.args(), *args],
-                                env={**os.environ, **self.env()}, **kwargs)
+                                env=self.environment(), **kwargs)
         if check and result.returncode != 0:
             raise ComposeError(f"docker compose {' '.join(args)} failed (exit {result.returncode})")
         return result
+
+
+def environment(instance, extra_files=()):
+    """Compose(instance, extra_files).environment()."""
+    return Compose(instance, extra_files).environment()

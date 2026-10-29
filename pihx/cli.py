@@ -1,10 +1,10 @@
 """The command line: pihx <global command>, or pihx <instance> <command> [args...]."""
 
 import os
-import re
 import sys
 
 from pihx import __version__, runtime
+from pihx.instance import RESERVED_NAMES, instance_name_error
 
 USAGE = """\
 Usage:
@@ -19,10 +19,6 @@ Commands:
   version    Show pihx's version and the checkout it runs from
 """
 
-# Global commands come first on the command line, so no instance can take their names.
-RESERVED_NAMES = frozenset({"list", "help", "version"})
-INSTANCE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
-
 
 class CliError(Exception):
     """An error to report as `error: <message>` with a non-zero status."""
@@ -30,16 +26,6 @@ class CliError(Exception):
     def __init__(self, message, status=1):
         super().__init__(message)
         self.status = status
-
-
-def instance_name_error(name):
-    """Why <name> can't be an instance name, or None if it can."""
-    if name in RESERVED_NAMES:
-        return f"'{name}' is a pihx command, so it can't name an instance"
-    if not INSTANCE_NAME.fullmatch(name):
-        return (f"invalid instance name '{name}': use lowercase letters, digits, '-' and '_', "
-                "starting with a letter or digit")
-    return None
 
 
 def cmd_help(args):

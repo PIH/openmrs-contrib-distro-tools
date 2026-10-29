@@ -6,6 +6,8 @@ import dataclasses
 import re
 from pathlib import Path
 
+import yaml
+
 from pihx import envfile
 
 NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
@@ -19,6 +21,38 @@ CORE_COMMANDS = frozenset({
     "initialize", "destroy", "summary",
 })
 RESERVED_NAMES = CORE_COMMANDS | {"instance"}
+
+
+class _Loader(yaml.SafeLoader):
+    """yaml.safe_load, refusing duplicate keys, and with only true/false as booleans (not YAML
+    1.1's yes/no/on/off)."""
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    None, None, f"duplicate key '{key}'", key_node.start_mark)
+            seen.add(key)
+        return super().construct_mapping(node, deep)
+
+
+BOOL_TAG = "tag:yaml.org,2002:bool"
+_Loader.yaml_implicit_resolvers = {
+    first: [(tag, regexp) for tag, regexp in resolvers if tag != BOOL_TAG]
+    for first, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()}
+_Loader.add_implicit_resolver(BOOL_TAG, re.compile(r"^(?:true|false)$"), list("tf"))
+
+
+def parse_yaml(text):
+    """A manifest's YAML. Raises ValueError naming the line."""
+    try:
+        return yaml.load(text, Loader=_Loader)
+    except yaml.YAMLError as e:
+        mark = getattr(e, "problem_mark", None)
+        problem = getattr(e, "problem", None) or str(e)
+        raise ValueError(f"line {mark.line + 1}: {problem}" if mark else problem) from None
 
 
 class ServiceError(Exception):
@@ -85,6 +119,9 @@ def load(tools, name):
                                f"{tools / 'services'}")
     for entry in manifest.restore:
         for overlay in filter(None, (entry.overlay, entry.after)):
+            if Path(overlay).is_absolute() or ".." in Path(overlay).parts:
+                raise ServiceError(f"{manifest_file}: restore overlay {overlay} must be a path "
+                                   "inside the service directory")
             if not (svc_dir / overlay).is_file():
                 raise ServiceError(f"{manifest_file}: restore overlay {overlay} doesn't exist")
     try:
@@ -165,159 +202,3 @@ def _restore(entry):
     if not isinstance(entry.get("after", ""), str):
         raise ValueError("a 'restore' entry's 'after' must be a file name")
     return Restore(names=names, overlay=entry["overlay"], after=entry.get("after"))
-
-
-# The manifest's YAML: the subset manifests need, since pihx uses only Python's standard library.
-# Block mappings and sequences, flow sequences of scalars, plain and quoted scalars, true/false,
-# null/~ and comments. Anything else (flow mappings, anchors, tags, block scalars, escapes, tabs,
-# duplicate keys) is refused rather than read differently from YAML.
-
-KEY = re.compile(r"([A-Za-z0-9_][A-Za-z0-9_.-]*):(?:\s+(.*))?")
-PLAIN_REFUSED = tuple("{}[]&*!|>%@`,")
-
-
-def parse_yaml(text):
-    """The manifest YAML <text> as dicts, lists, strings, booleans and None. Raises ValueError
-    naming the line."""
-    lines = []
-    for number, raw in enumerate(text.splitlines(), 1):
-        if "\t" in raw[:len(raw) - len(raw.lstrip())]:
-            raise ValueError(f"line {number}: tab in indentation")
-        content = _strip_comment(raw).rstrip()
-        if content.strip():
-            lines.append((number, len(content) - len(content.lstrip()), content.strip()))
-    if not lines:
-        return None
-    parser = _Parser(lines)
-    value = parser.node(lines[0][1])
-    if parser.i < len(lines):
-        parser.fail("unexpected indentation")
-    return value
-
-
-def _strip_comment(line):
-    quote, i = None, -1
-    while i + 1 < len(line):
-        i += 1
-        c = line[i]
-        if quote:
-            if c == quote == "'" and line[i + 1:i + 2] == "'":
-                i += 1  # '' is a quote inside a single-quoted string
-            elif c == quote:
-                quote = None
-        elif c in "'\"" and (i == 0 or line[i - 1] in " \t[,:-"):
-            quote = c
-        elif c == "#" and (i == 0 or line[i - 1] in " \t"):
-            return line[:i]
-    return line
-
-
-class _Parser:
-    def __init__(self, lines):
-        self.lines, self.i = lines, 0
-
-    def fail(self, message):
-        number = self.lines[min(self.i, len(self.lines) - 1)][0]
-        raise ValueError(f"line {number}: {message}")
-
-    def peek(self):
-        return self.lines[self.i] if self.i < len(self.lines) else None
-
-    def node(self, indent):
-        _, _, content = self.peek()
-        if content == "-" or content.startswith("- "):
-            return self.sequence(indent)
-        return self.mapping(indent)
-
-    def mapping(self, indent, first=None):
-        result = {}
-        while True:
-            line = first or self.peek()
-            if line is None or line[1] < indent:
-                return result
-            number, line_indent, content = line
-            if line_indent > indent or content == "-" or content.startswith("- "):
-                self.fail("unexpected indentation" if line_indent > indent else "expected 'key:'")
-            match = KEY.fullmatch(content)
-            if not match:
-                self.fail("expected 'key: value'")
-            key, rest = match.group(1), match.group(2)
-            if key in result:
-                self.fail(f"duplicate key '{key}'")
-            if not first:
-                self.i += 1
-            first = None
-            if rest:
-                result[key] = self.scalar_or_flow(rest)
-            else:
-                following = self.peek()
-                if following and (following[1] > indent or (following[1] == indent and (
-                        following[2] == "-" or following[2].startswith("- ")))):
-                    result[key] = self.node(following[1])
-                else:
-                    result[key] = None
-
-    def sequence(self, indent):
-        result = []
-        while True:
-            line = self.peek()
-            if line is None or line[1] < indent:
-                return result
-            number, line_indent, content = line
-            if line_indent > indent:
-                self.fail("unexpected indentation")
-            if not (content == "-" or content.startswith("- ")):
-                return result
-            self.i += 1
-            item = content[1:].lstrip()
-            if not item:
-                following = self.peek()
-                result.append(self.node(following[1]) if following and following[1] > indent
-                              else None)
-            elif KEY.fullmatch(item):
-                # "- key: value" starts a mapping whose keys line up with this first one.
-                item_indent = line_indent + len(content) - len(item)
-                result.append(self.mapping(item_indent, first=(number, item_indent, item)))
-            else:
-                result.append(self.scalar_or_flow(item))
-
-    def scalar_or_flow(self, text):
-        if text.startswith("["):
-            if not text.endswith("]"):
-                self.fail("unterminated '['")
-            inner = text[1:-1].strip()
-            if not inner:
-                return []
-            items = [item.strip() for item in _split_flow(inner)]
-            if any(not item or item.startswith("[") for item in items):
-                self.fail("a flow sequence can hold only scalars")
-            return [self.scalar(item) for item in items]
-        return self.scalar(text)
-
-    def scalar(self, text):
-        if text[0] == "'":
-            if len(text) < 2 or not text.endswith("'") or "'" in text[1:-1].replace("''", ""):
-                self.fail("bad single-quoted string")
-            return text[1:-1].replace("''", "'")
-        if text[0] == '"':
-            if len(text) < 2 or not text.endswith('"') or '"' in text[1:-1] or "\\" in text:
-                self.fail("bad double-quoted string (escapes aren't supported)")
-            return text[1:-1]
-        if text.startswith(PLAIN_REFUSED) or ": " in text:
-            self.fail(f"unsupported YAML: {text} (quote it)")
-        return {"true": True, "false": False, "null": None, "~": None}.get(text, text)
-
-
-def _split_flow(text):
-    items, quote, start = [], None, 0
-    for i, c in enumerate(text):
-        if quote:
-            if c == quote:
-                quote = None
-        elif c in "'\"":
-            quote = c
-        elif c == ",":
-            items.append(text[start:i])
-            start = i + 1
-    items.append(text[start:])
-    return items

@@ -1,7 +1,11 @@
 """The instance lock: commands that change an instance hold <dir>/.lock while they run, and refuse
 (or wait) while another command holds it. Puppet runs `pull` and `start` on every apply, which
 mustn't happen part way through e.g. an initialize or a PETL run. flock releases the lock however
-its holder exits."""
+its holder exits.
+
+The lock's file descriptor isn't inherited by child processes (Python's default), on purpose: the
+lock belongs to the pihx process, so it's released when pihx exits even if a container or a
+`docker compose` it started is still running."""
 
 import contextlib
 import fcntl
@@ -41,9 +45,13 @@ def holder(instance):
     try:
         if _try_lock(fd):
             return None
-        return _lock_file(instance).read_text().strip() or "another command"
+        return _lock_file(instance).read_text().strip() or None
     finally:
         os.close(fd)
+
+
+def _busy(instance):
+    return f"{instance.name} is busy: {holder(instance) or 'another command'}"
 
 
 def _acquire(instance, wait_seconds):
@@ -52,16 +60,15 @@ def _acquire(instance, wait_seconds):
         if _try_lock(fd):
             return fd
         if wait_seconds <= 0:
-            raise LockError(f"{instance.name} is busy: {holder(instance)} -- run this again once "
-                            "that finishes.")
-        print(f"{instance.name} is busy: {holder(instance)} -- waiting up to {wait_seconds}s",
-              file=sys.stderr)
+            raise LockError(f"{_busy(instance)} -- run this again once that finishes.")
+        print(f"{_busy(instance)} -- waiting up to {wait_seconds}s", file=sys.stderr)
         deadline = time.monotonic() + wait_seconds
         while time.monotonic() < deadline:
             time.sleep(POLL_SECONDS)
             if _try_lock(fd):
                 return fd
-        raise LockError(f"{instance.name} is still busy after {wait_seconds}s: {holder(instance)}")
+        raise LockError(f"{instance.name} is still busy after {wait_seconds}s: "
+                        f"{holder(instance) or 'another command'}")
     except BaseException:
         os.close(fd)
         raise
@@ -70,14 +77,16 @@ def _acquire(instance, wait_seconds):
 @contextlib.contextmanager
 def hold(instance, wait_seconds, command=None):
     """Holds the instance's lock for the with block, waiting up to <wait_seconds> for it. The lock
-    file names <command> (default: this pihx command line) for anyone refused meanwhile."""
+    file names the command, `pihx <instance> <command>` (default: this run's command), for anyone
+    refused meanwhile; never its arguments, which may hold secrets."""
     fd = _acquire(instance, wait_seconds)
     try:
         if command is None:
-            command = " ".join(["pihx", *sys.argv[1:]])
+            command = sys.argv[2] if len(sys.argv) > 2 else "?"
+        started = time.strftime("%Y-%m-%d %H:%M:%S")
         try:
             _lock_file(instance).write_text(
-                f"{command} (pid {os.getpid()}, started {time.strftime('%Y-%m-%d %H:%M:%S')})\n")
+                f"pihx {instance.name} {command} (pid {os.getpid()}, started {started})\n")
         except OSError:
             pass  # e.g. another user's lock file: the lock holds, only the message is lost
         yield

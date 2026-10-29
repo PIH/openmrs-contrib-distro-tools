@@ -4,11 +4,25 @@ the checkout the instance runs."""
 
 import dataclasses
 import os
+import re
 from pathlib import Path
 
-from pihx import envfile, services as services_module
+from pihx import compose, envfile, services as services_module
 
 INSTANCE_ENV = "instance.env"
+# Global commands come first on the command line, so no instance can take their names.
+RESERVED_NAMES = frozenset({"list", "help", "version"})
+INSTANCE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
+
+
+def instance_name_error(name):
+    """Why <name> can't be an instance name, or None if it can."""
+    if name in RESERVED_NAMES:
+        return f"'{name}' is a pihx command, so it can't name an instance"
+    if not INSTANCE_NAME.fullmatch(name):
+        return (f"invalid instance name '{name}': use lowercase letters, digits, '-' and '_', "
+                "starting with a letter or digit")
+    return None
 
 
 class InstanceError(Exception):
@@ -32,26 +46,30 @@ class Instance:
         return files
 
     def config(self):
-        """The instance's merged values, as Compose interpolation sees them."""
-        merged = {}
-        for f in self.env_files():
-            try:
-                merged.update(envfile.parse(f.read_text()))
-            except (OSError, ValueError) as e:
-                raise InstanceError(f"{f}: {e}") from None
-        return merged
+        """The instance's merged values, as Compose's interpolation sees them: env files read in
+        order with `$` references expanded, in the environment pihx runs Compose with."""
+        try:
+            return envfile.merge(self.env_files(), compose.environment(self))
+        except ValueError as e:
+            raise InstanceError(str(e)) from None
 
 
 def open(home, name, tools=None):
     """The instance <name> under <home>. <tools> is the checkout it runs: by default PIHX_TOOLS,
     since the launcher has already handed off to the instance's own checkout (its tools link is
     resolved on the host, not here)."""
-    instance_dir = Path(home) / name
+    error = instance_name_error(name)
+    if error:
+        raise InstanceError(error)
+    instance_dir = Path(home).absolute() / name
     if not instance_dir.is_dir():
         raise InstanceError(f"no instance '{name}': {instance_dir} doesn't exist")
     if tools is None:
-        tools = os.environ.get("PIHX_TOOLS") or Path(__file__).resolve().parent.parent
-    tools = Path(tools)
+        tools = os.environ.get("PIHX_TOOLS")
+        if not tools:
+            raise InstanceError("PIHX_TOOLS isn't set (run pihx through bin/pihx)")
+    # Not resolved: tools may be a link the host resolves.
+    tools = Path(tools).absolute()
     found = []
     for env_file in sorted(instance_dir.glob("*.env")):
         if env_file.name == INSTANCE_ENV:

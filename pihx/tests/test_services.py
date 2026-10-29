@@ -2,7 +2,7 @@ import shutil
 import unittest
 
 from pihx import services
-from pihx.tests.fixtures import APP_MANIFEST, DB_MANIFEST, TempDirTest, add_service, two_service_tools
+from pihx.tests.fixtures import TempDirTest, add_service, two_service_tools
 
 
 class ServicesTest(TempDirTest):
@@ -67,7 +67,10 @@ class ServicesTest(TempDirTest):
                                ("  - names: [x.sql]\n", "overlay"),
                                ("  - names: [x.sql]\n    overlay: restore/nosuch.yaml\n", "nosuch"),
                                ("  - names: [x.sql]\n    overlay: restore/dump.yaml\n    var: X\n",
-                                "var")]:
+                                "var"),
+                               ("  - names: [x.sql]\n    overlay: /etc/passwd\n", "/etc/passwd"),
+                               ("  - names: [x.sql]\n    overlay: restore/dump.yaml\n"
+                                "    after: ../db/restore/reset.yaml\n", "inside the service")]:
             with self.subTest(entry=entry):
                 add_service(self.tools, "x", "description: x\nrestore:\n" + entry,
                             files=["restore/dump.yaml"])
@@ -77,6 +80,8 @@ class ServicesTest(TempDirTest):
         for manifest, fragment in [("requires: [db]\n", "description"),
                                    ("description: x\nrequires: db\n", "requires"),
                                    ("description: x\njob: yes please\n", "job"),
+                                   ("description: x\njob: yes\n", "job"),
+                                   ("description: x\njob: True\n", "job"),
                                    ("description: x\nbackup: daily\n", "backup"),
                                    ("description: x\nsetup: [1, [2]]\n", "service.yaml"),
                                    ("- just\n- a list\n", "mapping")]:
@@ -85,8 +90,10 @@ class ServicesTest(TempDirTest):
                 self.assert_service_error("x", "service.yaml", fragment)
 
     def test_malformed_manifest_names_file_and_line(self):
-        add_service(self.tools, "x", "description: x\n  stray: indent\n")
-        self.assert_service_error("x", "service.yaml", "line 2")
+        for manifest in ["description: x\n  stray: indent\n", "description: x\ndescription: y\n"]:
+            with self.subTest(manifest=manifest):
+                add_service(self.tools, "x", manifest)
+                self.assert_service_error("x", "service.yaml", "line 2")
 
     def test_missing_files_are_errors(self):
         self.assert_service_error("nosuch", "nosuch")
@@ -110,33 +117,6 @@ class ServicesTest(TempDirTest):
     def test_service_names_follow_the_name_rule(self):
         add_service(self.tools, "Bad_Name", "description: x\n")
         self.assert_service_error("Bad_Name", "Bad_Name")
-
-
-class YamlSubsetTest(unittest.TestCase):
-    def test_fixture_manifests_parse(self):
-        self.assertEqual(services.parse_yaml(APP_MANIFEST), {
-            "description": "An app: on the database", "requires": ["db"], "job": False})
-        self.assertEqual(services.parse_yaml(DB_MANIFEST)["restore"][1],
-                         {"names": ["db.datadir/"], "overlay": "restore/datadir.yaml",
-                          "after": "restore/reset.yaml"})
-
-    def test_scalars(self):
-        self.assertEqual(services.parse_yaml(
-            "a: plain words # comment\nb: 'it''s # not a comment'\nc: \"x\"\nd: true\ne: []\n"
-            "f:\ng: ~\nh: a#b\n"),
-            {"a": "plain words", "b": "it's # not a comment", "c": "x", "d": True, "e": [],
-             "f": None, "g": None, "h": "a#b"})
-
-    def test_sequence_at_the_keys_indent(self):
-        self.assertEqual(services.parse_yaml("a:\n- x\n- y\nb: z\n"), {"a": ["x", "y"], "b": "z"})
-
-    def test_outside_the_subset_is_an_error(self):
-        for text in ["a: {b: c}\n", "a: &anchor x\n", "a: |\n  text\n", "a: x\na: y\n",
-                     "a:\n\tb: c\n", "a: [x, [y]]\n", "a: 'open\n", "a: \"es\\cape\"\n",
-                     "a:\n  - x\n   - y\n"]:
-            with self.subTest(text=text):
-                with self.assertRaises(ValueError):
-                    services.parse_yaml(text)
 
 
 if __name__ == "__main__":

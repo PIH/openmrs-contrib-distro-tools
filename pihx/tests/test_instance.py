@@ -34,6 +34,36 @@ class InstanceTest(TempDirTest):
             self.open("nosuch")
         self.assertIn("nosuch", str(raised.exception))
 
+    def test_invalid_names_are_refused(self):
+        for name in ["../kz", "Kz", "help", ""]:
+            with self.subTest(name=name):
+                with self.assertRaises(instance.InstanceError):
+                    self.open(name)
+
+    def test_paths_are_absolute_and_tools_unresolved(self):
+        link = self.root / "tools-link"
+        link.symlink_to(self.tools)
+        os.chdir(self.root)
+        self.addCleanup(os.chdir, "/")
+        kz = instance.open("home", "kz", tools="tools-link")
+        self.assertEqual(kz.dir, self.home / "kz")
+        self.assertEqual(kz.tools, link)
+
+    def test_pihx_tools_is_required(self):
+        env = {k: v for k, v in os.environ.items() if k != "PIHX_TOOLS"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(instance.InstanceError) as raised:
+                instance.open(self.home, "kz")
+        self.assertIn("PIHX_TOOLS", str(raised.exception))
+
+    def test_config_expands_as_compose_does(self):
+        write(self.home / "kz" / "app.env", "APP_PORT=9090\nAPP_URL=http://${SERVICE_NAME}:$APP_PORT\n"
+                                            "APP_DB='$DB_PORT'\nAPP_DB2=\"$DB_PORT \\$x\"\n")
+        config = self.open().config()
+        self.assertEqual(config["APP_URL"], "http://kz:9090")
+        self.assertEqual(config["APP_DB"], "$DB_PORT")
+        self.assertEqual(config["APP_DB2"], "3306 $x")
+
     def test_tools_defaults_to_pihx_tools(self):
         with mock.patch.dict(os.environ, {"PIHX_TOOLS": str(self.tools)}):
             kz = instance.open(self.home, "kz")
@@ -41,7 +71,7 @@ class InstanceTest(TempDirTest):
 
     def test_config_precedence(self):
         config = self.open().config()
-        self.assertEqual(config["DB_PASSWORD"], "secret $x")   # db.env beats db's default
+        self.assertEqual(config["DB_PASSWORD"], "secret $x")   # single-quoted: literal   # db.env beats db's default
         self.assertEqual(config["DB_PORT"], "3306")            # default kept
         self.assertEqual(config["APP_PORT"], "9090")           # app.env beats app's default
         self.assertEqual(config["TZ"], "Africa/Kigali")        # instance.env applies
