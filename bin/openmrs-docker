@@ -1,169 +1,53 @@
-#!/bin/bash
-# Usage:
-#   openmrs-docker create <name>        Create a new instance (name: lowercase letters, digits, '-', '_')
-#   openmrs-docker list                 List existing instances
-#   openmrs-docker <name> <command> [options]
+#!/bin/sh
+# Usage: openmrs-docker create <name> | list | help
+#        openmrs-docker <name> <command> [options]   (see 'openmrs-docker help')
 #
-# Commands (for an existing instance):
-#   initialize              Pre-load a brand-new instance's data volumes (refuses to run if any data
-#                           volume already exists) -- see 'initialize' below
-#   start [--build] [--dev] Start the stack
-#   stop                    Stop the running stack
-#   restart                 Restart the running containers in place (no rebuild, no recreate)
-#   status                  Show the state of this instance's containers
-#   update [--build] [--dev]
-#                           Pull latest images and reconcile the stack (recreates only what changed),
-#                           then remove the images that recreated containers no longer use
-#   sync                    Refresh this instance's copied service fragments from the tool's current templates
-#   reset-openmrs-db-accounts
-#                           Set openmrs-db's MySQL accounts and OpenMRS's connection settings to the
-#                           passwords in env (restarts; utils/reset-mysql-accounts is the generic part)
-#   add-service <svc>       Attach a canonical service fragment (e.g. 'add-service reporting-db')
-#   remove-service <svc>    Detach a service fragment and remove its containers (its volumes are kept)
-#   run-service [--pull] <svc> [cmd...]
-#                           Run a one-off container for an attached service via 'docker compose run'
-#                           (--pull: pull its image first). A lock-holding service's (petl's) own
-#                           runs, without [cmd...], reuse one kept container, so its log builds up
-#                           across runs ('logs <svc>')
-#   wait                    Block until OpenMRS finishes initializing (up to 60 minutes)
-#   fingerprint [--data-dir] [--exclude-distribution-artifacts] [--output=<file>]
-#                           Summarize the stopped instance's database (and openmrs-data) to diff against
-#                           its source -- see utils/fingerprint.sh
-#   build                   Build the distribution and Docker image from source
-#   pull                    Pull the images this instance would use, without starting anything
-#   logs [service]          Tail the container logs; defaults to every service
-#   destroy [--force]       Stop the stack, delete all volumes, and remove the instance directory
-#
-# Options:
-#   --build        Build the distribution from source first
-#   --dev          Expose debug ports and mount the locally-built distro over whatever's in the image
-#                  (combine with --build to build it first)
-#   --force        Skip the confirmation prompt
-#
-# initialize: by default, loads both data volumes from SEED_IMAGE_NAME. Each volume's source can
-# instead be set independently by env vars on the initialize invocation itself (not persisted to the
-# instance's env file), so a dump or backup can replace the seed image for one or both volumes -- see
-# utils/ for scripts to make these:
-#   RESTORE_MYSQL_DUMP_PATH    mysql/db-data from a .sql/.sql.gz dump, or a .7z/.zip archive of one
-#   RESTORE_MYSQL_DATA_PATH    mysql/db-data from a ready MySQL data directory (physical restore)
-#   RESTORE_MYSQL_PERCONA_PATH mysql/db-data from a Percona/xtrabackup backup: a .7z/.zip/.tar.gz/.tgz/.tar
-#                              archive or a directory, prepared first if it isn't already
-#   RESTORE_OPENMRS_DATA_PATH  openmrs-data from a directory, or a .tar.gz/.tgz/.tar/.7z/.zip archive of one
-#   ARCHIVE_PASSWORD           password for a protected .7z/.zip passed to any of the above
-#   INITIALIZE_DB_TIMEOUT      seconds to wait for the restored database to become healthy (default 3600)
-#
-# Environment variable overrides:
-#   OPENMRS_DOCKER_HOME   Where instance directories live (default: $HOME/openmrs)
-#   OPENMRS_HTTP_PORT     Port OpenMRS is exposed on (default: 8080)
-#
-# create requires OPENMRS_IMAGE_NAME (env var) when the 'openmrs' service is included (the default).
-# OPENMRS_PIH_CONFIG is optional: a distro that needs a PIH config profile fails at OpenMRS startup
-# without one, not at create. DISTRO_SOURCE_DIR is required only for build, --dev and --build, and can
-# be set later in the instance's env file. Every other create-time setting (ports, memory limits,
-# image tags, etc.) is taken from your shell if set there (or from a file you source first), instead
-# of its default. SERVICES=<comma-separated> (default: openmrs-db,openmrs) selects which canonical
-# service fragments the new instance gets.
-set -euo pipefail
+# The OpenMRS front end on pihx (openmrs/front.py), run through bin/pihx's launcher, so it runs
+# like pihx: in pihx-runtime, on instances under PIHX_HOME (default ~/pihx), each from its own
+# checkout. What only the host can do happens here first: build and --build run Maven on the
+# distribution in the instance's DISTRO_SOURCE_DIR.
+set -eu
+unset CDPATH
 
-TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Service fragments and initialize's overlays mount scripts from utils/lib/in-container.
-export DISTRO_TOOLS_UTILS_DIR="$TOOL_DIR/utils"
-OPENMRS_DOCKER_HOME="${OPENMRS_DOCKER_HOME:-$HOME/openmrs}"
-SERVICES_DIR="$TOOL_DIR/docker/services"
-MODES_DIR="$TOOL_DIR/docker/modes"
-# shellcheck source=../utils/lib/common.sh
-. "$TOOL_DIR/utils/lib/common.sh"
-# shellcheck source=../utils/lib/disk-space.sh
-. "$TOOL_DIR/utils/lib/disk-space.sh"
-# shellcheck source=../lib/openmrs-docker/env.sh
-. "$TOOL_DIR/lib/openmrs-docker/env.sh"
-# shellcheck source=../lib/openmrs-docker/compose.sh
-. "$TOOL_DIR/lib/openmrs-docker/compose.sh"
-# shellcheck source=../lib/openmrs-docker/instance.sh
-. "$TOOL_DIR/lib/openmrs-docker/instance.sh"
-# shellcheck source=../lib/openmrs-docker/stack.sh
-. "$TOOL_DIR/lib/openmrs-docker/stack.sh"
-# shellcheck source=../lib/openmrs-docker/initialize.sh
-. "$TOOL_DIR/lib/openmrs-docker/initialize.sh"
-# shellcheck source=../lib/openmrs-docker/db.sh
-. "$TOOL_DIR/lib/openmrs-docker/db.sh"
+die() { echo "error: $*" >&2; exit 1; }
 
-BUILD=false
-DEV=false
-FORCE=false
-# Takes the options in <allowed> from the arguments, and refuses any other.
-parse_options() { # <allowed> [arg...]
-    local allowed=" $1 " arg
-    shift
-    for arg in "$@"; do
-        [[ "$allowed" == *" $arg "* ]] || die "unknown option '$arg' for $COMMAND"
-        case "$arg" in
-            --build) BUILD=true ;;
-            --dev) DEV=true ;;
-            --force) FORCE=true ;;
-        esac
-    done
-}
+# This checkout, following a link to this script (e.g. from a bin directory on PATH).
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case $link in
+        /*) self=$link ;;
+        *) self=$(dirname "$self")/$link ;;
+    esac
+done
+pihx=$(cd -P "$(dirname "$self")/.." && pwd)/bin/pihx
 
-[ $# -ge 1 ] || usage
-case "$1" in
-    create) [ $# -eq 2 ] || usage; cmd_create "$2"; exit ;;
-    list) cmd_list; exit ;;
-esac
-
-NAME=$1
-COMMAND=${2:-}
-shift 2 2>/dev/null || shift
-INSTANCE_DIR="$OPENMRS_DOCKER_HOME/$NAME"
-ENV_FILE="$INSTANCE_DIR/env"
-[ -f "$ENV_FILE" ] || die "no instance found at $INSTANCE_DIR (run '$0 create $NAME' first)"
-[ -n "$COMMAND" ] || usage
-
-# Each command's arguments; any other is refused.
-case "$COMMAND" in
-    start|update) parse_options "--build --dev" "$@"; set -- ;;
-    destroy) parse_options --force "$@"; set -- ;;
-    add-service|remove-service) [ $# -eq 1 ] || die "usage: $0 $NAME $COMMAND <service>" ;;
-    run-service)
-        RUN_SERVICE=${1:-}
-        [ "$RUN_SERVICE" != --pull ] || RUN_SERVICE=${2:-}
-        [ -n "$RUN_SERVICE" ] || die "usage: $0 $NAME run-service [--pull] <service> [command...]" ;;
-    logs) [ $# -le 1 ] && [[ "${1:-}" != -* ]] || die "usage: $0 $NAME logs [service]" ;;
-    fingerprint) ;;
-    build) parse_options "" "$@"; set --; BUILD=true ;;
-    initialize|stop|restart|status|sync|reset-openmrs-db-accounts|wait|pull) parse_options "" "$@"; set -- ;;
-    *) die "unknown command '$COMMAND' (run '$0' for usage)" ;;
-esac
-
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
-write_container_env_files "$INSTANCE_DIR"
-export SERVICE_NAME="${SERVICE_NAME:-$NAME}"
-# destroy still has to work on an instance created before names were checked.
-if ! valid_name "$SERVICE_NAME" && [ "$COMMAND" != destroy ]; then
-    die "SERVICE_NAME '$SERVICE_NAME' in $ENV_FILE $NAME_RULE (it's the Compose project name)"
+# Today's `create <name>`, in pihx's order (the instance first).
+if [ "${1-}" = create ]; then
+    [ $# -eq 2 ] || die "usage: openmrs-docker create <name>"
+    set -- "$2" create
 fi
 
-case "$COMMAND" in
-    status|logs|wait) ;;
-    # A service can declare that a run holds the lock (petl: a deploy mustn't restart MySQL under
-    # it); others, such as smoke tests, only check it.
-    run-service)
-        if [ "$(service_directive "$RUN_SERVICE" run-service)" = holds-lock ]; then lock_instance hold; else lock_instance check; fi ;;
-    *) lock_instance hold ;;
-esac
+PIHX_FRONT_END=openmrs-docker
+export PIHX_FRONT_END
+unset PIHX_DISTRO_SOURCE_DIR
 
-# Compose names a missing required variable itself; this adds how to fix it. sync and add-service
-# add them, and remove-service and destroy have to work regardless.
-case "$COMMAND" in
-    sync|add-service|remove-service|destroy) ;;
-    *)
-        MISSING=$(missing_required_env)
-        [ -z "$MISSING" ] || die "$ENV_FILE is missing $(paste -sd' ' <<< "$MISSING"), which this instance's services require. Run '$0 $NAME sync' to add them with their defaults."
+build=false
+case ${2-} in
+    build) build=true ;;
+    start | update)
+        for arg in "$@"; do
+            [ "$arg" != --build ] || build=true
+        done
         ;;
 esac
+if $build; then
+    # The instance's own value (its instance.env), as its checkout's front end reads it.
+    dir=$("$pihx" "$1" _distro-source-dir) || exit
+    echo "Building the distribution in $dir (mvn clean package -U)" >&2
+    (cd "$dir" && mvn clean package -U) || die "the Maven build in $dir failed"
+    PIHX_DISTRO_SOURCE_DIR=$dir
+    export PIHX_DISTRO_SOURCE_DIR
+fi
 
-compose_files
-"cmd_${COMMAND//-/_}" "$@"
+exec "$pihx" "$@"

@@ -21,15 +21,12 @@ load "$TEST_DIR/.deps/bats-assert/load"
 # anything else on the machine. Lowercase + digits only: valid as a Compose project name.
 export RUN_PREFIX="${RUN_PREFIX:-odt${BATS_ROOT_PID}}"
 
-# openmrs-docker instances live in a throwaway home, use a placeholder OpenMRS image (initialize
-# only ever starts openmrs-db) and random host ports, so tests never collide with a real instance.
-export OPENMRS_DOCKER_HOME="$BATS_RUN_TMPDIR/openmrs-home"
-# pihx's instances too; never the caller's ~/pihx.
+# pihx's and openmrs-docker's instances live in a throwaway home (never the caller's ~/pihx), use a
+# placeholder OpenMRS image (initialize only ever starts openmrs-db) and random host ports, so tests
+# never collide with a real instance.
 export PIHX_HOME="$BATS_RUN_TMPDIR/pihx-home"
 export OPENMRS_IMAGE_NAME=placeholder/openmrs
 export OPENMRS_DB_PORT=0
-# As openmrs-docker exports it, for tests that run docker compose on an instance's fragments directly.
-export DISTRO_TOOLS_UTILS_DIR="$REPO_ROOT/utils"
 export OPENMRS_HTTP_PORT=0
 export OPENMRS_DB_OPT_innodb_buffer_pool_size=256M
 # initialize would otherwise run the (placeholder) OpenMRS image to find the owner for a restored
@@ -135,6 +132,64 @@ db_marker_in_volume() { # <volume>
 }
 
 # --- openmrs-docker --------------------------------------------------------------------------------
+
+# An instance's directory, and one of its env files (instance.env, or <service>.env).
+instance_dir() { echo "$PIHX_HOME/$1"; }
+env_file_of() { echo "$PIHX_HOME/$1/$2.env"; }
+
+# Sets <VAR> to <value> in an instance's env file, replacing any line that sets it.
+set_env_value() { # <instance> <file: instance or a service> <VAR> <value>
+    local file
+    file="$(env_file_of "$1" "$2")"
+    sed -i "/^$3=/d" "$file"
+    printf "%s='%s'\n" "$3" "$4" >> "$file"
+}
+
+# The instance's merged values (pihx config), secrets included.
+instance_config() { # <instance>
+    "$BIN/pihx" "$1" config --show-secrets
+}
+
+# docker compose on the instance <dir> with the services given, as `pihx` runs it: env files in
+# override order, the environment pihx sets and nothing else (project name COMPOSE_PROJECT, default
+# config). Extra arguments for Compose follow the services' own after `--`; files after `+`
+# (relative to the checkout) are added as overlays.
+instance_compose() { # <dir> <service,...> [+overlay...] -- <compose args...>
+    local dir=$1 services=${2//,/ } svc other with args=() overlays=() env=()
+    shift 2
+    while [ "$1" != -- ]; do overlays+=("$REPO_ROOT/${1#+}"); shift; done
+    shift
+    args=(-p "${COMPOSE_PROJECT:-config}" --project-directory "$dir"
+          --env-file "$REPO_ROOT/instance.env.defaults")
+    for svc in $services; do args+=(--env-file "$REPO_ROOT/services/$svc/env.defaults"); done
+    for svc in $services; do [ -f "$dir/$svc.env" ] && args+=(--env-file "$dir/$svc.env"); done
+    [ -f "$dir/instance.env" ] && args+=(--env-file "$dir/instance.env")
+    # as pihx: every compose.yaml, then the with-files whose other service is present, then overrides
+    for svc in $services; do args+=(-f "$REPO_ROOT/services/$svc/compose.yaml"); done
+    for svc in $services; do
+        for with in "$REPO_ROOT/services/$svc"/with-*.yaml; do
+            [ -f "$with" ] || continue
+            other=$(basename "$with" .yaml); other=${other#with-}
+            [[ " $services " == *" $other "* ]] && args+=(-f "$with")
+        done
+    done
+    for svc in $services; do [ -f "$dir/$svc.override.yaml" ] && args+=(-f "$dir/$svc.override.yaml"); done
+    for svc in "${overlays[@]}"; do args+=(-f "$svc"); done
+    env=(PATH="$PATH" HOME="$HOME" PIHX_TOOLS="$REPO_ROOT" PIHX_INSTANCE_DIR="$dir"
+         SERVICE_NAME="${COMPOSE_PROJECT:-config}" PIHX_INSTANCE="${COMPOSE_PROJECT:-config}"
+         "${EXTRA_ENV[@]}")
+    [ -z "${DOCKER_HOST:-}" ] || env+=(DOCKER_HOST="$DOCKER_HOST")
+    [ -z "${DOCKER_CONFIG:-}" ] || env+=(DOCKER_CONFIG="$DOCKER_CONFIG")
+    env -i "${env[@]}" docker compose "${args[@]}" "$@"
+}
+
+# docker compose on an instance made by create_instance, as pihx runs it.
+instance_compose_of() { # <instance> <compose args...>
+    local name=$1 services
+    shift
+    services=$(cd "$PIHX_HOME/$name" && ls ./*.env | sed 's|^\./||; s|\.env$||' | grep -vx instance | paste -sd, -)
+    COMPOSE_PROJECT=$name instance_compose "$PIHX_HOME/$name" "$services" -- "$@"
+}
 
 create_instance() { # <name>
     "$BIN/openmrs-docker" create "$1" >/dev/null

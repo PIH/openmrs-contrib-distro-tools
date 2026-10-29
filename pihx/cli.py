@@ -115,13 +115,15 @@ def dispatch(argv):
     return INSTANCE_COMMANDS[command](first, rest[1:])
 
 
-def main(argv):
+def main(argv, dispatcher=None):
+    """Runs a command line (through <dispatcher>, default pihx's own dispatch: a front end such as
+    openmrs-docker passes its own), reporting an error as an `error:` line and an exit status."""
     try:
         # The launcher mounts the caller's Docker config here; set up before any docker command.
         docker_config = os.environ.get("PIHX_DOCKER_CONFIG")
         if docker_config:
             runtime.install_docker_config(docker_config, os.environ["HOME"])
-        return dispatch(argv)
+        return (dispatcher or dispatch)(argv)
     except (CliError, runtime.SetupError, InstanceError, ServiceError, ComposeError, LockError,
             OSError) as e:
         print(f"error: {e}", file=sys.stderr)

@@ -176,17 +176,24 @@ def cmd_create(name, args):
     return 0
 
 
-def cmd_list(args):
-    _no_arguments(args, "list")
-    home = instance_module.home()
-    rows = []
+def instances(home):
+    """(directory, [service names]) for each instance under <home>: a directory with a valid
+    instance name holding env files."""
+    found = []
     for d in sorted(home.iterdir()) if home.is_dir() else []:
         if not d.is_dir() or instance_module.instance_name_error(d.name):
             continue
         svcs = sorted(f.name[:-len(".env")] for f in d.glob("*.env")
                       if f.name != instance_module.INSTANCE_ENV)
-        if not svcs and not (d / instance_module.INSTANCE_ENV).is_file():
-            continue
+        if svcs or (d / instance_module.INSTANCE_ENV).is_file():
+            found.append((d, svcs))
+    return found
+
+
+def cmd_list(args):
+    _no_arguments(args, "list")
+    rows = []
+    for d, svcs in instances(instance_module.home()):
         tools = d / "tools"
         # As written: other instances' links are never resolved here.
         target = os.readlink(tools) if tools.is_symlink() else (

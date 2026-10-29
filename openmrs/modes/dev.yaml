@@ -1,5 +1,5 @@
 # --dev: mounts the distro built in DISTRO_SOURCE_DIR over the openmrs image's, and publishes the
-# Java debug port. See README.md here.
+# Java debug port. See openmrs/README.md.
 
 services:
   openmrs:

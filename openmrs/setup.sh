@@ -1,7 +1,7 @@
 #!/bin/bash
 # Sets up Ubuntu (e.g. under WSL) for this tool: installs git and Docker, clones the tool into
 # DISTRO_TOOLS_HOME (default: ~/openmrs-contrib-distro-tools), and puts its bin/ on PATH.
-# Usage: curl -fsSL https://raw.githubusercontent.com/PIH/openmrs-contrib-distro-tools/main/docker/setup.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/PIH/openmrs-contrib-distro-tools/main/openmrs/setup.sh | bash
 set -euo pipefail
 DISTRO_TOOLS_HOME="${DISTRO_TOOLS_HOME:-$HOME/openmrs-contrib-distro-tools}"
 echo -e "Setting up environment...\n"

@@ -3,25 +3,30 @@
 #   test/run [static|args|integration|all|<test file or dir>] [extra bats args...]
 #   test/run unit [extra unittest args...]
 #
-# unit runs pihx's Python unit tests inside pihx-runtime, so needs only docker; all runs it first. The
-# other layers need docker, git, jq, curl and perl: bats and GNU parallel are fetched at pinned
-# versions into test/.deps on first run. Tests run TEST_JOBS at a time (default: the number of CPUs,
-# up to 8; TEST_JOBS=1 runs them one at a time). Every test names its Docker resources after its own
-# suite-wide number, so they don't collide.
+# unit runs the Python unit tests (pihx's and openmrs/'s) inside pihx-runtime, so needs only docker;
+# all runs it first. The other layers need docker, git, jq, curl and perl: bats and GNU parallel are
+# fetched at pinned versions into test/.deps on first run. Tests run TEST_JOBS at a time (default:
+# the number of CPUs, up to 8; TEST_JOBS=1 runs them one at a time). Every test names its Docker
+# resources after its own suite-wide number, so they don't collide.
 set -euo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$TEST_DIR/.." && pwd)"
 DEPS_DIR="$TEST_DIR/.deps"
 
-# Runs pihx's unit tests in pihx-runtime, the image pihx itself runs in, building it if missing.
+# Runs the Python unit tests (pihx's, and the OpenMRS front end's) in pihx-runtime, the image pihx
+# itself runs in, building it if missing.
 run_unit() {
-    local image
+    local image dir status=0
     image="pihx-runtime:$("$REPO_ROOT/lib/image-tag.sh" "$REPO_ROOT/images/pihx-runtime")"
     docker image inspect "$image" >/dev/null 2>&1 \
         || docker build -q -t "$image" "$REPO_ROOT/images/pihx-runtime" >/dev/null
-    docker run --rm -u "$(id -u):$(id -g)" -v "$REPO_ROOT:$REPO_ROOT:ro" -w "$REPO_ROOT" \
-        -e PYTHONDONTWRITEBYTECODE=1 "$image" python3 -m unittest discover -s pihx/tests "$@"
+    for dir in pihx/tests openmrs/tests; do
+        docker run --rm -u "$(id -u):$(id -g)" -v "$REPO_ROOT:$REPO_ROOT:ro" -w "$REPO_ROOT" \
+            -e PYTHONDONTWRITEBYTECODE=1 "$image" python3 -m unittest discover -s "$dir" -t . "$@" \
+            || status=1
+    done
+    return "$status"
 }
 
 fetch() {

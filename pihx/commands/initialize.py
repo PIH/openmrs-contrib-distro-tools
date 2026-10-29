@@ -468,7 +468,9 @@ def _leftovers(volumes):
     return text
 
 
-def _restore(inst, folder, label=None):
+def restore_folder(inst, folder, label=None):
+    """Restores <inst>'s services from the entries in <folder> (named <label> in messages). The
+    caller holds the instance lock."""
     choices = choose(inst, folder, _entries(folder), label)
     if not choices:
         raise CliError(f"{label or folder} holds nothing to restore for {inst.name}")
@@ -546,29 +548,38 @@ def _copy_seed(inst, image, env):
     return folder, pulled
 
 
+def restore_image(inst, image, adjust=None):
+    """Restores <inst>'s services from <image>'s /seed folder, copied into a temporary folder;
+    <adjust>(folder), if given, may change that copy first (a front end adding its own entries).
+    The image is removed afterwards if this pulled it. The caller holds the instance lock."""
+    env = compose_module.Compose(inst).environment()
+    folder, pulled = _copy_seed(inst, image, env)
+    try:
+        if adjust:
+            adjust(folder)
+        restore_folder(inst, folder, label=f"{image}:{SEED_DIR}")
+    except EntryError as e:
+        held = ", ".join(sorted(os.listdir(folder))) or "nothing"
+        raise CliError(f"{image} isn't a seed this version restores: its {SEED_DIR} holds "
+                       f"{held} ({e}). It's probably an old-format seed (dump.sql.gz, "
+                       "data.tar.gz): rebuild it from openmrs/seed/Dockerfile, which "
+                       "holds files named after the services (openmrs-db.sql.gz, "
+                       "openmrs.tar.gz)") from None
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    # A seed is used once: removed if this run pulled it, kept if it was here already (e.g. built
+    # locally, and maybe in no registry).
+    if pulled and _docker(env, "image", "rm", image).returncode == 0:
+        note(f"Removed {image}, pulled for this command")
+
+
 def cmd_initialize(name, args):
     option, value = _parse_args(name, args)
     inst = instance_module.open(instance_module.home(), name, tools=tools_dir())
     with lock.hold(inst, lock.wait_seconds(), command="initialize"):
         if option == "--from":
-            _restore(inst, from_folder(value))
+            restore_folder(inst, from_folder(value))
         else:
-            env = compose_module.Compose(inst).environment()
-            folder, pulled = _copy_seed(inst, value, env)
-            try:
-                _restore(inst, folder, label=f"{value}:{SEED_DIR}")
-            except EntryError as e:
-                held = ", ".join(sorted(os.listdir(folder))) or "nothing"
-                raise CliError(f"{value} isn't a seed this version restores: its {SEED_DIR} holds "
-                               f"{held} ({e}). It's probably an old-format seed (dump.sql.gz, "
-                               "data.tar.gz): rebuild it from openmrs/seed/Dockerfile, which "
-                               "holds files named after the services (openmrs-db.sql.gz, "
-                               "openmrs.tar.gz)") from None
-            finally:
-                shutil.rmtree(folder, ignore_errors=True)
-            # A seed is used once: removed if this run pulled it, kept if it was here already
-            # (e.g. built locally, and maybe in no registry).
-            if pulled and _docker(env, "image", "rm", value).returncode == 0:
-                note(f"Removed {value}, pulled for this command")
+            restore_image(inst, value)
     print(f"Initialized {name}.")
     return 0

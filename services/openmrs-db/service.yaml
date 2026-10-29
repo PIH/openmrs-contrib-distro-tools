@@ -11,7 +11,8 @@ restore:
     overlay: restore/dump.yaml
   - names: [openmrs-db.sql.7z, openmrs-db.sql.zip]
     overlay: restore/dump-archive.yaml
-  - names: [openmrs-db.percona/, openmrs-db.percona.7z]
+  - names: [openmrs-db.percona/, openmrs-db.percona.7z, openmrs-db.percona.zip,
+            openmrs-db.percona.tar.gz, openmrs-db.percona.tgz, openmrs-db.percona.tar]
     overlay: restore/percona.yaml
     after: restore/reset-accounts.yaml
   - names: [openmrs-db.datadir/]

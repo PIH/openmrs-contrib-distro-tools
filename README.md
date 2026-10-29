@@ -44,7 +44,7 @@ After this is completed, reboot your computer.
 Open the Ubuntu terminal from your start menu and paste the following command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/PIH/openmrs-contrib-distro-tools/main/docker/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/PIH/openmrs-contrib-distro-tools/main/openmrs/setup.sh | bash
 ```
 
 When the process is complete, close the Ubuntu terminal window and relaunch it from the Start Menu.

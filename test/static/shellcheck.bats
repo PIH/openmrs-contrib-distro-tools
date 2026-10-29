@@ -12,7 +12,7 @@ run_shellcheck() {
 }
 
 scripts() {
-    (cd "$REPO_ROOT" && ls bin/* lib/image-tag.sh utils/*.sh utils/lib/in-container/*.sh docker/*.sh test/run \
+    (cd "$REPO_ROOT" && ls bin/* lib/image-tag.sh utils/*.sh utils/lib/in-container/*.sh openmrs/*.sh test/run \
         services/*/scripts/*.sh services/*/restore/prepare services/*/restore/finish \
         services/*/summary.sh services/*/commands/*)
 }
@@ -25,7 +25,7 @@ scripts() {
 
 @test "sourced libraries pass shellcheck" {
     cd "$REPO_ROOT"
-    run run_shellcheck -x -S warning -s bash utils/lib/*.sh lib/openmrs-docker/*.sh
+    run run_shellcheck -x -S warning -s bash utils/lib/*.sh
     assert_success
 }
 

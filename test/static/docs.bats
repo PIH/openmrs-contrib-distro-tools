@@ -6,7 +6,7 @@ load ../helpers
 @test "every relative link in the README and docs/ resolves, headings included" {
     command -v python3 >/dev/null || skip "needs python3"
     cd "$REPO_ROOT"
-    run python3 - README.md docs/*.md docker/modes/README.md <<'PYTHON'
+    run python3 - README.md docs/*.md openmrs/README.md <<'PYTHON'
 import os, re, sys
 def slug(heading):  # GitHub's anchor for a heading
     return re.sub(r'[^\w\- ]', '', heading.strip().lower()).replace(' ', '-')

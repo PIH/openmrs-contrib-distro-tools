@@ -21,8 +21,8 @@ def instance_name_error(name):
     if name in RESERVED_NAMES:
         return f"'{name}' is a pihx command, so it can't name an instance"
     if not INSTANCE_NAME.fullmatch(name):
-        return (f"invalid instance name '{name}': use lowercase letters, digits, '-' and '_', "
-                "starting with a letter or digit")
+        return (f"invalid instance name '{name}': it must be lowercase letters, digits, '-' and "
+                "'_', starting with a letter or digit")
     return None
 
 

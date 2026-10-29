@@ -39,35 +39,6 @@ closure() {
     done
 }
 
-# docker compose on the instance <dir> with the services given, as `pihx` runs it: env files in
-# override order, the environment pihx sets and nothing else. Extra arguments for Compose follow the
-# services' own after `--`; files after `+` (relative to the checkout) are added as overlays.
-instance_compose() { # <dir> <service,...> [+overlay...] -- <compose args...>
-    local dir=$1 services=${2//,/ } svc other with args=() overlays=() env=()
-    shift 2
-    while [ "$1" != -- ]; do overlays+=("$REPO_ROOT/${1#+}"); shift; done
-    shift
-    args=(-p config --project-directory "$dir" --env-file "$REPO_ROOT/instance.env.defaults")
-    for svc in $services; do args+=(--env-file "$REPO_ROOT/services/$svc/env.defaults"); done
-    for svc in $services; do [ -f "$dir/$svc.env" ] && args+=(--env-file "$dir/$svc.env"); done
-    # as pihx: every compose.yaml, then the with-files whose other service is present, then overrides
-    for svc in $services; do args+=(-f "$REPO_ROOT/services/$svc/compose.yaml"); done
-    for svc in $services; do
-        for with in "$REPO_ROOT/services/$svc"/with-*.yaml; do
-            [ -f "$with" ] || continue
-            other=$(basename "$with" .yaml); other=${other#with-}
-            [[ " $services " == *" $other "* ]] && args+=(-f "$with")
-        done
-    done
-    for svc in $services; do [ -f "$dir/$svc.override.yaml" ] && args+=(-f "$dir/$svc.override.yaml"); done
-    for svc in "${overlays[@]}"; do args+=(-f "$svc"); done
-    env=(PATH="$PATH" HOME="$HOME" PIHX_TOOLS="$REPO_ROOT" PIHX_INSTANCE_DIR="$dir" SERVICE_NAME=config
-         PIHX_INSTANCE=config "${EXTRA_ENV[@]}")
-    [ -z "${DOCKER_HOST:-}" ] || env+=(DOCKER_HOST="$DOCKER_HOST")
-    [ -z "${DOCKER_CONFIG:-}" ] || env+=(DOCKER_CONFIG="$DOCKER_CONFIG")
-    env -i "${env[@]}" docker compose "${args[@]}" "$@"
-}
-
 # All the services together; the arguments follow `config`.
 make_and_run() {
     local dir="$BATS_TEST_TMPDIR/instance"
@@ -159,9 +130,9 @@ ENV
     assert_output '13306:3306'
 }
 
-# The dev and build overlays under docker/modes/ stay until the OpenMRS front end takes them; the
-# services' restore overlays (services/<svc>/restore/) are checked with the values initialize sets.
-overlay_config() { # <overlay...>, under docker/modes/ or services/
+# The OpenMRS front end's dev and build overlays (openmrs/modes/), and the services' restore overlays
+# (services/<svc>/restore/), checked with the values the front end and initialize set.
+overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     EXTRA_ENV=(OPENMRS_DB_RESTORE_PATH=/tmp/openmrs-db.sql OPENMRS_DB_RESTORE_NAME=openmrs-db.sql
         OPENMRS_DB_RESTORE_ARCHIVE=archive.7z OPENMRS_RESTORE_PATH=/tmp/openmrs.7z
         OPENMRS_RESTORE_NAME=openmrs.7z OPENMRS_RESTORE_ARCHIVE=archive.7z OPENMRS_DATA_OWNER=1:1
@@ -174,7 +145,7 @@ overlay_config() { # <overlay...>, under docker/modes/ or services/
 
 @test "dev, build and every restore overlay is valid with the services" {
     local o failures=""
-    for o in docker/modes/dev.yaml docker/modes/build.yaml services/openmrs-db/restore/dump.yaml \
+    for o in openmrs/modes/dev.yaml openmrs/modes/build.yaml services/openmrs-db/restore/dump.yaml \
             services/openmrs-db/restore/dump-archive.yaml services/openmrs/restore/archive.yaml \
             services/openmrs/restore/directory.yaml; do
         run overlay_config "$o"

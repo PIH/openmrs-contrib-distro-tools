@@ -35,12 +35,11 @@ def _parse(name, args):
     return output, include
 
 
-def cmd_summary(name, args):
-    output, include = _parse(name, args)
-    inst = instance_module.open(instance_module.home(), name, tools=tools_dir())
+def summarize(inst, services, include=False):
+    """The summaries of <services> (of <inst>), in service order. Raises CliError if one fails."""
     extra = {"PIHX_SUMMARY_INCLUDE_DISTRIBUTION_ARTIFACTS": "true"} if include else {}
     text = ""
-    for svc in services_module.in_order(inst.services):
+    for svc in services_module.in_order(services):
         if not svc.summary_script:
             continue
         result = script.run(inst, svc.summary_script, extra_env=extra, service=svc,
@@ -49,11 +48,14 @@ def cmd_summary(name, args):
             raise CliError(f"{svc.name}: summary.sh failed (exit {result.returncode}); nothing "
                            "written")
         text += result.stdout
-    if not text:
-        print(f"None of {name}'s services has a summary.", file=sys.stderr)
+    return text
+
+
+def write(text, output):
+    """<text> to standard output, or to the file <output> (relative to the caller's directory)."""
     if output is None:
         sys.stdout.write(text)
-        return 0
+        return
     # (bin/pihx handles --output itself, on the host; this is for running pihx directly.)
     target = os.path.join(os.environ.get("PIHX_CWD", ""), output)
     try:
@@ -62,4 +64,13 @@ def cmd_summary(name, args):
     except OSError as e:
         raise CliError(f"can't write {output}: {e.strerror}") from None
     print(f"Wrote {output}.", file=sys.stderr)
+
+
+def cmd_summary(name, args):
+    output, include = _parse(name, args)
+    inst = instance_module.open(instance_module.home(), name, tools=tools_dir())
+    text = summarize(inst, inst.services, include)
+    if not text:
+        print(f"None of {name}'s services has a summary.", file=sys.stderr)
+    write(text, output)
     return 0

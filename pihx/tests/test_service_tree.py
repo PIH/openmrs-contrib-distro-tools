@@ -191,8 +191,9 @@ class ServiceTreeTest(unittest.TestCase):
             "openmrs-db": [
                 (["openmrs-db.sql", "openmrs-db.sql.gz"], "restore/dump.yaml", None),
                 (["openmrs-db.sql.7z", "openmrs-db.sql.zip"], "restore/dump-archive.yaml", None),
-                (["openmrs-db.percona/", "openmrs-db.percona.7z"], "restore/percona.yaml",
-                 "restore/reset-accounts.yaml"),
+                (["openmrs-db.percona/", "openmrs-db.percona.7z", "openmrs-db.percona.zip",
+                  "openmrs-db.percona.tar.gz", "openmrs-db.percona.tgz", "openmrs-db.percona.tar"],
+                 "restore/percona.yaml", "restore/reset-accounts.yaml"),
                 (["openmrs-db.datadir/"], "restore/datadir.yaml", "restore/reset-accounts.yaml")],
             "openmrs": [
                 (["openmrs.7z", "openmrs.tar.gz", "openmrs.tgz", "openmrs.tar", "openmrs.zip"],

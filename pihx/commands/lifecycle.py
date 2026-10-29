@@ -99,9 +99,12 @@ def remove_replaced_images(inst, compose, before):
             note(f"Removed the replaced image {image_id.removeprefix('sha256:')}")
 
 
-def start_stack(inst, compose, *up_options):
-    """Brings the instance up, then fails if a setup container did."""
+def start_stack(inst, compose, *up_options, build=False):
+    """(With <build>, builds the images the compose files build, then) brings the instance up, then
+    fails if a setup container did."""
     before = instance_images(inst, compose)
+    if build:
+        compose.run("build")
     compose.run("up", "-d", *up_options)
     check_setup_services(inst, compose)
     remove_replaced_images(inst, compose, before)
@@ -146,13 +149,21 @@ def cmd_update(name, args):
     compose = compose_module.Compose(inst)
     # One hold: a deploy mustn't be interleaved with another command between its pull and its up.
     with lock.hold(inst, lock.wait_seconds(), command="update"):
-        # Images before the pull, so the ones it replaces can go.
-        before = instance_images(inst, compose)
-        compose.run("pull")
-        compose.run("up", "-d", "--remove-orphans")
-        check_setup_services(inst, compose)
-        remove_replaced_images(inst, compose, before)
+        update_stack(inst, compose)
     return 0
+
+
+def update_stack(inst, compose, build=False):
+    """Pulls, (with <build>, builds), brings the instance up removing the containers of services it
+    no longer has, fails if a setup container did, and removes the images replaced."""
+    # Images before the pull, so the ones it replaces can go.
+    before = instance_images(inst, compose)
+    compose.run("pull")
+    if build:
+        compose.run("build")
+    compose.run("up", "-d", "--remove-orphans")
+    check_setup_services(inst, compose)
+    remove_replaced_images(inst, compose, before)
 
 
 def cmd_stop(name, args):
@@ -226,14 +237,15 @@ def _run_job(inst, compose, svc, command):
                                text=False).returncode)
 
 
-def cmd_run_service(name, args):
+def cmd_run_service(name, args, extra_env=None):
+    """<extra_env>: values for this run only (see compose.Compose), e.g. from a front end."""
     pull = bool(args) and args[0] == "--pull"
     rest = args[1:] if pull else args
     if not rest:
         raise CliError(f"usage: pihx {name} run-service [--pull] <service> [command...]", status=2)
     svc, command = rest[0], rest[1:]
     inst = _open(name)
-    compose = compose_module.Compose(inst)
+    compose = compose_module.Compose(inst, extra_env=extra_env)
     # All profiles, and the instance's override files too: any container Compose knows.
     defined = compose.run("--profile", "*", "config", "--services", stdout=subprocess.PIPE,
                           text=True).stdout.split()
