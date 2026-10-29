@@ -203,6 +203,25 @@ def overlay_volumes(data):
     return declared, mounted
 
 
+def in_order(services):
+    """<services> with each one after those it `requires` (so openmrs-db comes before openmrs),
+    otherwise by name."""
+    by_name = {s.name: s for s in services}
+    ordered = []
+
+    def add(svc):
+        if svc in ordered:
+            return
+        for required in sorted(svc.manifest.requires):
+            if required in by_name:
+                add(by_name[required])
+        ordered.append(svc)
+
+    for svc in sorted(services, key=lambda s: s.name):
+        add(svc)
+    return ordered
+
+
 def all(tools):
     """Every service in the checkout <tools>, by name."""
     services_dir = Path(tools) / "services"

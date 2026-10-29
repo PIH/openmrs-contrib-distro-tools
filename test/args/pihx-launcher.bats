@@ -61,7 +61,7 @@ copy_tools() { # <dir>
 }
 
 @test "exit status is passed through" {
-    run "$BIN/pihx" nosuch status
+    run "$BIN/pihx" nosuch frobnicate
     assert_failure 2
     assert_output --partial 'error:'
 }

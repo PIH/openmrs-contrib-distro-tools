@@ -20,7 +20,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from pihx import compose as compose_module, envfile, instance as instance_module, lock
+from pihx import compose as compose_module, envfile, instance as instance_module, lock, script
 from pihx import services as services_module
 from pihx.commands import CliError
 from pihx.commands.instance_cmds import tools_dir
@@ -376,21 +376,13 @@ class Restore:
 
     # --- hooks: services/<svc>/restore/prepare and finish, run in pihx's container ---------------
 
-    def _hook_env(self):
-        """The service script environment (PIHX_*, SERVICE_NAME, COMPOSE_* for the instance without
-        the overlays), with the instance's values and this run's."""
-        compose = compose_module.Compose(self.inst, extra_env=self.extra)
-        return {**self.config, **compose.environment()}
-
     def _run_hook(self, svc, hook):
         path = svc.dir / "restore" / hook
         if not path.is_file():
             return None
-        try:
-            result = subprocess.run([str(path)], env=self._hook_env(), stdout=subprocess.PIPE,
-                                    text=True)
-        except OSError as e:
-            raise CliError(f"{svc.name}: restore/{hook} couldn't run: {e}") from None
+        result = script.run(self.inst, path, extra_env=self.extra, service=svc,
+                            stdout=subprocess.PIPE,
+                            text=True, label=f"{svc.name}: restore/{hook}")
         if result.returncode != 0:
             raise CliError(f"{svc.name}: restore/{hook} failed (exit {result.returncode})")
         return result.stdout
@@ -403,10 +395,13 @@ class Restore:
             for line in (out or "").splitlines():
                 if not line.strip():
                     continue
-                match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)", line)
+                match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)", line, re.DOTALL)
                 if not match:
-                    raise CliError(f"{choice.service.name}: restore/prepare printed '{line}', "
-                                   "not KEY=value")
+                    # Only what precedes '=': the line may hold a secret.
+                    name = line.split("=", 1)[0][:40] if "=" in line else None
+                    shown = f" a line starting '{name}='" if name else " a line"
+                    raise CliError(f"{choice.service.name}: restore/prepare printed{shown} that "
+                                   "isn't KEY=value")
                 self.extra[match.group(1)] = match.group(2)
         self.compose = self._compose()
 

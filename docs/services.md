@@ -21,6 +21,25 @@ and keeps its volumes, naming them. A profiled service (PETL, the smoke tests) i
 doesn't bring up: run it with `openmrs-docker <name> run-service [--pull] <svc> [command...]`
 (`--pull` pulls its image first; a plain `pull` skips profiled services).
 
+## Scripts and commands in a service directory
+
+A service directory may hold `summary.sh` (what `pihx <instance> summary` prints: `[section]` lines,
+one sorted fact per line, no secrets), `commands/<name>` (run with `pihx <instance> <service>
+<name> [args...]`; `pihx <instance> <service>` lists them with the first comment line of each) and
+`restore/prepare` and `restore/finish`. They are executable files, run by `pihx` inside its container
+with the instance's merged values as environment variables, plus `PIHX_INSTANCE`, `PIHX_INSTANCE_DIR`,
+`PIHX_TOOLS`, `PIHX_SERVICE` (the script's own service), `SERVICE_NAME` (the instance's name, which compose
+files interpolate) and `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE` and `COMPOSE_ENV_FILES`. A plain
+`docker compose ...` therefore targets the instance, but Compose has no variable for the project
+directory, so pass `--project-directory "$PIHX_INSTANCE_DIR"` to resolve the compose files' relative
+paths as `pihx` does.
+
+A command holds the instance lock while it runs, unless one of its first lines is `# pihx: no-lock`
+(for one that only reads). Its exit status is `pihx`'s.
+
+**The environment holds the instance's secrets** (database passwords among them): a script must
+never print it, so no `env`, `set`, `printenv` or `set -x`, and no message that quotes a value.
+
 ## MySQL accounts
 
 `openmrs-db`'s fragment has a one-shot `openmrs-db-accounts`. On every `start`, and first for any

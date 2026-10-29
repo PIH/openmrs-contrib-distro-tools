@@ -4,7 +4,8 @@ import os
 import sys
 
 from pihx import __version__, runtime
-from pihx.commands import CliError, initialize, instance_cmds, lifecycle
+from pihx.commands import (CliError, initialize, instance_cmds, lifecycle, service_cmds, summary,
+                           wait)
 from pihx.compose import ComposeError
 from pihx.instance import InstanceError, instance_name_error
 from pihx.lock import LockError
@@ -35,6 +36,13 @@ Commands:
                              the images replaced
   run-service [--pull] <service> [command...]
                              Run a service once (a job holds the lock); exits with its exit code
+  wait                       Wait until its containers with a healthcheck are healthy (an OpenMRS
+                             that turns unhealthy fails it at once; PIHX_WAIT_TIMEOUT, default 3600 s)
+  summary [--output=<file>] [--include-distribution-artifacts]
+                             Summarize its data, to diff a source against its restored copy
+  <service>                  List a service's commands
+  <service> <command> [args...]
+                             Run one of a service's commands (e.g. openmrs-db reset-accounts)
   initialize --from <folder> | --from-image <image>
                              Fill a new instance's volumes from a folder with an entry per service
                              (or an image's /seed folder), before its first start
@@ -81,6 +89,8 @@ INSTANCE_COMMANDS = {
     "run-service": lifecycle.cmd_run_service,
     "initialize": initialize.cmd_initialize,
     "destroy": lifecycle.cmd_destroy,
+    "wait": wait.cmd_wait,
+    "summary": summary.cmd_summary,
 }
 
 
@@ -98,6 +108,8 @@ def dispatch(argv):
         raise CliError(f"no command given for instance '{first}' (see 'pihx help')", status=2)
     command = rest[0]
     if command not in INSTANCE_COMMANDS:
+        if service_cmds.is_service(command):
+            return service_cmds.cmd_service(first, command, rest[1:])
         raise CliError(f"unknown command '{command}' (see 'pihx help')", status=2)
     return INSTANCE_COMMANDS[command](first, rest[1:])
 

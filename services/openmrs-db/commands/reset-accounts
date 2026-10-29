@@ -1,0 +1,30 @@
+#!/bin/bash
+# Sets the MySQL accounts and OpenMRS's connection settings to the passwords now in the instance's
+# env files (e.g. after rotating them). Changing the files alone changes neither: MySQL takes
+# OPENMRS_DB_ROOT_PASSWORD/OPENMRS_DB_PASSWORD only when it sets up an empty data directory, and
+# openmrs-core 2.6+ applies its connection settings only on its first install. The instance is
+# stopped for it and started again. Run through pihx, which holds the instance lock and sets the
+# environment (pihx/script.py).
+set -euo pipefail
+compose() { docker compose --project-directory "$PIHX_INSTANCE_DIR" "$@"; }
+volume="${SERVICE_NAME}_db-data"
+docker volume inspect "$volume" >/dev/null 2>&1 || {
+    echo "error: $volume doesn't exist -- nothing to reset" >&2
+    exit 1
+}
+compose --profile '*' down --remove-orphans
+MYSQL_ROOT_PASSWORD="$OPENMRS_DB_ROOT_PASSWORD" MYSQL_PASSWORD="$OPENMRS_DB_PASSWORD" \
+    "$PIHX_TOOLS/utils/reset-mysql-accounts.sh" --volume="$volume" \
+    --image="$OPENMRS_DB_IMAGE_NAME:$OPENMRS_DB_IMAGE_TAG" --user="$OPENMRS_DB_USER"
+if docker volume inspect "${SERVICE_NAME}_openmrs-data" >/dev/null 2>&1; then
+    printf 'connection.username=%s\nconnection.password=%s\n' "$OPENMRS_DB_USER" "$OPENMRS_DB_PASSWORD" |
+        "$PIHX_TOOLS/utils/runtime-properties.sh" --volume="${SERVICE_NAME}_openmrs-data" --set
+fi
+compose up -d
+# The accounts setup (openmrs-db-accounts, this service's `setup`) runs on every start; fail if it did.
+accounts=$(compose ps -aq openmrs-db-accounts)
+if [ -n "$accounts" ] && [ "$(docker wait "$accounts")" != 0 ]; then
+    docker logs --tail 20 "$accounts" >&2
+    echo "error: openmrs-db-accounts failed (above, or 'pihx $PIHX_INSTANCE logs openmrs-db-accounts')" >&2
+    exit 1
+fi
