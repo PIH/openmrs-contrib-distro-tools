@@ -39,18 +39,14 @@ services:
       sqlserver:
         condition: service_healthy
     entrypoint: ["bash", "/sqlserver-setup.sh"]
-    # Its SQLSERVER_LOGIN_* come from sqlserver.env, and from other services' settings below.
+    # Its SQLSERVER_LOGIN_* come from sqlserver.env; other services add theirs in their
+    # with-sqlserver.yaml.
     env_file:
       - path: ${PIHX_TOOLS}/services/sqlserver/env.defaults
       - path: ${PIHX_INSTANCE_DIR}/sqlserver.env
         required: false
     environment:
       SQLCMDPASSWORD: ${SQLSERVER_SA_PASSWORD}
-      # PETL's login, from PETL's own settings (all empty, so no login, when the instance has no
-      # PETL); set SQLSERVER_LOGIN_PETL_* in sqlserver.env to change it.
-      SQLSERVER_LOGIN_PETL_USER: ${SQLSERVER_LOGIN_PETL_USER:-${PETL_SQLSERVER_USER:-}}
-      SQLSERVER_LOGIN_PETL_PASSWORD: ${SQLSERVER_LOGIN_PETL_PASSWORD:-${PETL_SQLSERVER_PASSWORD:-}}
-      SQLSERVER_LOGIN_PETL_DATABASES: ${SQLSERVER_LOGIN_PETL_DATABASES:-${PETL_SQLSERVER_DATABASE:-}}
     volumes:
       - ${PIHX_TOOLS}/services/sqlserver/scripts/sqlserver-setup.sh:/sqlserver-setup.sh:ro
     restart: "no"

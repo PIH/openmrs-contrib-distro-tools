@@ -20,15 +20,6 @@ q() { printf "N'%s'" "${1//\'/\'\'}"; }   # an N'...' string literal
 
 errors=()
 ids=$(compgen -v | sed -n 's/^SQLSERVER_LOGIN_\(.*\)_\(USER\|PASSWORD\|DATABASES\|ROLE\)$/\1/p' | sort -u)
-# A declaration with every value empty is no declaration (a service's compose file passes its login
-# settings even when the instance has no such service).
-declared=""
-for id in $ids; do
-    p="SQLSERVER_LOGIN_${id}"
-    u="${p}_USER" pw="${p}_PASSWORD" d="${p}_DATABASES" r="${p}_ROLE"
-    [ -z "${!u:-}${!pw:-}${!d:-}${!r:-}" ] || declared+=" $id"
-done
-ids=${declared# }
 for id in $ids; do
     p="SQLSERVER_LOGIN_${id}"; u="${p}_USER" pw="${p}_PASSWORD" d="${p}_DATABASES"
     [ -n "${!u:-}" ] || errors+=("$u must be set")

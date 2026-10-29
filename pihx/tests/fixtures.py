@@ -50,7 +50,7 @@ def two_service_tools(root):
     add_service(tools, "db", DB_MANIFEST, "DB_PASSWORD=default\nDB_PORT=3306\nSHARED=db\n",
                 ["restore/dump.yaml", "restore/datadir.yaml", "restore/reset.yaml"])
     add_service(tools, "app", APP_MANIFEST, "APP_PORT=8080\nSHARED=app\n",
-                ["summary.sh", "commands/hello", "commands/bye"])
+                ["summary.sh", "commands/hello", "commands/bye", "with-db.yaml"])
     return tools
 
 

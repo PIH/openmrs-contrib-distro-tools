@@ -1,5 +1,14 @@
 """The services in this checkout (services/): every one loads, and they follow the conventions the
-core and the other services rely on."""
+core and the other services rely on.
+
+The container env convention: a service's containers get only its own env.defaults and its
+<svc>.env (and what its compose file passes under `environment:`). instance.env holds
+instance-wide values such as TZ, which a compose file passes explicitly. Another service's values
+reach a container only through `environment:` or a with-file: services/<a>/with-<b>.yaml is added
+to the compose files only when the instance has both a and b (after every service's compose.yaml,
+before the instance's override files), so a service names another's variables in its own with-file,
+never in the other service's files. env.defaults holds literal defaults, no references to other
+variables."""
 
 import re
 import unittest
@@ -62,6 +71,12 @@ class ServiceTreeTest(unittest.TestCase):
             for number, line in enumerate((svc.dir / "env.defaults").read_text().splitlines(), 1):
                 if line.strip() and not line.startswith("#"):
                     self.assertRegex(line, PLAIN_LINE, f"{name}/env.defaults:{number}")
+                    value = line.split("=", 1)[1]
+                    # literal only: a single-quoted `${...}` is for the application (e.g. PETL's
+                    # ${user.timezone}), anything else would be a reference Compose expands
+                    if not (value.startswith("'") and value.endswith("'")):
+                        self.assertNotIn("$", value, f"{name}/env.defaults:{number}: a reference "
+                                         "to another variable (defaults are literals)")
                     self.assertNotRegex(line, r"=\s*[\"']?\$\{[A-Za-z_]+:?[-?]",
                                         f"{name}/env.defaults:{number}: a ${{VAR:-default}} wrapper")
 
@@ -107,15 +122,17 @@ class ServiceTreeTest(unittest.TestCase):
                 known |= set(SERVICES[n].defaults)
             # (A bare reference is fine once the file requires the variable elsewhere.)
             known |= set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*):\?", svc.compose_file.read_text()))
-            for number, line in enumerate(svc.compose_file.read_text().splitlines(), 1):
+            files = [svc.compose_file, *svc.with_files.values()]
+            lines = [(f, n, line) for f in files for n, line in enumerate(f.read_text().splitlines(), 1)]
+            for file, number, line in lines:
                 if line.lstrip().startswith("#"):
                     continue
                 for var, rest in VARIABLE.findall(line):
                     if not rest:
-                        self.assertIn(var, known, f"{name}/compose.yaml:{number}: bare ${{{var}}} "
+                        self.assertIn(var, known, f"{file.name}:{number}: bare ${{{var}}} "
                                       "with no default in this service or one it requires")
                     else:
-                        self.assertRegex(rest, r"^:[-?]", f"{name}/compose.yaml:{number}: ${{{var}}}")
+                        self.assertRegex(rest, r"^:[-?]", f"{file.name}:{number}: ${{{var}}}")
 
     def test_variables_without_a_default_keep_a_guard(self):
         """A value the instance must set stays out of env.defaults and is required (:?) in
@@ -134,6 +151,20 @@ class ServiceTreeTest(unittest.TestCase):
              "modality-simulator": ["MODALITY_SIMULATOR_GATEWAY_AE"],
              "biometrics": ["BIOMETRICS_LICENSE_BASE64"],
              "sqlserver": ["SQLSERVER_SA_PASSWORD"], "petl": ["PETL_MYSQL_PASSWORD"], "x": []})
+
+    def test_a_service_does_not_name_another_services_variables_outside_a_with_file(self):
+        for name in ("openmrs-db", "sqlserver"):
+            for f in (SERVICES[name].dir / "compose.yaml", SERVICES[name].dir / "env.defaults"):
+                self.assertNotIn("PETL", f.read_text(), f"{f}: PETL belongs in petl/with-{name}.yaml")
+        self.assertEqual(sorted(SERVICES["petl"].with_files), ["openmrs-db", "sqlserver"])
+
+    def test_with_files_name_services_that_exist_and_add_only_to_their_services(self):
+        for name, svc in SERVICES.items():
+            for other, f in svc.with_files.items():
+                self.assertIn(other, SERVICES, f)
+                added = yaml.safe_load(f.read_text())["services"]
+                for container in added:
+                    self.assertIn(container, compose(SERVICES[other])["services"], f"{f}: {container}")
 
     def test_openmrs_waits_for_health_and_fails_on_unhealthy(self):
         labels = compose(SERVICES["openmrs"])["services"]["openmrs"]["labels"]

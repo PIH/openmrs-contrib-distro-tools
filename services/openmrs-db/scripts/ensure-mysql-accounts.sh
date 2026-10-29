@@ -24,15 +24,6 @@ sql() { "$CLIENT" -h "$HOST" -uroot -N -B -e "$1"; }
 trim() { local v=$1; v=${v#"${v%%[![:space:]]*}"}; printf '%s' "${v%"${v##*[![:space:]]}"}"; }
 
 ids=$(compgen -v | sed -n 's/^OPENMRS_DB_ACCOUNT_\(.*\)_\(USER\|PASSWORD\|GRANTS\|DATABASES\)$/\1/p' | sort -u)
-# A declaration with every value empty is no declaration (a service's compose file passes its account
-# settings even when the instance has no such service).
-declared=""
-for id in $ids; do
-    p="OPENMRS_DB_ACCOUNT_${id}"
-    u="${p}_USER" pw="${p}_PASSWORD" g="${p}_GRANTS" d="${p}_DATABASES"
-    [ -z "${!u:-}${!pw:-}${!g:-}${!d:-}" ] || declared+=" $id"
-done
-ids=${declared# }
 if [ -z "$ids" ]; then echo "No OPENMRS_DB_ACCOUNT_* accounts declared"; exit 0; fi
 
 errors=()

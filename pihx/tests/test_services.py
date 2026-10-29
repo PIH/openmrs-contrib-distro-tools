@@ -89,6 +89,15 @@ class ServicesTest(TempDirTest):
                 add_service(self.tools, "x", manifest)
                 self.assert_service_error("x", "service.yaml", fragment)
 
+    def test_with_files_name_another_service(self):
+        found = services.all(self.tools)
+        self.assertEqual(found["app"].with_files, {"db": found["app"].dir / "with-db.yaml"})
+        self.assertEqual(found["db"].with_files, {})
+
+    def test_with_file_naming_an_unknown_service_is_an_error(self):
+        (self.tools / "services" / "app" / "with-nothing.yaml").write_text("services: {}\n")
+        self.assert_service_error("app", "with-nothing.yaml", "'nothing' isn't another service")
+
     def test_malformed_manifest_names_file_and_line(self):
         for manifest in ["description: x\n  stray: indent\n", "description: x\ndescription: y\n"]:
             with self.subTest(manifest=manifest):

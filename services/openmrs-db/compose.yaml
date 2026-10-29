@@ -79,7 +79,8 @@ services:
       openmrs-db:
         condition: service_healthy
     entrypoint: ["bash", "/ensure-mysql-accounts.sh"]
-    # The accounts declared in openmrs-db.env as OPENMRS_DB_ACCOUNT_<ID>_*, and PETL's below.
+    # The accounts declared in openmrs-db.env as OPENMRS_DB_ACCOUNT_<ID>_*; other services add theirs
+    # in their with-openmrs-db.yaml.
     env_file:
       - path: ${PIHX_TOOLS}/services/openmrs-db/env.defaults
       - path: ${PIHX_INSTANCE_DIR}/openmrs-db.env
@@ -87,12 +88,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD}
       OPENMRS_DB_USER: ${OPENMRS_DB_USER}
-      # PETL's account, from PETL's own settings (all empty, so no account, when the instance has no
-      # PETL); set OPENMRS_DB_ACCOUNT_PETL_* in openmrs-db.env to change it.
-      OPENMRS_DB_ACCOUNT_PETL_USER: ${OPENMRS_DB_ACCOUNT_PETL_USER:-${PETL_MYSQL_USER:-}}
-      OPENMRS_DB_ACCOUNT_PETL_PASSWORD: ${OPENMRS_DB_ACCOUNT_PETL_PASSWORD:-${PETL_MYSQL_PASSWORD:-}}
-      OPENMRS_DB_ACCOUNT_PETL_GRANTS: ${OPENMRS_DB_ACCOUNT_PETL_GRANTS:-}
-      OPENMRS_DB_ACCOUNT_PETL_DATABASES: ${OPENMRS_DB_ACCOUNT_PETL_DATABASES:-${PETL_MYSQL_REPORTING_DATABASE:-}}
     volumes:
       - ${PIHX_TOOLS}/services/openmrs-db/scripts/ensure-mysql-accounts.sh:/ensure-mysql-accounts.sh:ro
       - ${PIHX_TOOLS}/services/openmrs-db/scripts/mysql-accounts.sh:/mysql-accounts.sh:ro

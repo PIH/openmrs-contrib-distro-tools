@@ -22,11 +22,14 @@ class Compose:
         return self.instance.env_files()
 
     def compose_files(self):
-        """Each service's compose.yaml followed by its <svc>.override.yaml (if present), then the
-        extra files (e.g. a restore overlay)."""
-        files = []
+        """Every service's compose.yaml; then each services/<a>/with-<b>.yaml where the instance has
+        both a and b; then the <svc>.override.yaml files that are present; then the extra files
+        (e.g. a restore overlay)."""
+        present = {svc.name for svc in self.instance.services}
+        files = [svc.compose_file for svc in self.instance.services]
         for svc in self.instance.services:
-            files.append(svc.compose_file)
+            files += [f for other, f in sorted(svc.with_files.items()) if other in present]
+        for svc in self.instance.services:
             override = self.instance.dir / f"{svc.name}.override.yaml"
             if override.is_file():
                 files.append(override)

@@ -15,8 +15,16 @@ class ComposeTest(TempDirTest):
         self.svc = self.tools / "services"
         self.env_files = [self.tools / "instance.env.defaults", self.svc / "app" / "env.defaults", self.svc / "db" / "env.defaults",
                           self.dir / "app.env", self.dir / "db.env", self.dir / "instance.env"]
-        self.compose_files = [self.svc / "app" / "compose.yaml", self.dir / "app.override.yaml",
-                              self.svc / "db" / "compose.yaml"]
+        # every compose.yaml, then with-files (both services present), then overrides
+        self.compose_files = [self.svc / "app" / "compose.yaml", self.svc / "db" / "compose.yaml",
+                              self.svc / "app" / "with-db.yaml", self.dir / "app.override.yaml"]
+
+    def test_with_file_is_applied_only_when_both_services_are_present(self):
+        (self.dir / "db.env").unlink()
+        alone = instance.open(self.home, "kz", tools=self.tools)
+        self.assertEqual(compose.Compose(alone).compose_files(),
+                         [self.svc / "app" / "compose.yaml", self.dir / "app.override.yaml"])
+        self.assertEqual(compose.Compose(self.kz).compose_files(), self.compose_files)
 
     def test_args(self):
         extra = self.root / "restore.yaml"

@@ -43,17 +43,23 @@ closure() {
 # override order, the environment pihx sets and nothing else. Extra arguments for Compose follow the
 # services' own after `--`; files named docker/modes/* after `+` are added as overlays.
 instance_compose() { # <dir> <service,...> [+overlay...] -- <compose args...>
-    local dir=$1 services=${2//,/ } svc args=() overlays=() env=()
+    local dir=$1 services=${2//,/ } svc other with args=() overlays=() env=()
     shift 2
     while [ "$1" != -- ]; do overlays+=("$REPO_ROOT/docker/modes/${1#+}"); shift; done
     shift
     args=(-p config --project-directory "$dir" --env-file "$REPO_ROOT/instance.env.defaults")
     for svc in $services; do args+=(--env-file "$REPO_ROOT/services/$svc/env.defaults"); done
     for svc in $services; do [ -f "$dir/$svc.env" ] && args+=(--env-file "$dir/$svc.env"); done
+    # as pihx: every compose.yaml, then the with-files whose other service is present, then overrides
+    for svc in $services; do args+=(-f "$REPO_ROOT/services/$svc/compose.yaml"); done
     for svc in $services; do
-        args+=(-f "$REPO_ROOT/services/$svc/compose.yaml")
-        [ -f "$dir/$svc.override.yaml" ] && args+=(-f "$dir/$svc.override.yaml")
+        for with in "$REPO_ROOT/services/$svc"/with-*.yaml; do
+            [ -f "$with" ] || continue
+            other=$(basename "$with" .yaml); other=${other#with-}
+            [[ " $services " == *" $other "* ]] && args+=(-f "$with")
+        done
     done
+    for svc in $services; do [ -f "$dir/$svc.override.yaml" ] && args+=(-f "$dir/$svc.override.yaml"); done
     for svc in "${overlays[@]}"; do args+=(-f "$svc"); done
     env=(PATH="$PATH" HOME="$HOME" PIHX_TOOLS="$REPO_ROOT" PIHX_INSTANCE_DIR="$dir" SERVICE_NAME=config
          PIHX_INSTANCE=config "${EXTRA_ENV[@]}")
@@ -242,7 +248,7 @@ overlay_config() { # <overlay...>
     refute_output --partial 'log_bin:'
 }
 
-@test "the accounts and logins PETL declares reach openmrs-db's and sqlserver's setup, and an instance without PETL declares none" {
+@test "the accounts and logins PETL declares reach openmrs-db's and sqlserver's setup only when the instance has both, and openmrs-db and sqlserver don't mention PETL" {
     local dir="$BATS_TEST_TMPDIR/instance"
     EXTRA_ENV=()
     make_instance "$dir"
@@ -260,6 +266,11 @@ overlay_config() { # <overlay...>
     run jq -r '[.services["openmrs-db-accounts"].environment, .services["sqlserver-setup"].environment]
         | map(to_entries[] | select(.key | test("_PETL_")) | .value) | join("")' <<< "$output"
     assert_output ''
+    # (without petl, nothing mentions it)
+    rm "$dir/petl.env"
+    run instance_compose "$dir" openmrs-db,sqlserver -- config --format json
+    assert_success
+    refute_output --partial PETL
 }
 
 @test "sqlserver listens on 1433 inside the network, whatever host port it publishes" {

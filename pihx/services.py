@@ -89,6 +89,8 @@ class Service:
     restore_dir: Path = None
     summary_script: Path = None
     commands: dict = dataclasses.field(default_factory=dict)
+    # with-<other>.yaml: compose additions applied only when the instance also has <other>
+    with_files: dict = dataclasses.field(default_factory=dict)
 
 
 def load(tools, name):
@@ -132,6 +134,12 @@ def load(tools, name):
     commands_dir = svc_dir / "commands"
     commands = {f.name: f for f in sorted(commands_dir.iterdir()) if f.is_file()} \
         if commands_dir.is_dir() else {}
+    with_files = {}
+    for f in sorted(svc_dir.glob("with-*.yaml")):
+        other = f.name[len("with-"):-len(".yaml")]
+        if other == name or not (tools / "services" / other).is_dir():
+            raise ServiceError(f"{f}: '{other}' isn't another service in {tools / 'services'}")
+        with_files[other] = f
     return Service(
         name=name,
         dir=svc_dir,
@@ -141,6 +149,7 @@ def load(tools, name):
         restore_dir=svc_dir / "restore" if (svc_dir / "restore").is_dir() else None,
         summary_script=svc_dir / "summary.sh" if (svc_dir / "summary.sh").is_file() else None,
         commands=commands,
+        with_files=with_files,
     )
 
 
