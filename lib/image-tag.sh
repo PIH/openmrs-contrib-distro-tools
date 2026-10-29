@@ -24,7 +24,12 @@ files=$(find . -type f) || { echo "error: can't list $1" >&2; exit 1; }
 [ -n "$files" ] || { echo "error: no files in $1" >&2; exit 1; }
 listing=$(printf '%s\n' "$files" | sed 's|^\./||' | LC_ALL=C sort | while IFS= read -r path; do
     hash=$(sha256 < "$path") || { echo "error: can't read $1/$path" >&2; exit 1; }
+    [ -n "$hash" ] || { echo "error: no hash for $1/$path" >&2; exit 1; }
     printf '%s  %s\n' "$hash" "$path"
 done) || exit 1
 tag=$(printf '%s\n' "$listing" | sha256)
+# An empty or odd hash (a broken sha256sum) would name an image nothing builds or pulls.
+case $tag in
+    '' | *[!0-9a-f]*) echo "error: couldn't hash $1" >&2; exit 1 ;;
+esac
 echo "$tag" | cut -c1-12

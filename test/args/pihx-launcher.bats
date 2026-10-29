@@ -54,6 +54,17 @@ copy_tools() { # <dir>
     refute_output --regexp '^[0-9a-f]{12}$'
 }
 
+@test "image-tag fails when the hash comes out empty" {
+    mkdir d bin
+    echo a > d/a
+    printf '#!/bin/sh\ncat >/dev/null\n' > bin/sha256sum
+    chmod +x bin/sha256sum
+    PATH="$BATS_TEST_TMPDIR/bin:$PATH" run "$REPO_ROOT/lib/image-tag.sh" d
+    assert_failure
+    assert_output --partial "error: no hash for d/a"
+    refute_output --regexp '^[0-9a-f]{12}$'
+}
+
 @test "pihx version prints a version and exits 0" {
     run "$BIN/pihx" version
     assert_success
