@@ -58,12 +58,29 @@ class ServicesTest(TempDirTest):
                                   "setup-services")
 
     def test_start_env_scripts_must_exist_inside_the_service(self):
-        svc = add_service(self.tools, "x", "description: x\nstart-env: [start/values]\n")
+        entry = "description: x\nstart-env:\n  - script: {}\n    sets: [X_FOUND]\n"
+        svc = add_service(self.tools, "x", entry.format("start/values"))
         self.assert_service_error("x", "service.yaml", "start/values doesn't exist")
         write(svc / "start" / "values", "")
-        self.assertEqual(services.load(self.tools, "x").manifest.start_env, ["start/values"])
-        add_service(self.tools, "y", "description: y\nstart-env: [../x/start/values]\n")
+        self.assertEqual(services.load(self.tools, "x").manifest.start_env,
+                         [services.StartEnv(script="start/values", sets=["X_FOUND"])])
+        add_service(self.tools, "y", entry.format("../x/start/values"))
         self.assert_service_error("y", "service.yaml", "inside the service directory")
+
+    def test_start_env_entries_declare_what_they_set_and_never_pihx_own_names(self):
+        for entry, message in [
+                ("[start/values]", "mapping with 'script' and 'sets'"),
+                ("[{script: start/values}]", "mapping with 'script' and 'sets'"),
+                ("[{script: start/values, sets: []}]", "must name the variables"),
+                ("[{script: start/values, sets: [1x]}]", "isn't a valid variable name"),
+                ("[{script: start/values, sets: [PATH]}]", "can't name PATH"),
+                ("[{script: start/values, sets: [COMPOSE_FILE]}]", "can't name COMPOSE_FILE"),
+                ("[{script: start/values, sets: [PIHX_INSTANCE_DIR]}]", "can't name PIHX_"),
+                ("start/values", "'start-env' must be a list")]:
+            with self.subTest(entry=entry):
+                svc = add_service(self.tools, "x", f"description: x\nstart-env: {entry}\n")
+                write(svc / "start" / "values", "")
+                self.assert_service_error("x", "service.yaml", message)
 
     def test_requires_a_missing_service_is_an_error(self):
         add_service(self.tools, "x", "description: x\nrequires: [db, nosuch]\n")

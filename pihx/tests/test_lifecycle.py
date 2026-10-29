@@ -302,14 +302,16 @@ class StartLockedTest(LifecycleTest):
 
 
 class StartEnvTest(LifecycleTest):
-    """start-env scripts' values reach that start's `up` only; a failed or malformed one gives
-    nothing, so the compose file's (safe) default applies."""
+    """start-env scripts' values reach that start's `up` only, and only those their manifest entry
+    declares; a failed or malformed one gives nothing, so the compose file's (safe) default
+    applies."""
 
     def setUp(self):
         super().setUp()
         write(self.tools / "services" / "app" / "start" / "values", "")
         manifest = self.tools / "services" / "app" / "service.yaml"
-        manifest.write_text(manifest.read_text() + "start-env: [start/values]\n")
+        manifest.write_text(manifest.read_text() + "start-env:\n  - script: start/values\n"
+                            "    sets: [APP_FOUND, APP_OTHER]\n")
         self.up_env = []
 
     def start(self, command, stdout="", returncode=0):
@@ -330,24 +332,44 @@ class StartEnvTest(LifecycleTest):
         self.assertEqual(script_calls[0][0], self.tools / "services" / "app" / "start" / "values")
         return result
 
+    def declared(self):
+        return {k: self.up_env[0].get(k) for k in ("APP_FOUND", "APP_OTHER")}
+
     def test_start_and_update_pass_the_values_to_up(self):
         for command in ("start", "update"):
             with self.subTest(command=command):
                 self.up_env.clear()
                 status, _, err = self.start(command, "APP_FOUND=true\n\n")
                 self.assertEqual(status, 0, err)
-                self.assertEqual([e.get("APP_FOUND") for e in self.up_env], ["true"])
+                self.assertEqual(self.declared(), {"APP_FOUND": "true", "APP_OTHER": None})
+
+    def test_only_declared_variables_are_set_and_never_pihx_own(self):
+        self.set_env({"PATH": "/usr/bin"})
+        status, _, err = self.start("start", "APP_FOUND=true\nAPP_STRAY=x\nPATH=/evil\n"
+                                    "PIHX_TOOLS=/evil\nCOMPOSE_FILE=/evil\nSERVICE_NAME=evil\n")
+        self.assertEqual(status, 0, err)
+        self.assertEqual(self.declared(), {"APP_FOUND": "true", "APP_OTHER": None})
+        env = self.up_env[0]
+        self.assertNotIn("APP_STRAY", env)
+        self.assertEqual(env["PATH"], "/usr/bin")
+        self.assertEqual(env["PIHX_TOOLS"], str(self.tools))
+        self.assertEqual(env["SERVICE_NAME"], "kz")
+        self.assertNotIn("/evil", env["COMPOSE_FILE"])
+        for name in ("APP_STRAY", "PATH", "PIHX_TOOLS", "COMPOSE_FILE", "SERVICE_NAME"):
+            self.assertIn(f"warning: app: start/values printed {name}, which its manifest doesn't "
+                          "let it set; ignored", err)
+        self.assertNotIn("/evil", err)
 
     def test_a_failed_script_gives_nothing(self):
         status, _, err = self.start("start", "APP_FOUND=true\n", returncode=1)
         self.assertEqual(status, 0, err)
         self.assertIn("warning: app: start/values failed (exit 1); starting without its values",
                       err)
-        self.assertNotIn("APP_FOUND", self.up_env[0])
+        self.assertEqual(self.declared(), {"APP_FOUND": None, "APP_OTHER": None})
 
     def test_a_malformed_line_gives_nothing_and_is_not_shown(self):
         status, _, err = self.start("start", "APP_FOUND=true\nsecret-ish words\n")
         self.assertEqual(status, 0, err)
         self.assertIn("printed a malformed line", err)
         self.assertNotIn("secret-ish", err)
-        self.assertNotIn("APP_FOUND", self.up_env[0])
+        self.assertEqual(self.declared(), {"APP_FOUND": None, "APP_OTHER": None})

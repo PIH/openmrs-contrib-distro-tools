@@ -47,6 +47,8 @@ class ComposeTest(TempDirTest):
             "PIHX_INSTANCE_DIR": str(self.dir),
             "PIHX_INSTANCE": "kz",
         })
+        # The names start-env scripts can't set.
+        self.assertEqual(set(env), compose.OWN_NAMES)
 
     def fake_docker(self, status=0):
         """A docker on PATH that records its arguments, then its environment."""

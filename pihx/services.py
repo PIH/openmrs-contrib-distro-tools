@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from pihx import envfile
+from pihx import compose, envfile
 
 NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 # `pihx <instance> <service> <command>` shares its second word with the core's commands, and
@@ -66,6 +66,14 @@ class Restore:
     names: list
     overlay: str
     after: str = None
+
+
+@dataclasses.dataclass
+class StartEnv:
+    """A start-env entry: the script (a path relative to the service dir) and the variables it may
+    set."""
+    script: str
+    sets: list
 
 
 @dataclasses.dataclass
@@ -142,7 +150,7 @@ def load(tools, name):
             if not (svc_dir / overlay).is_file():
                 raise ServiceError(f"{manifest_file}: restore overlay {overlay} doesn't exist")
             read_overlay(svc_dir / overlay)
-    for path in manifest.start_env:
+    for path in (entry.script for entry in manifest.start_env):
         if Path(path).is_absolute() or ".." in Path(path).parts:
             raise ServiceError(f"{manifest_file}: start-env script {path} must be a path inside "
                                "the service directory")
@@ -251,14 +259,12 @@ def _manifest(data):
         raise ValueError("'job' must be true or false")
     if data.get("backup", "none") != "none":
         raise ValueError("'backup' can only be 'none' (backups come with TASKS-597)")
-    restore = data.get("restore", [])
-    if not isinstance(restore, list):
-        raise ValueError("'restore' must be a list")
+    restore = _list(data, "restore")
     return Manifest(
         description=data["description"],
         requires=_strings(data, "requires"),
         setup=_strings(data, "setup"),
-        start_env=_strings(data, "start-env"),
+        start_env=[_start_env(entry) for entry in _list(data, "start-env")],
         capture_env=_strings(data, "capture-env"),
         job=data.get("job", False),
         backup=data.get("backup"),
@@ -272,6 +278,30 @@ def _strings(data, key):
     if not isinstance(value, list) or any(not isinstance(v, str) or not v for v in value):
         raise ValueError(f"'{key}' must be a list of names")
     return value
+
+
+def _list(data, key):
+    value = data.get(key, [])
+    if not isinstance(value, list):
+        raise ValueError(f"'{key}' must be a list")
+    return value
+
+
+def _start_env(entry):
+    if not isinstance(entry, dict) or set(entry) != {"script", "sets"}:
+        raise ValueError("each 'start-env' entry must be a mapping with 'script' and 'sets' (the "
+                         "variables it may set)")
+    if not isinstance(entry["script"], str) or not entry["script"]:
+        raise ValueError("a 'start-env' entry's 'script' must be a path")
+    sets = _strings(entry, "sets")
+    if not sets:
+        raise ValueError("a 'start-env' entry's 'sets' must name the variables it may set")
+    for name in sets:
+        if not envfile.NAME.fullmatch(name):
+            raise ValueError(f"'{name}' in 'sets' isn't a valid variable name")
+        if name in compose.RESERVED_NAMES:
+            raise ValueError(f"'sets' can't name {name}: pihx sets it, or passes it through")
+    return StartEnv(script=entry["script"], sets=sets)
 
 
 def _restore(entry):

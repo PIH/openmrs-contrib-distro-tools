@@ -7,6 +7,11 @@ import subprocess
 # All Compose (and later, service scripts) get from the caller's environment: anything else would
 # beat the instance's env files in Compose's interpolation.
 PASSED_THROUGH = ("PATH", "HOME", "DOCKER_CONFIG", "DOCKER_HOST")
+# The names env() sets: pihx's own, which nothing else (e.g. a start-env script) may set.
+OWN_NAMES = frozenset({"COMPOSE_PROJECT_NAME", "COMPOSE_FILE", "COMPOSE_ENV_FILES", "SERVICE_NAME",
+                       "PIHX_TOOLS", "PIHX_INSTANCE_DIR", "PIHX_INSTANCE"})
+# Names no service value may take.
+RESERVED_NAMES = OWN_NAMES | frozenset(PASSED_THROUGH)
 
 
 class ComposeError(Exception):
