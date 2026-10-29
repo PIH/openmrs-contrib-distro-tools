@@ -64,11 +64,6 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     assert_output 1
     run tree_of_volume "${NAME}_openmrs-data"
     assert_output "$RESTORED_TREE"
-    # The database isn't empty, so OpenMRS won't create its tables.
-    run cat "$PIHX_HOME/$NAME/openmrs-db.env"
-    assert_line "OPENMRS_DB_CREATED_EMPTY='false'"
-    run "$BIN/pihx" "$NAME" config
-    assert_line --partial "OPENMRS_DB_CREATED_EMPTY=false"
     # No containers, and no staging volumes, are left; nor the password in any file.
     assert_equal "$(containers)" ""
     assert_equal "$(volumes)" "$(printf '%s\n' "${NAME}_db-data" "${NAME}_openmrs-data")"
@@ -147,8 +142,6 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     assert_output "$RESTORED_TREE"
     # Only openmrs had an entry: the database starts empty.
     assert_equal "$(volumes)" "${NAME}_openmrs-data"
-    run grep OPENMRS_DB_CREATED_EMPTY "$PIHX_HOME/$NAME/openmrs-db.env"
-    assert_failure
 }
 
 @test "--from-image restores a seed" {
@@ -196,8 +189,6 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     assert_output --partial 'initialize failed'
     assert_equal "$(volumes)" ""
     assert_equal "$(containers)" ""
-    run grep OPENMRS_DB_CREATED_EMPTY "$PIHX_HOME/$NAME/openmrs-db.env"
-    assert_failure
 }
 
 @test "openmrs' prepare gives the restored openmrs-data to the user its image runs as" {

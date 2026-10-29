@@ -2,7 +2,7 @@ import shutil
 import unittest
 
 from pihx import services
-from pihx.tests.fixtures import TempDirTest, add_service, two_service_tools
+from pihx.tests.fixtures import TempDirTest, add_service, two_service_tools, write
 
 
 class ServicesTest(TempDirTest):
@@ -56,6 +56,14 @@ class ServicesTest(TempDirTest):
         add_service(self.tools, "x", "description: x\nsetup-services: [a]\n")
         self.assert_service_error("x", str(self.tools / "services" / "x" / "service.yaml"),
                                   "setup-services")
+
+    def test_start_env_scripts_must_exist_inside_the_service(self):
+        svc = add_service(self.tools, "x", "description: x\nstart-env: [start/values]\n")
+        self.assert_service_error("x", "service.yaml", "start/values doesn't exist")
+        write(svc / "start" / "values", "")
+        self.assertEqual(services.load(self.tools, "x").manifest.start_env, ["start/values"])
+        add_service(self.tools, "y", "description: y\nstart-env: [../x/start/values]\n")
+        self.assert_service_error("y", "service.yaml", "inside the service directory")
 
     def test_requires_a_missing_service_is_an_error(self):
         add_service(self.tools, "x", "description: x\nrequires: [db, nosuch]\n")

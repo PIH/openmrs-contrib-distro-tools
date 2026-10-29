@@ -12,10 +12,23 @@ defaults are in [`env.defaults`](env.defaults).
 | `OPENMRS_HTTP_PORT`, `OPENMRS_DEBUG_PORT` | `8080`, `1044` | published ports; set them differently to run more than one instance at once |
 | `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS` | `4g`, `-Xms512m -Xmx2g -XX:NewSize=128m` | memory |
 | `OPENMRS_ACTIVITYLOG_ENABLED` | `false` | |
-| `OPENMRS_CREATE_TABLES` | unset | whether OpenMRS creates its schema on first start. Unset, it follows `OPENMRS_DB_CREATED_EMPTY` (from `openmrs-db.env`, which `initialize` sets to `false` after restoring the database) |
+| `OPENMRS_CREATE_TABLES` | unset | `true` or `false` overrides whether OpenMRS creates its tables. Unset, pihx decides at each `start` and `update` ([below](#creating-the-tables)) |
 | `OMRS_EXTRA_*`, `OMRS_JAVA_SERVER_OPTS` | none | runtime properties and Java options ([below](#runtime-properties-omrs_extra_)) |
 
 The database password and user come from `openmrs-db.env`: `openmrs` doesn't redefine them.
+
+## Creating the tables
+
+OpenMRS creates its tables (`create_tables`) only when it has just been found to have none. Before
+every `pihx <name> start` and `update`, [`start/create-tables`](start/create-tables) (the manifest's
+`start-env`) starts `openmrs-db` and counts, as root, the tables in the OpenMRS schema. A count of
+zero gives true, for that start only; anything else -- tables, a failed or timed-out query,
+`openmrs-db` not healthy, unexpected output -- gives false, with a line saying why. Nothing is
+recorded, and a plain `docker compose up` that bypasses pihx gets false. `OPENMRS_CREATE_TABLES`
+in `openmrs.env`, if set, decides instead.
+
+After the first start of a new instance (true), the next start finds tables and recreates the
+`openmrs` container with false.
 
 ## Runtime properties (`OMRS_EXTRA_*`)
 

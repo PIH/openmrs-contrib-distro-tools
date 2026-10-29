@@ -55,8 +55,8 @@ instance's files for this one run: `initialize` brings up the containers they na
 with a healthcheck (the database) to turn healthy and for the others to exit, brings everything
 down, and removes the staging volumes the overlays declare. A restored service may also have
 `restore/prepare`, run first, whose `KEY=value` output is used for that run only (`openmrs`'s finds
-the owner for `openmrs-data`), and `restore/finish`, run once the restore has worked (`openmrs-db`'s
-records `OPENMRS_DB_CREATED_EMPTY=false`). If anything fails, it removes the containers and every
+the owner for `openmrs-data`), and `restore/finish`, run once the restore has worked. If anything
+fails, it removes the containers and every
 volume it made, and undoes what a `finish` wrote to the instance's env files. Archives are extracted by
 `utils/lib/in-container/extract.sh`, into a volume, never onto the host.
 
@@ -155,10 +155,14 @@ It also moves a restored `openmrs-runtime.properties` aside to `openmrs-runtime.
 settings, which would win over this instance's: openmrs-core 2.6+ only merges `OMRS_EXTRA_*` into an
 existing file. OpenMRS writes a fresh one from the instance's values (`openmrs.env`) on its first start.
 
-With no runtime properties in `openmrs-data` (set aside, or nothing restored), OpenMRS would take
-the database for a new install and create every table again, so once `openmrs-db` is restored,
-`initialize` adds `OPENMRS_DB_CREATED_EMPTY=false` to `openmrs-db.env`, and the `openmrs` service
-then sets `create_tables` to false (`OPENMRS_CREATE_TABLES`, if set, decides instead).
+With no runtime properties in `openmrs-data` (set aside, or nothing restored), OpenMRS takes the
+database for a new install, and would create every table again if told to. It is told to only when
+the database has no tables at all: before every `start` and `update`, the `openmrs` service's
+`start/create-tables` starts `openmrs-db`, counts the tables in the OpenMRS schema, and sets
+`create_tables` to true only for a count of zero. Anything else (tables, a failed or timed-out
+query, `openmrs-db` not healthy) gives false, with a line saying why, and so does a plain
+`docker compose up` that doesn't go through pihx. Nothing is recorded: each start decides from the
+database. `OPENMRS_CREATE_TABLES` in `openmrs.env`, if set, decides instead.
 
 ### Carrying over runtime properties
 

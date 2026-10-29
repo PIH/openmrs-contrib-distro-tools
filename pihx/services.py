@@ -73,6 +73,7 @@ class Manifest:
     description: str
     requires: list = dataclasses.field(default_factory=list)
     setup: list = dataclasses.field(default_factory=list)
+    start_env: list = dataclasses.field(default_factory=list)
     capture_env: list = dataclasses.field(default_factory=list)
     job: bool = False
     backup: str = None
@@ -141,6 +142,12 @@ def load(tools, name):
             if not (svc_dir / overlay).is_file():
                 raise ServiceError(f"{manifest_file}: restore overlay {overlay} doesn't exist")
             read_overlay(svc_dir / overlay)
+    for path in manifest.start_env:
+        if Path(path).is_absolute() or ".." in Path(path).parts:
+            raise ServiceError(f"{manifest_file}: start-env script {path} must be a path inside "
+                               "the service directory")
+        if not (svc_dir / path).is_file():
+            raise ServiceError(f"{manifest_file}: start-env script {path} doesn't exist")
     try:
         defaults = envfile.parse(defaults_file.read_text())
     except ValueError as e:
@@ -233,7 +240,8 @@ def all(tools):
 def _manifest(data):
     if not isinstance(data, dict):
         raise ValueError("expected a mapping of manifest fields")
-    fields = {"description", "requires", "setup", "capture-env", "job", "backup", "restore"}
+    fields = {"description", "requires", "setup", "start-env", "capture-env", "job", "backup",
+              "restore"}
     for key in data:
         if key not in fields:
             raise ValueError(f"unknown key '{key}' (known: {', '.join(sorted(fields))})")
@@ -250,6 +258,7 @@ def _manifest(data):
         description=data["description"],
         requires=_strings(data, "requires"),
         setup=_strings(data, "setup"),
+        start_env=_strings(data, "start-env"),
         capture_env=_strings(data, "capture-env"),
         job=data.get("job", False),
         backup=data.get("backup"),

@@ -1,0 +1,42 @@
+#!/bin/sh
+# start-env (service.yaml), before every start and update: prints OPENMRS_DB_FOUND_EMPTY=true only
+# when it has just found the OpenMRS database to hold no tables, so OpenMRS creates them (see
+# compose.yaml). Anything else -- openmrs-db not healthy, a failed or timed-out query, unexpected
+# output, any table -- prints false, with one line saying why. Nothing is ever written or dropped:
+# it starts openmrs-db and reads information_schema, that's all.
+set -u
+
+decide() { # <true|false> <why>
+    echo "openmrs: $2" >&2
+    echo "OPENMRS_DB_FOUND_EMPTY=$1"
+    exit 0
+}
+
+if [ -n "${OPENMRS_CREATE_TABLES:-}" ]; then
+    decide false "OPENMRS_CREATE_TABLES=$OPENMRS_CREATE_TABLES (openmrs.env) decides whether OpenMRS creates its tables"
+fi
+
+# Compose's progress to stderr: standard output is only for the value.
+if ! docker compose --project-directory "$PIHX_INSTANCE_DIR" \
+        up -d --wait --wait-timeout 600 openmrs-db >&2; then
+    decide false "openmrs-db didn't become healthy, so the database wasn't checked: OpenMRS won't create tables"
+fi
+
+# As root, which sees every table; the schema is the database's own (MYSQL_DATABASE). Two counts:
+# the schema exists (1), and its tables (0 for an empty database).
+# shellcheck disable=SC2016 # expanded in openmrs-db's container
+query='MYSQL_PWD="$MYSQL_ROOT_PASSWORD" "$(command -v mysql || command -v mariadb)" -uroot -N -B -e "
+SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = '"'"'$MYSQL_DATABASE'"'"';
+SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '"'"'$MYSQL_DATABASE'"'"';"'
+if ! counts=$(timeout 120 docker compose --project-directory "$PIHX_INSTANCE_DIR" \
+        exec -T openmrs-db sh -c "$query" 2>/dev/null); then
+    decide false "couldn't count the database's tables: OpenMRS won't create tables"
+fi
+nl='
+'
+case $counts in
+    "1${nl}0") decide true "the database has no tables: OpenMRS will create them" ;;
+    "1${nl}"*[!0-9]* | "1${nl}") ;;
+    "1${nl}"*) decide false "the database has tables: OpenMRS won't create them" ;;
+esac
+decide false "unexpected answer counting the database's tables: OpenMRS won't create tables"

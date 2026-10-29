@@ -13,7 +13,7 @@ run_shellcheck() {
 
 scripts() {
     (cd "$REPO_ROOT" && ls bin/* lib/image-tag.sh utils/*.sh utils/lib/in-container/*.sh openmrs/*.sh test/run \
-        services/*/scripts/*.sh services/*/restore/prepare services/*/restore/finish \
+        services/*/scripts/*.sh services/*/restore/prepare services/*/start/* \
         services/*/summary.sh services/*/commands/*)
 }
 

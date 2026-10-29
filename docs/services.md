@@ -48,6 +48,7 @@ services/<svc>/
   env.defaults             its defaults, literal KEY=value lines (required)
   with-<other>.yaml        what it adds to another service's containers, when the instance has both
   restore/                 overlays `initialize` adds, and the optional prepare and finish hooks
+  start/                   its start-env scripts, if any (by convention)
   summary.sh               what `pihx <instance> summary` prints for it
   commands/<name>          `pihx <instance> <svc> <name>`
   scripts/                 scripts its containers mount
@@ -68,6 +69,7 @@ and `test/static/services.bats` check every service in the tree against the conv
 | `description` | Required: one line, what the service is |
 | `requires` | Services that must also be in the instance (e.g. `[openmrs-db]`); `create` and `add-service` refuse without them, and they start first |
 | `setup` | Containers of its `compose.yaml` that are one-shot setup, e.g. `[openmrs-db-accounts]`. `start` and `update` wait for them and fail, naming the one that didn't succeed; a job's run runs each as a one-off first |
+| `start-env` | Scripts (paths in the service directory) that `start` and `update` run, in pihx's container, before Compose's `up`. Each prints `KEY=value` lines, values for that `up` only, never written anywhere; a script that fails or prints anything else gives nothing, with a warning. So the compose file's default for such a value must be the safe one. `openmrs`'s `start/create-tables` decides whether OpenMRS creates its tables |
 | `capture-env` | Name prefixes (e.g. `[OMRS_EXTRA_]`). At `create` and `add-service`, a variable in your environment with such a prefix goes into the service's `.env` even though no default or compose file names it |
 | `job` | `true` for a job: `start` doesn't bring it up and `run-service` runs it holding the instance lock |
 | `backup` | `none`. Backups come with TASKS-597; until then a service says it has nothing to back up |
@@ -145,8 +147,7 @@ their presence:
 - `restore/prepare` runs first, before any volume exists, when the service has an entry. It prints
   `KEY=value` lines: values for that restore only (`openmrs`'s finds the owner of the restored
   files).
-- `restore/finish` runs once the restore has worked, e.g. to record in the instance's files that the
-  database wasn't empty (`openmrs-db`'s). If anything fails, `initialize` removes the containers and
+- `restore/finish` runs once the restore has worked (no service has one today). If anything fails, `initialize` removes the containers and
   every volume it made, and undoes what a `finish` wrote to the instance's env files. A hook sets a
   value with `python3 -m pihx.envfile set <file> <NAME> <value>`.
 

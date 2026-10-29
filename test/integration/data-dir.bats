@@ -40,8 +40,6 @@ assert_initializes_to() { # <source> <expected tree> [VAR=value...]
     assert_output "${tree/.\/openmrs-runtime.properties/./openmrs-runtime.properties.restored}"
 }
 
-env_file() { env_file_of "$NAME" openmrs-db; }
-
 # --- backup + extract-archive ----------------------------------------------------------------------
 
 @test ".tar.gz holds the whole directory under a folder named after the archive" {
@@ -267,32 +265,22 @@ FIXTURE_TREE_EXCLUDING="./.openmrs-lib-cache
     assert_output 'connection.url=jdbc:mysql://x/openmrs'
 }
 
-# OpenMRS creates its tables only for a database that started empty (OPENMRS_DB_CREATED_EMPTY,
-# which initialize sets to false in openmrs-db.env), unless OPENMRS_CREATE_TABLES says otherwise.
+# OpenMRS creates its tables only when a pihx start has just found the database empty
+# (services/openmrs/start/create-tables): a plain `docker compose` gets false, unless
+# OPENMRS_CREATE_TABLES says otherwise. Nothing is recorded in the instance's files.
 create_tables_setting() { # what the openmrs container gets
     instance_compose_of "$NAME" config --format json | jq -r '.services.openmrs.environment.OMRS_CONFIG_CREATE_TABLES'
 }
 
-@test "initialize records that the database didn't start empty after restoring openmrs-data" {
+@test "initialize records nothing about the tables, and a plain docker compose doesn't create them" {
     assert_initializes_to "$BATS_TEST_TMPDIR/data" "$FIXTURE_TREE"
-    run grep '^OPENMRS_DB_CREATED_EMPTY=' "$(env_file)"
-    assert_output "OPENMRS_DB_CREATED_EMPTY='false'"
+    run grep 'CREATE_TABLES\|CREATED_EMPTY\|FOUND_EMPTY' "$PIHX_HOME/$NAME"/*.env
+    assert_failure
     run create_tables_setting
     assert_output false
 }
 
-@test "initialize records that the database didn't start empty when openmrs-data is neither restored nor seeded" {
-    NAME="$(instance)"
-    create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
-    assert_success
-    run grep '^OPENMRS_DB_CREATED_EMPTY=' "$(env_file)"
-    assert_output "OPENMRS_DB_CREATED_EMPTY='false'"
-    run create_tables_setting
-    assert_output false
-}
-
-@test "initialize keeps an OPENMRS_CREATE_TABLES already in openmrs.env, which decides" {
+@test "OPENMRS_CREATE_TABLES in openmrs.env decides" {
     NAME="$(instance)"
     create_instance "$NAME"
     echo 'OPENMRS_CREATE_TABLES=true' >> "$(env_file_of "$NAME" openmrs)"
@@ -300,18 +288,6 @@ create_tables_setting() { # what the openmrs container gets
     assert_success
     run grep '^OPENMRS_CREATE_TABLES=' "$(env_file_of "$NAME" openmrs)"
     assert_output 'OPENMRS_CREATE_TABLES=true'
-    run create_tables_setting
-    assert_output true
-}
-
-@test "initialize with a failed restore leaves OPENMRS_DB_CREATED_EMPTY unset" {
-    ARCHIVE_PASSWORD=pw backup data.7z >/dev/null 2>&1
-    NAME="$(instance)"
-    create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH=data.7z ARCHIVE_PASSWORD=wrong
-    assert_failure
-    run grep '^OPENMRS_DB_CREATED_EMPTY=' "$(env_file)"
-    assert_failure
     run create_tables_setting
     assert_output true
 }

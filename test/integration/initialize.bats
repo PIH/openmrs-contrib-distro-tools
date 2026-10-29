@@ -63,9 +63,6 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     # A seed image that was here before initialize is kept.
     refute_output --partial 'pulled for this command'
     [ -n "$(image_id "$SEED_IMAGE")" ] || fail "the seed image, here before initialize, was removed"
-    # The seeded database isn't empty, so OpenMRS doesn't create its tables.
-    run grep '^OPENMRS_DB_CREATED_EMPTY=' "$(env_file_of "$NAME" openmrs-db)"
-    assert_output "OPENMRS_DB_CREATED_EMPTY='false'"
 }
 
 @test "initialize removes a seed image it pulled" {

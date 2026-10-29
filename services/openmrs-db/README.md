@@ -10,7 +10,6 @@ in the instance's `openmrs-db.env`; defaults are in [`env.defaults`](env.default
 | `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD` | `openmrs` for each | the OpenMRS account and root. `openmrs` reads the account from here, so it is defined once. Neither password can contain a backslash ([below](#changing-the-passwords)) |
 | `OPENMRS_DB_PORT` | `3306` | the port published on the host; set it differently to run more than one instance at once |
 | `OPENMRS_DB_MEMORY_LIMIT` | `2g` | the container's memory limit |
-| `OPENMRS_DB_CREATED_EMPTY` | `true` | `initialize` sets it to `false` in `openmrs-db.env` after restoring the database, so OpenMRS doesn't create its tables again |
 | `OPENMRS_DB_OPT_<option>` | see below | MySQL/MariaDB server options |
 | `OPENMRS_DB_ACCOUNT_<ID>_*` | none | accounts to keep in place ([below](#mysql-accounts)) |
 

@@ -15,22 +15,23 @@ from pihx import compose as compose_module
 from pihx.commands import CliError
 
 
-def environment(inst, extra_env=None, service=None):
+def environment(inst, extra_env=None, service=None, extra_files=()):
     """The environment for a script of <inst> (of <service>, named in PIHX_SERVICE); <extra_env>
-    (e.g. a restore's values) wins."""
-    compose = compose_module.Compose(inst, extra_env=extra_env)
+    (e.g. a restore's values) wins, and <extra_files> are in its COMPOSE_FILE."""
+    compose = compose_module.Compose(inst, extra_files=extra_files, extra_env=extra_env)
     own = {"PIHX_SERVICE": service.name} if service else {}
     # PIHX_HOME, so a script can run pihx itself (see lifecycle._start).
     own["PIHX_HOME"] = str(inst.dir.parent)
     return {**inst.config(), **compose.environment(), **own}
 
 
-def run(inst, path, args=(), extra_env=None, service=None, label=None, **kwargs):
-    """Runs <path> with <args> in environment(inst, extra_env, service); kwargs go to
+def run(inst, path, args=(), extra_env=None, service=None, label=None, extra_files=(), **kwargs):
+    """Runs <path> with <args> in environment(inst, extra_env, service, extra_files); kwargs go to
     subprocess.run (output isn't captured unless they say so). Returns the CompletedProcess; raises
     CliError if the script can't be started (<label> names it in the message, default its path)."""
     try:
-        return subprocess.run([str(path), *args], env=environment(inst, extra_env, service),
+        return subprocess.run([str(path), *args],
+                              env=environment(inst, extra_env, service, extra_files),
                               **kwargs)
     except OSError as e:
         raise CliError(f"{label or path} couldn't run: {e.strerror or type(e).__name__}") from None

@@ -39,6 +39,44 @@ running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.p
     assert_success
 }
 
+create_tables() { # what the running openmrs container got
+    docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$NAME-openmrs" | sed -n 's/^OMRS_CONFIG_CREATE_TABLES=//p'
+}
+
+@test "a new instance's first start has OpenMRS create the tables; once the database has tables, start doesn't" {
+    create_with_stub
+    run "$BIN/openmrs-docker" "$NAME" start
+    assert_success
+    assert_output --partial 'openmrs: the database has no tables: OpenMRS will create them'
+    run "$BIN/openmrs-docker" "$NAME" wait
+    assert_success
+    run create_tables
+    assert_output true
+    # What OpenMRS's install would do.
+    mysql_exec "$NAME-openmrs-db" openmrs 'CREATE TABLE openmrs.installed (id INT)'
+    run "$BIN/openmrs-docker" "$NAME" start
+    assert_success
+    assert_output --partial "openmrs: the database has tables: OpenMRS won't create them"
+    run "$BIN/openmrs-docker" "$NAME" wait
+    assert_success
+    run create_tables
+    assert_output false
+}
+
+@test "a restored instance starts without OpenMRS creating tables" {
+    create_with_stub
+    write_tiny_dump dump.sql
+    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
+    assert_success
+    run "$BIN/openmrs-docker" "$NAME" start
+    assert_success
+    assert_output --partial "openmrs: the database has tables: OpenMRS won't create them"
+    run "$BIN/openmrs-docker" "$NAME" wait
+    assert_success
+    run create_tables
+    assert_output false
+}
+
 @test "wait fails as soon as OpenMRS exits, rather than waiting out its timeout" {
     OMRS_EXTRA_stub_exit=1 create_with_stub
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1

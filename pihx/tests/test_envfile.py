@@ -159,8 +159,8 @@ class SetTest(TempDirTest):
 
     def test_set_from_the_command_line(self):
         f = self.root / "c.env"
-        self.assertEqual(envfile.main(["set", str(f), "OPENMRS_DB_CREATED_EMPTY", "false"]), 0)
-        self.assertEqual(f.read_text(), "OPENMRS_DB_CREATED_EMPTY='false'\n")
+        self.assertEqual(envfile.main(["set", str(f), "DB_RESTORED", "true"]), 0)
+        self.assertEqual(f.read_text(), "DB_RESTORED='true'\n")
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(envfile.main(["set", str(f), "A"]), 2)
 

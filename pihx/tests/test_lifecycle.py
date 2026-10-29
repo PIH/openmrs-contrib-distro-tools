@@ -285,3 +285,55 @@ class StartLockedTest(LifecycleTest):
             status, _, err = self.run_pihx("kz", "_start")
         self.assertEqual(status, 0, err)
         self.assertEqual(self.compose_calls[0], ("up", "-d"))
+
+
+class StartEnvTest(LifecycleTest):
+    """start-env scripts' values reach that start's `up` only; a failed or malformed one gives
+    nothing, so the compose file's (safe) default applies."""
+
+    def setUp(self):
+        super().setUp()
+        write(self.tools / "services" / "app" / "start" / "values", "")
+        manifest = self.tools / "services" / "app" / "service.yaml"
+        manifest.write_text(manifest.read_text() + "start-env: [start/values]\n")
+        self.up_env = []
+
+    def start(self, command, stdout="", returncode=0):
+        def fake_run(compose_self, *args, **kwargs):
+            if args[:1] == ("up",):
+                self.up_env.append(compose_self.environment())
+            return done("")
+        script_calls = []
+
+        def fake_script(inst, path, **kwargs):
+            script_calls.append((path, kwargs))
+            return done(stdout, returncode)
+        with mock.patch.object(compose.Compose, "run", fake_run), \
+                mock.patch.object(lifecycle.subprocess, "run", self.fake_docker), \
+                mock.patch.object(lifecycle.script, "run", fake_script):
+            result = run(["kz", command])
+        self.assertEqual(len(script_calls), 1)
+        self.assertEqual(script_calls[0][0], self.tools / "services" / "app" / "start" / "values")
+        return result
+
+    def test_start_and_update_pass_the_values_to_up(self):
+        for command in ("start", "update"):
+            with self.subTest(command=command):
+                self.up_env.clear()
+                status, _, err = self.start(command, "APP_FOUND=true\n\n")
+                self.assertEqual(status, 0, err)
+                self.assertEqual([e.get("APP_FOUND") for e in self.up_env], ["true"])
+
+    def test_a_failed_script_gives_nothing(self):
+        status, _, err = self.start("start", "APP_FOUND=true\n", returncode=1)
+        self.assertEqual(status, 0, err)
+        self.assertIn("warning: app: start/values failed (exit 1); starting without its values",
+                      err)
+        self.assertNotIn("APP_FOUND", self.up_env[0])
+
+    def test_a_malformed_line_gives_nothing_and_is_not_shown(self):
+        status, _, err = self.start("start", "APP_FOUND=true\nsecret-ish words\n")
+        self.assertEqual(status, 0, err)
+        self.assertIn("printed a malformed line", err)
+        self.assertNotIn("secret-ish", err)
+        self.assertNotIn("APP_FOUND", self.up_env[0])
