@@ -16,6 +16,11 @@ from pihx.instance import Instance, InstanceError
 RESTORE_VOLUMES = ("db-init", "percona-staging")
 
 
+def exit_status(returncode):
+    """A process's exit status as a shell reports it: 128+n when signal n killed it."""
+    return 128 - returncode if returncode < 0 else returncode
+
+
 def note(message):
     print(message, file=sys.stderr)
 
@@ -59,6 +64,9 @@ def check_setup_services(inst, compose):
         if not ids:
             continue
         code = _docker(compose, "wait", ids[0]).stdout.strip()
+        if not code.isdigit():
+            raise CliError(f"couldn't wait for {svc} (docker wait gave '{code}'; see "
+                           f"'pihx {inst.name} logs {svc}')")
         if code != "0":
             logs = _docker(compose, "logs", "--tail", "20", ids[0], capture_output=False,
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -183,7 +191,8 @@ def _run_job(inst, compose, svc, command):
                            f"running ('pihx {inst.name} start')?")
     # A command of its own (e.g. a shell to look around) runs in a one-off container.
     if command:
-        return compose.run("run", "--rm", "--no-deps", svc, *command, check=False).returncode
+        return exit_status(compose.run("run", "--rm", "--no-deps", svc, *command,
+                                       check=False).returncode)
     # The job's own runs share one kept container, recreated only when its image or config changed
     # and otherwise started again: its log builds up across runs in Docker's log, as a running
     # service's does ('logs <svc>'), and docker inspect shows the last run's exit code and time.
@@ -194,7 +203,8 @@ def _run_job(inst, compose, svc, command):
     ids = compose.run("ps", "-aq", svc, stdout=subprocess.PIPE, text=True).stdout.split()
     if not ids:
         raise CliError(f"no container for {svc}")
-    return _docker(compose, "start", "-a", ids[0], capture_output=False, text=False).returncode
+    return exit_status(_docker(compose, "start", "-a", ids[0], capture_output=False,
+                               text=False).returncode)
 
 
 def cmd_run_service(name, args):
@@ -226,7 +236,7 @@ def _run(inst, compose, svc, command, pull, job):
     if pull:
         compose.run("pull", svc)
     if not job:
-        return compose.run("run", "--rm", svc, *command, check=False).returncode
+        return exit_status(compose.run("run", "--rm", svc, *command, check=False).returncode)
     return _run_job(inst, compose, svc, command)
 
 
@@ -246,6 +256,10 @@ def _remove_directory(inst, compose):
     service, e.g. smoke tests via run-service, may have written some into a bind-mounted directory
     under it). Its tools link goes, never what it points to; a tools directory (Puppet's
     checkout) stays, and so does the directory then."""
+    if inst.dir.is_symlink():
+        # Only the link: what it points to isn't this instance's to remove.
+        inst.dir.unlink()
+        return f"Removed instance directory {inst.dir}"
     tools = inst.dir / "tools"
     keep_tools = tools.is_dir() and not tools.is_symlink()
 
@@ -263,11 +277,19 @@ def _remove_directory(inst, compose):
     try:
         remove()
     except OSError:
+        owner = f"{os.getuid()}:{os.getgid()}"
+        # Never the kept tools directory: it is Puppet's checkout, whose ownership stays as it is.
+        chown = (["find", "/target", "-mindepth", "1", "-maxdepth", "1", "!", "-name", "tools",
+                  "-exec", "chown", "-R", owner, "{}", "+"] if keep_tools
+                 else ["chown", "-R", owner, "/target"])
         result = _docker(compose, "run", "--rm", "-v", f"{inst.dir}:/target", _alpine_image(inst),
-                         "chown", "-R", f"{os.getuid()}:{os.getgid()}", "/target")
+                         *chown)
         if result.returncode != 0:
             raise InstanceError(f"couldn't remove {inst.dir}: {result.stderr.strip()}")
-        remove()
+        try:
+            remove()
+        except OSError as e:
+            raise InstanceError(f"couldn't remove {inst.dir}: {e}") from None
     if keep_tools:
         note(f"Kept {tools}: it is a checkout, not a link")
         return f"Removed instance {inst.name}'s files from {inst.dir}"

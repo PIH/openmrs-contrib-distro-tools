@@ -3,7 +3,7 @@ from unittest import mock
 
 from pihx import compose, instance, lock
 from pihx.commands import lifecycle
-from pihx.tests.fixtures import TempDirTest, two_service_instance
+from pihx.tests.fixtures import TempDirTest, two_service_instance, write
 from pihx.tests.test_instance_cmds import CommandTest, run
 
 
@@ -51,6 +51,11 @@ class CommandsTest(LifecycleTest):
         self.assertEqual(status, 0, err)
         self.assertEqual(self.compose_calls[:2], [("pull",), ("up", "-d", "--remove-orphans")])
 
+    def test_update_holds_the_lock_once(self):
+        with mock.patch.object(lifecycle.lock, "hold", wraps=lifecycle.lock.hold) as hold:
+            self.assertEqual(self.run_pihx("kz", "update")[0], 0)
+        self.assertEqual(hold.call_count, 1)
+
     def test_start_is_up_and_stop_covers_every_profile(self):
         self.run_pihx("kz", "start")
         self.assertEqual(self.compose_calls[0], ("up", "-d"))
@@ -94,6 +99,16 @@ class SetupChecksTest(LifecycleTest):
         self.assertEqual(str(caught.exception),
                          "db-accounts failed (exit 3; above, or 'pihx kz logs db-accounts')")
         self.assertIn(["logs", "--tail", "20", "abc123"], self.docker_calls)
+
+    def test_an_empty_docker_wait_is_its_own_error(self):
+        def fake_run(compose_self, *args, **kwargs):
+            return done("abc123\n" if args[:1] == ("ps",) else "")
+        self.docker_results = {("wait",): done("")}
+        with mock.patch.object(compose.Compose, "run", fake_run), \
+                mock.patch.object(lifecycle.subprocess, "run", self.fake_docker):
+            with self.assertRaises(lifecycle.CliError) as caught:
+                lifecycle.check_setup_services(self.inst(), compose.Compose(self.inst()))
+        self.assertIn("couldn't wait for db-accounts", str(caught.exception))
 
     def test_a_setup_that_has_no_container_is_skipped(self):
         with mock.patch.object(compose.Compose, "run", lambda *a, **k: done("")), \
@@ -161,6 +176,45 @@ class DestroyTest(LifecycleTest):
         self.assertEqual(status, 0, err)
         self.assertEqual([p.name for p in (self.home / "kz").iterdir()], ["tools"])
 
+    def test_a_symlinked_instance_directory_is_only_unlinked(self):
+        real = self.root / "real"
+        (self.home / "kz").rename(real)
+        (self.home / "kz").symlink_to(real)
+        status, _, err = self.run_pihx("kz", "destroy", "--force")
+        self.assertEqual(status, 0, err)
+        self.assertFalse((self.home / "kz").is_symlink())
+        self.assertTrue((real / "db.env").is_file())
+
+    def test_root_owned_files_are_reclaimed_without_touching_a_kept_tools_directory(self):
+        (self.home / "kz" / "tools").mkdir()
+        (self.home / "kz" / "out").mkdir()
+        write(self.tools / "utils" / "lib" / "images.sh", "ALPINE_IMAGE=alpine:3.21\n")
+        original = lifecycle.shutil.rmtree
+        calls = []
+
+        def rmtree(path, *a, **k):
+            if not calls:
+                calls.append(path)
+                raise PermissionError("root-owned")
+            return original(path, *a, **k)
+        with mock.patch.object(lifecycle.shutil, "rmtree", rmtree):
+            status, _, err = self.run_pihx("kz", "destroy", "--force")
+        self.assertEqual(status, 0, err)
+        chown = next(c for c in self.docker_calls if c[:1] == ["run"])
+        self.assertIn("find", chown)
+        self.assertIn("tools", chown)
+        self.assertEqual(chown[chown.index("alpine:3.21") + 1:][:2], ["find", "/target"])
+        self.assertEqual(chown.count("/target"), 1)
+        self.assertEqual([p.name for p in (self.home / "kz").iterdir()], ["tools"])
+
+    def test_a_removal_that_still_fails_is_an_error_line(self):
+        (self.home / "kz" / "out").mkdir()
+        write(self.tools / "utils" / "lib" / "images.sh", "ALPINE_IMAGE=alpine:3.21\n")
+        with mock.patch.object(lifecycle.shutil, "rmtree", side_effect=PermissionError("denied")):
+            status, _, err = self.run_pihx("kz", "destroy", "--force")
+        self.assertEqual(status, 1)
+        self.assertIn("error: couldn't remove", err)
+
     def test_a_failed_down_falls_back_to_the_project_label(self):
         def fake_run(compose_self, *args, **kwargs):
             return done(returncode=1)
@@ -187,6 +241,14 @@ class RunServiceTest(LifecycleTest):
         with mock.patch.object(compose.Compose, "run", fake_run), \
                 mock.patch.object(lifecycle.subprocess, "run", self.fake_docker):
             return run(["kz", "run-service", *args])
+
+    def test_a_signal_death_is_128_plus_the_signal(self):
+        def fake_run(compose_self, *a, **kwargs):
+            if kwargs.get("stdout") == subprocess.PIPE:
+                return done("app\ndb\n")
+            return done(returncode=-9)
+        with mock.patch.object(compose.Compose, "run", fake_run):
+            self.assertEqual(run(["kz", "run-service", "app", "x"])[0], 137)
 
     def test_an_unknown_service_is_refused(self):
         status, _, err = self.run_service("nope")
