@@ -6,8 +6,13 @@
 # pihx hands to Compose resolve on the host. pihx <instance> ... runs the instance's own checkout
 # (its tools link), whichever bin/pihx was typed.
 #
-# bin/openmrs-docker runs its front end (openmrs/front.py) through this launcher, with
-# PIHX_FRONT_END=openmrs-docker.
+# A front end (bin/openmrs-docker) runs its own Python module through this launcher instead:
+#   PIHX_FRONT_END       the module (e.g. openmrs.front), a .py file in the checkout
+#   PIHX_EXTRA_MOUNTS    host paths it needs in the container, one per line, mounted read-only at
+#                        their own paths (those outside the paths every run mounts)
+#   PIHX_OUTPUT_COMMANDS its commands, besides summary, whose --output this launcher writes
+#   PIHX_RESOLVED_*      host paths it resolved, for its module
+# Without PIHX_FRONT_END, none of these is taken from the caller.
 set -eu
 # A relative cd would otherwise follow CDPATH and print the directory it picked.
 unset CDPATH
@@ -60,12 +65,21 @@ if [ -z "${PIHX_HANDED_OFF-}" ]; then
     esac
 fi
 
-# The Python module to run: pihx, or a front end's.
-case ${PIHX_FRONT_END-} in
-    '') module=pihx ;;
-    openmrs-docker) module=openmrs.front ;;
-    *) die "unknown PIHX_FRONT_END '$PIHX_FRONT_END'" ;;
-esac
+# The Python module to run: pihx, or a front end's, which must be a module of this checkout.
+module=pihx
+if [ -n "${PIHX_FRONT_END-}" ]; then
+    case $PIHX_FRONT_END in
+        [!a-z_]* | *[!a-z0-9_.]* | *..* | *.) die "invalid PIHX_FRONT_END '$PIHX_FRONT_END'" ;;
+    esac
+    [ -f "$PIHX_TOOLS/$(printf '%s' "$PIHX_FRONT_END" | tr . /).py" ] \
+        || die "PIHX_FRONT_END '$PIHX_FRONT_END' isn't a module of $PIHX_TOOLS"
+    module=$PIHX_FRONT_END
+else
+    unset PIHX_EXTRA_MOUNTS PIHX_OUTPUT_COMMANDS
+    for variable in $(env | sed -n 's/^\(PIHX_RESOLVED_[A-Za-z0-9_]*\)=.*/\1/p'); do
+        unset "$variable"
+    done
+fi
 
 # Whether <path> is outside the paths every run mounts, so needs mounting itself.
 outside_mounts() { # <path>
@@ -125,48 +139,18 @@ if [ "${2-}" = initialize ]; then
     fi
 fi
 
-# openmrs-docker initialize: each RESTORE_* path that exists is resolved as on the host (a relative
-# one against the caller's directory; its parent followed through links, so a directory the caller
-# can't enter still resolves) and mounted read-only at that path when it's elsewhere. The front end
-# gets it as PIHX_RESOLVED_<variable>, and reports a path that isn't there as typed.
-restore_mounts=
-for variable in RESTORE_MYSQL_DUMP_PATH RESTORE_MYSQL_DATA_PATH RESTORE_MYSQL_PERCONA_PATH \
-        RESTORE_OPENMRS_DATA_PATH; do
-    unset "PIHX_RESOLVED_$variable"
-    [ -n "${PIHX_FRONT_END-}" ] && [ "${2-}" = initialize ] || continue
-    eval "path=\${$variable-}"
-    [ -n "$path" ] && [ -e "$path" ] || continue
-    case $(basename "$path") in
-        . | ..) resolved=$(cd -P "$path" && pwd) || die "can't resolve $variable ($path)" ;;
-        *)
-            parent=$(cd -P "$(dirname "$path")" && pwd) || die "can't resolve $variable ($path)"
-            resolved=${parent%/}/$(basename "$path")
-            ;;
-    esac
-    eval "PIHX_RESOLVED_$variable=\$resolved"
-    export "PIHX_RESOLVED_$variable"
-    if outside_mounts "$resolved"; then
-        restore_mounts="$restore_mounts $variable"
-    fi
-done
-
-# openmrs-docker build and --build: bin/openmrs-docker has built the distribution in
-# PIHX_DISTRO_SOURCE_DIR, which Compose sends to the daemon as the image's build context, so it is
-# mounted read-only. Never taken from pihx's own callers.
-[ -n "${PIHX_FRONT_END-}" ] || unset PIHX_DISTRO_SOURCE_DIR
-
 # Only a service command that holds an instance's lock sets this, for its own children: never taken
 # from the caller (see lifecycle.cmd_start_locked).
 unset PIHX_LOCK_HELD
 
-# summary --output <file>: the launcher writes the file, on the host, as the caller, from pihx's
-# standard output (the option is taken out of pihx's arguments), so nothing needs mounting. It is
-# written whole or not at all.
+# summary --output <file> (and a front end's PIHX_OUTPUT_COMMANDS): the launcher writes the file, on
+# the host, as the caller, from the module's standard output (the option is taken out of its
+# arguments), so nothing needs mounting. It is written whole or not at all.
 output=
-case ${PIHX_FRONT_END-}:${2-} in
-    *:summary | openmrs-docker:fingerprint) take_output=true ;;
-    *) take_output=false ;;
-esac
+take_output=false
+for command in summary ${PIHX_OUTPUT_COMMANDS-}; do
+    [ "${2-}" != "$command" ] || take_output=true
+done
 if $take_output; then
     command=$2
     inst=$1
@@ -200,12 +184,25 @@ fi
 set -- "$image" python3 -m "$module" "$@"
 [ -z "$use_tools_mount" ] || set -- -v "$use_tools_mount" "$@"
 [ -z "$from_mount" ] || set -- -v "$from_mount" "$@"
-for variable in $restore_mounts; do
-    eval "resolved=\$PIHX_RESOLVED_$variable"
-    set -- -v "$resolved:$resolved:ro" "$@"
-done
-if [ -n "${PIHX_DISTRO_SOURCE_DIR-}" ] && outside_mounts "$PIHX_DISTRO_SOURCE_DIR"; then
-    set -- -v "$PIHX_DISTRO_SOURCE_DIR:$PIHX_DISTRO_SOURCE_DIR:ro" "$@"
+# A front end's extra mounts, one host path per line.
+if [ -n "${PIHX_EXTRA_MOUNTS-}" ]; then
+    saved_ifs=$IFS
+    IFS='
+'
+    set -f
+    for path in $PIHX_EXTRA_MOUNTS; do
+        case $path in
+            /*) ;;
+            *) die "PIHX_EXTRA_MOUNTS: $path isn't an absolute path" ;;
+        esac
+        case $path in *'"'*) die "PIHX_EXTRA_MOUNTS: $path can't be mounted (it has a double quote)" ;; esac
+        # --mount, quoted, so a comma or colon in the path is part of it.
+        if outside_mounts "$path"; then
+            set -- --mount "type=bind,\"source=$path\",\"target=$path\",readonly" "$@"
+        fi
+    done
+    set +f
+    IFS=$saved_ifs
 fi
 
 # The caller's Docker config, for registry credentials (Puppet writes the instance user's). Mounted

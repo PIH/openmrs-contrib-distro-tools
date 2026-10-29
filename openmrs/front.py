@@ -121,6 +121,9 @@ def cmd_create(name, args):
         raise CliError("OPENMRS_IMAGE_NAME must be set to create an instance that includes the "
                        "'openmrs' service")
     values = {n: os.environ[n] for n in FRONT_END_VALUES if os.environ.get(n)}
+    if "DISTRO_SOURCE_DIR" in values and not os.path.isabs(values["DISTRO_SOURCE_DIR"]):
+        raise CliError(f"DISTRO_SOURCE_DIR must be an absolute path, not "
+                       f"'{values['DISTRO_SOURCE_DIR']}'")
     for n, v in values.items():
         try:
             envfile.format_line(n, v)
@@ -150,9 +153,11 @@ def cmd_list(args):
 def distro_source_dir(inst):
     """The instance's DISTRO_SOURCE_DIR (in its instance.env); an error if it has none."""
     value = inst.config().get("DISTRO_SOURCE_DIR", "")
+    where = inst.dir / instance_module.INSTANCE_ENV
     if not value:
-        raise CliError(f"DISTRO_SOURCE_DIR must be set in "
-                       f"{inst.dir / instance_module.INSTANCE_ENV} for this command")
+        raise CliError(f"DISTRO_SOURCE_DIR must be set in {where} for this command")
+    if not os.path.isabs(value):
+        raise CliError(f"DISTRO_SOURCE_DIR in {where} must be an absolute path, not '{value}'")
     return value
 
 
@@ -203,11 +208,24 @@ def cmd_build(name, args):
     return 0
 
 
+# The options of the commands that build.
+BUILD_OPTIONS = {"start": ("--build", "--dev"), "update": ("--build", "--dev"), "build": ()}
+
+
 def cmd_distro_source_dir(name, args):
-    """Internal, for bin/openmrs-docker: prints the instance's DISTRO_SOURCE_DIR, which it builds
-    with Maven on the host before build or --build."""
-    _options("_distro-source-dir", args)
-    print(distro_source_dir(_open(name)))
+    """Internal, for bin/openmrs-docker, given the build command it is about to run (start, update or
+    build, and its options): checks that command as far as it can before Maven builds the
+    distribution on the host (its options, the openmrs service, DISTRO_SOURCE_DIR, and that nothing
+    holds the instance's lock, waiting PIHX_LOCK_WAIT for it as the command would), then prints the
+    instance's DISTRO_SOURCE_DIR."""
+    if not args or args[0] not in BUILD_OPTIONS:
+        raise CliError("usage: _distro-source-dir start|update|build [options]", status=2)
+    command, options = args[0], args[1:]
+    options = _options(command, options, BUILD_OPTIONS[command])
+    inst = _open(name)
+    _compose(inst, build=True, dev="--dev" in options)
+    lock.check(inst, lock.wait_seconds())
+    print(distro_source_dir(inst))
     return 0
 
 

@@ -29,7 +29,7 @@ on:
         type: string
         default: ''
       tools_ref:
-        description: Ref of openmrs-contrib-distro-tools to check out (branch/tag/SHA). Defaults to its default branch. Set this to validate changes to this workflow itself, or to bin/openmrs-docker/docker/services, from a branch before merging.
+        description: Ref of openmrs-contrib-distro-tools to check out (branch/tag/SHA). Defaults to its default branch. Set this to validate changes to this workflow itself, or to bin/openmrs-docker, openmrs/ or services/, from a branch before merging.
         required: false
         type: string
         default: ''

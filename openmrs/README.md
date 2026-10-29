@@ -1,7 +1,8 @@
 # The OpenMRS front end (`openmrs-docker`)
 
 `bin/openmrs-docker` keeps today's `openmrs-docker` command line on top of `pihx`. It is a launcher
-like `bin/pihx` (it runs [`front.py`](front.py) through `bin/pihx`, in `pihx-runtime`), and its
+like `bin/pihx` (it runs [`front.py`](front.py) through `bin/pihx`, in `pihx-runtime`, as
+`PIHX_FRONT_END=openmrs.front`), and its
 instances are `pihx` instances: they live under `PIHX_HOME` (default `~/pihx`), and
 `pihx <name> <command>` works on them too.
 
@@ -49,9 +50,9 @@ can't be made. A volume with no `RESTORE_*` source comes from the seed image, if
 | `RESTORE_MYSQL_PERCONA_PATH` | `openmrs-db.percona/`, or `.percona.7z`/`.zip`/`.tar.gz`/`.tgz`/`.tar` |
 | `RESTORE_OPENMRS_DATA_PATH` | `openmrs/`, or `openmrs.7z`/`.zip`/`.tar.gz`/`.tgz`/`.tar` |
 
-Exactly one database source is needed (a `RESTORE_MYSQL_*` variable or the seed image). `bin/pihx`
-resolves each path on the host and mounts it, read-only, when it's outside the paths it always
-mounts.
+Exactly one database source is needed (a `RESTORE_MYSQL_*` variable or the seed image).
+`bin/openmrs-docker` resolves each path on the host, and `bin/pihx` mounts it read-only when it's
+outside the paths it always mounts.
 
 ## Overlays: modes/
 
@@ -60,9 +61,13 @@ Compose files the front end adds to the instance's for one command:
 - [`modes/dev.yaml`](modes/dev.yaml), for `--dev`: mounts the distribution built in
   `DISTRO_SOURCE_DIR` over the image's, and publishes the Java debug port (`OPENMRS_DEBUG_PORT`).
 - [`modes/build.yaml`](modes/build.yaml), for `build` and `--build`: builds the openmrs image from
-  that distribution. `bin/openmrs-docker` first runs `mvn clean package -U` in `DISTRO_SOURCE_DIR`,
-  on the host (Maven and Java are needed there), and `bin/pihx` mounts the directory read-only, for
-  Compose to send as the build context.
+  that distribution. `bin/openmrs-docker` first runs `mvn clean package -U` in `DISTRO_SOURCE_DIR`
+  (an absolute path), on the host (Maven and Java are needed there), and passes the directory to
+  `bin/pihx` to mount read-only (`PIHX_EXTRA_MOUNTS`), for Compose to send as the build context.
+  Before Maven runs, the command is checked (its options, the openmrs service, and that nothing
+  holds the instance's lock), so one that would be refused doesn't wait for the build. The lock
+  itself is only taken after the build: a command that takes it meanwhile makes this one refuse
+  then, with the distribution already built.
 
 ## Seed images: seed/
 

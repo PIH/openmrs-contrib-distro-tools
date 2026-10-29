@@ -144,7 +144,7 @@ class ModesTest(FrontTest):
     def test_dev_build_and_the_build_command_need_DISTRO_SOURCE_DIR(self):
         self.make()
         for argv in (("start", "--dev"), ("update", "--build"), ("build",),
-                     ("_distro-source-dir",)):
+                     ("_distro-source-dir", "build")):
             with self.subTest(argv=argv):
                 status, _, err = self.front("kz", *argv)
                 self.assertEqual(status, 1)
@@ -154,8 +154,37 @@ class ModesTest(FrontTest):
     def test_distro_source_dir_is_the_instance_s_not_the_caller_s(self):
         self.make(instance="DISTRO_SOURCE_DIR='/src/distro'\n")
         self.set_env({"DISTRO_SOURCE_DIR": "/elsewhere"})
-        status, out, _ = self.front("kz", "_distro-source-dir")
+        status, out, _ = self.front("kz", "_distro-source-dir", "start", "--build")
         self.assertEqual((status, out), (0, "/src/distro\n"))
+
+    def test_the_build_command_is_checked_before_the_build(self):
+        self.make(instance="DISTRO_SOURCE_DIR='/src/distro'\n")
+        for args, message in [(("start", "--force"), "unknown option '--force' for start"),
+                              (("build", "--dev"), "unknown option '--dev' for build"),
+                              (("stop",), "usage: _distro-source-dir"),
+                              ((), "usage: _distro-source-dir")]:
+            with self.subTest(args=args):
+                status, out, err = self.front("kz", "_distro-source-dir", *args)
+                self.assertEqual((status, out), (2, ""))
+                self.assertIn(message, err)
+        self.make("noapp", services=("openmrs-db",), instance="DISTRO_SOURCE_DIR='/src'\n")
+        status, _, err = self.front("noapp", "_distro-source-dir", "build")
+        self.assertIn("no openmrs service", err)
+        with mock.patch.object(front.lock, "check", side_effect=front.lock.LockError("kz is busy")):
+            status, out, err = self.front("kz", "_distro-source-dir", "build")
+        self.assertEqual((status, out), (1, ""))
+        self.assertIn("kz is busy", err)
+
+    def test_DISTRO_SOURCE_DIR_must_be_absolute(self):
+        self.make(instance="DISTRO_SOURCE_DIR='src/distro'\n")
+        status, _, err = self.front("kz", "_distro-source-dir", "build")
+        self.assertEqual(status, 1)
+        self.assertIn("must be an absolute path", err)
+        self.set_env({"SERVICES": "openmrs-db", "DISTRO_SOURCE_DIR": "relative"})
+        status, _, err = self.front("new", "create")
+        self.assertEqual(status, 1)
+        self.assertIn("DISTRO_SOURCE_DIR must be an absolute path", err)
+        self.assertFalse((self.home / "new").exists())
 
 
 class RunServiceTest(FrontTest):

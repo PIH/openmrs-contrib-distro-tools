@@ -57,8 +57,12 @@ restored database's old one, is replaced), creates the databases and applies the
 declaration missing a value changes nothing; anything else wrong fails with MySQL's own error. Either
 way its log (`openmrs-docker <name> logs openmrs-db-accounts`) says why. Accounts that aren't declared, and the same user's accounts for other
 hosts, are left alone: removing one is up to you. `root` and the OpenMRS account (`OPENMRS_DB_USER`) can't be declared: their passwords are the instance's own (`OPENMRS_DB_*`). If it fails, so do `start` and `update`, naming it,
-and a lock-holding `run-service` (petl) doesn't run. A service can declare its own account in its
-`.env.defaults`, as petl does.
+and a lock-holding `run-service` (petl) doesn't run.
+
+Accounts declared directly in `openmrs-db.env` also reach the database container (it reads that
+file too), so changing one recreates `openmrs-db` on the next `start`/`update`. A service's account
+belongs in its own `with-openmrs-db.yaml`, from values in its own env file, as petl's does: then only
+`openmrs-db-accounts` sees it, and changing it leaves the database running.
 
 ## OpenHIM and mediators
 
