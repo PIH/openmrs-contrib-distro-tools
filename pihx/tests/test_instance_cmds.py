@@ -244,6 +244,8 @@ class ConfigAndListTest(CommandTest):
         write(self.home / "puppet" / "db.env", "")
         (self.home / "puppet" / "tools").mkdir()
         (self.home / "empty").mkdir()
+        write(self.home / "dotfiles" / ".env", "")
+        write(self.home / "kz" / ".env", "")
         (self.home / "Not_An_Instance").mkdir()
         write(self.home / "a-file", "")
         status, out, err = self.run_pihx("list")

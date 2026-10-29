@@ -23,6 +23,11 @@ class InstanceTest(TempDirTest):
         (self.home / "kz" / "app.env").unlink()
         self.assertEqual([s.name for s in self.open().services], ["db"])
 
+    def test_dotfiles_are_not_services(self):
+        write(self.home / "kz" / ".env", "X=1\n")
+        write(self.home / "kz" / ".app.env", "X=1\n")
+        self.assertEqual([s.name for s in self.open().services], ["app", "db"])
+
     def test_unknown_service_env_file_is_an_error(self):
         write(self.home / "kz" / "opnmrs.env", "")
         with self.assertRaises(instance.InstanceError) as raised:

@@ -186,7 +186,7 @@ def instances(home):
         if not d.is_dir() or instance_module.instance_name_error(d.name):
             continue
         svcs = sorted(f.name[:-len(".env")] for f in d.glob("*.env")
-                      if f.name != instance_module.INSTANCE_ENV)
+                      if f.name != instance_module.INSTANCE_ENV and not f.name.startswith("."))
         if svcs or (d / instance_module.INSTANCE_ENV).is_file():
             found.append((d, svcs))
     return found

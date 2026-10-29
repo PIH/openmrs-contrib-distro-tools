@@ -82,7 +82,8 @@ def open(home, name, tools=None):
     tools = Path(tools).absolute()
     found = []
     for env_file in sorted(instance_dir.glob("*.env")):
-        if env_file.name == INSTANCE_ENV:
+        # A dotfile (e.g. `.env`) is no service's: Python's glob matches it, unlike a shell's.
+        if env_file.name == INSTANCE_ENV or env_file.name.startswith("."):
             continue
         svc = env_file.name[:-len(".env")]
         if not (tools / "services" / svc).is_dir():
