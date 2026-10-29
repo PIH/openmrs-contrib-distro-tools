@@ -49,7 +49,7 @@ When `wait` finishes, go to `http://localhost:8080/openmrs` (or the instance's `
 pihx <name> logs [service]   # follow the logs, of every service by default
 pihx <name> status           # the containers, and the command holding the lock, if any
 pihx <name> stop             # removes the containers; the data stays in the volumes
-pihx <name> destroy          # removes the containers, the volumes and the instance directory (asks first)
+pihx <name> destroy          # removes the containers, the volumes and the instance directory (asks first; refuses a directory without instance.env)
 pihx list                    # the instances, with their services and the checkout each runs
 pihx <name> config           # the merged values, secrets masked
 ```

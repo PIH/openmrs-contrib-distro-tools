@@ -377,6 +377,10 @@ def cmd_destroy(name, args):
             raise
         note(f"warning: {e}")
         inst = Instance(name=name, dir=instance_dir, tools=tools_dir(), services=[])
+    # PIHX_HOME may be /home, whose other directories are users' homes: only an instance's goes.
+    if not (inst.dir / instance_module.INSTANCE_ENV).is_file():
+        raise InstanceError(f"{inst.dir} has no {instance_module.INSTANCE_ENV}, so it isn't an "
+                            "instance: not destroying it")
     if not force:
         print(f"This will stop the stack, delete all volumes, and remove {inst.dir}.")
         try:

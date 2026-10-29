@@ -156,6 +156,20 @@ class DestroyTest(LifecycleTest):
                 self.assertTrue((self.home / "kz").is_dir())
         self.assertEqual(self.compose_calls, [])
 
+    def test_a_directory_without_instance_env_is_refused(self):
+        (self.home / "kz" / "instance.env").unlink()
+        (self.home / "user").mkdir()
+        for name in ("kz", "user"):
+            with self.subTest(name=name):
+                status, _, err = self.run_pihx(name, "destroy", "--force")
+                self.assertEqual(status, 1)
+                self.assertIn(f"{self.home / name} has no instance.env, so it isn't an instance",
+                              err)
+                self.assertTrue((self.home / name).is_dir())
+        self.assertTrue((self.home / "kz" / "db.env").is_file())
+        self.assertEqual(self.compose_calls, [])
+        self.assertEqual(self.docker_calls, [])
+
     def test_eof_at_the_prompt_leaves_the_instance(self):
         with mock.patch("builtins.input", side_effect=EOFError):
             self.assertEqual(self.run_pihx("kz", "destroy")[0], 0)
