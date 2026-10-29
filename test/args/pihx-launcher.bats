@@ -82,7 +82,7 @@ copy_tools() { # <dir>
     echo 'RUN exit 3' >> tools/images/pihx-runtime/Dockerfile
     run tools/bin/pihx version
     assert_failure
-    assert_line --index -1 --regexp '^error: couldn.t build pihx-runtime:[0-9a-f]{12}$'
+    assert_line --index -1 --regexp '^error: couldn.t build partnersinhealth/pihx-runtime:[0-9a-f]{12}$'
 }
 
 @test "a non-local DOCKER_HOST is refused" {

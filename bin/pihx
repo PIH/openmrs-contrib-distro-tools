@@ -99,8 +99,10 @@ esac
 socket_gid=$(stat -c %g "$socket" 2>/dev/null || stat -f %g "$socket" 2>/dev/null) \
     || die "can't read the Docker socket $socket"
 
-image=pihx-runtime:$("$PIHX_TOOLS/lib/image-tag.sh" "$PIHX_TOOLS/images/pihx-runtime")
-if ! docker image inspect "$image" >/dev/null 2>&1; then
+image=partnersinhealth/pihx-runtime:$("$PIHX_TOOLS/lib/image-tag.sh" "$PIHX_TOOLS/images/pihx-runtime")
+# Pulled when CI has published the tag; built here only when it hasn't (a changed Dockerfile).
+if ! docker image inspect "$image" >/dev/null 2>&1 \
+        && ! docker pull -q "$image" >/dev/null 2>&1; then
     echo "Building $image" >&2
     docker build -q -t "$image" "$PIHX_TOOLS/images/pihx-runtime" >/dev/null \
         || die "couldn't build $image"
