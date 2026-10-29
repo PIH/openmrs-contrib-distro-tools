@@ -4,6 +4,9 @@
 # compose.yaml). Anything else -- openmrs-db not healthy, a failed or timed-out query, unexpected
 # output, any table -- prints false, with one line saying why. Nothing is ever written or dropped:
 # it starts openmrs-db and reads information_schema, that's all.
+# It decides only when there's no openmrs container. An existing one (in any state) keeps the value
+# it has, so this value never recreates it: a recreate part way through OpenMRS's first install
+# could leave a half-built schema that the next start would take for an installed one.
 set -u
 
 decide() { # <true|false> <why>
@@ -14,6 +17,22 @@ decide() { # <true|false> <why>
 
 if [ -n "${OPENMRS_CREATE_TABLES:-}" ]; then
     decide false "OPENMRS_CREATE_TABLES=$OPENMRS_CREATE_TABLES (openmrs.env) decides whether OpenMRS creates its tables"
+fi
+
+if ! ids=$(docker compose --project-directory "$PIHX_INSTANCE_DIR" ps -a -q openmrs 2>/dev/null); then
+    decide false "warning: couldn't tell whether the openmrs container exists: OpenMRS won't create tables"
+fi
+if [ -n "$ids" ]; then
+    id=$(printf '%s\n' "$ids" | head -n 1)
+    # shellcheck disable=SC2016 # a Go template
+    if ! env=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$id" 2>/dev/null); then
+        decide false "warning: couldn't read the openmrs container's settings: OpenMRS won't create tables"
+    fi
+    case $(printf '%s\n' "$env" | sed -n 's/^OMRS_CONFIG_CREATE_TABLES=//p') in
+        true) decide true "the openmrs container exists: keeping its create_tables (true)" ;;
+        false) decide false "the openmrs container exists: keeping its create_tables (false)" ;;
+        *) decide false "warning: the openmrs container's create_tables is unreadable: OpenMRS won't create tables" ;;
+    esac
 fi
 
 # Compose's progress to stderr: standard output is only for the value.

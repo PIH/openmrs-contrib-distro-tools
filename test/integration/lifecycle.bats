@@ -43,7 +43,8 @@ create_tables() { # what the running openmrs container got
     docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$NAME-openmrs" | sed -n 's/^OMRS_CONFIG_CREATE_TABLES=//p'
 }
 
-@test "a new instance's first start has OpenMRS create the tables; once the database has tables, start doesn't" {
+@test "a new instance's first start has OpenMRS create the tables; an existing container keeps its value; once the database has tables, a new container doesn't" {
+    local id
     create_with_stub
     run "$BIN/openmrs-docker" "$NAME" start
     assert_success
@@ -52,8 +53,18 @@ create_tables() { # what the running openmrs container got
     assert_success
     run create_tables
     assert_output true
-    # What OpenMRS's install would do.
+    id=$(docker inspect -f '{{.Id}}' "$NAME-openmrs")
+    # What OpenMRS's install would do, part way.
     mysql_exec "$NAME-openmrs-db" openmrs 'CREATE TABLE openmrs.installed (id INT)'
+    # A second start while the container exists keeps its value and doesn't recreate it.
+    run "$BIN/openmrs-docker" "$NAME" start
+    assert_success
+    assert_output --partial 'openmrs: the openmrs container exists: keeping its create_tables (true)'
+    assert_equal "$(docker inspect -f '{{.Id}}' "$NAME-openmrs")" "$id"
+    run create_tables
+    assert_output true
+    # stop removes the container: the next start decides from the database.
+    "$BIN/openmrs-docker" "$NAME" stop >/dev/null 2>&1
     run "$BIN/openmrs-docker" "$NAME" start
     assert_success
     assert_output --partial "openmrs: the database has tables: OpenMRS won't create them"

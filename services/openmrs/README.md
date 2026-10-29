@@ -27,8 +27,12 @@ zero gives true, for that start only; anything else -- tables, a failed or timed
 recorded, and a plain `docker compose up` that bypasses pihx gets false. `OPENMRS_CREATE_TABLES`
 in `openmrs.env`, if set, decides instead.
 
-After the first start of a new instance (true), the next start finds tables and recreates the
-`openmrs` container with false.
+It decides only when there is no `openmrs` container. While one exists, in any state, a start or
+update keeps the value that container has (read with `docker inspect`), so this value never
+recreates it: a recreate part way through OpenMRS's first install could leave a half-built schema
+that the next start would take for an installed one. If that value can't be read, it's false, with
+a warning. `pihx <name> stop` removes the container, so the start after it decides from the
+database again.
 
 ## Runtime properties (`OMRS_EXTRA_*`)
 

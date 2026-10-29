@@ -10,11 +10,14 @@ SCRIPT="$REPO_ROOT/services/openmrs/start/create-tables"
 setup() {
     cd "$BATS_TEST_TMPDIR"
     mkdir bin
-    # FAKE_UP / FAKE_EXEC: exit statuses; FAKE_COUNTS: what the query prints.
+    # FAKE_PS / FAKE_INSPECT / FAKE_UP / FAKE_EXEC: exit statuses; FAKE_IDS: the openmrs container's
+    # id (none by default); FAKE_ENV: its environment; FAKE_COUNTS: what the query prints.
     cat > bin/docker <<'FAKE'
 #!/bin/bash
 printf '%s\n' "$*" >> "$BATS_TEST_TMPDIR/docker-calls"
 case " $* " in
+    *" ps "*) [ "${FAKE_PS:-0}" -eq 0 ] || exit "$FAKE_PS"; printf '%b' "${FAKE_IDS-}" ;;
+    " inspect "*) [ "${FAKE_INSPECT:-0}" -eq 0 ] || exit "$FAKE_INSPECT"; printf '%b' "${FAKE_ENV-}" ;;
     *" up "*) exit "${FAKE_UP:-0}" ;;
     *" exec "*) [ "${FAKE_EXEC:-0}" -eq 0 ] || exit "$FAKE_EXEC"; printf '%b' "${FAKE_COUNTS-}" ;;
     *) exit 99 ;;
@@ -69,11 +72,41 @@ FAKE
 
 @test "it only starts openmrs-db and reads information_schema" {
     FAKE_COUNTS='1\n0\n' run "$SCRIPT"
-    run grep '^compose ' docker-calls
-    assert_line --index 0 "compose --project-directory $BATS_TEST_TMPDIR up -d --wait --wait-timeout 600 openmrs-db"
-    assert_line --index 1 --regexp "^compose --project-directory $BATS_TEST_TMPDIR exec -T openmrs-db sh -c "
-    [ "${#lines[@]}" -eq 2 ]
+    run grep -E '^(compose|inspect) ' docker-calls
+    assert_line --index 0 "compose --project-directory $BATS_TEST_TMPDIR ps -a -q openmrs"
+    assert_line --index 1 "compose --project-directory $BATS_TEST_TMPDIR up -d --wait --wait-timeout 600 openmrs-db"
+    assert_line --index 2 --regexp "^compose --project-directory $BATS_TEST_TMPDIR exec -T openmrs-db sh -c "
+    [ "${#lines[@]}" -eq 3 ]
     run grep -Eiw 'drop|truncate|delete|insert|update|alter|create|down|volume|rm' docker-calls
     assert_failure
     [ "$(grep -o 'SELECT COUNT(\*) FROM information_schema' docker-calls | wc -l)" -eq 2 ]
+}
+
+@test "an existing openmrs container keeps its value, whatever the database holds, and the database isn't checked" {
+    local value
+    for value in true false; do
+        rm -f docker-calls
+        FAKE_IDS='abc\n' FAKE_ENV="A=1\nOMRS_CONFIG_CREATE_TABLES=$value\n" FAKE_COUNTS='1\n5\n' \
+            run --separate-stderr "$SCRIPT"
+        assert_success
+        assert_output "OPENMRS_DB_FOUND_EMPTY=$value"
+        [[ "$stderr" == *"the openmrs container exists: keeping its create_tables ($value)"* ]]
+        run grep -cE ' (up|exec) ' docker-calls
+        assert_output 0
+    done
+}
+
+@test "an existing container whose value can't be read, or a failed lookup, gives false with a warning" {
+    FAKE_PS=1 run --separate-stderr "$SCRIPT"
+    assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
+    [[ "$stderr" == *"warning: couldn't tell whether the openmrs container exists"* ]]
+    FAKE_IDS='abc\n' FAKE_INSPECT=1 run --separate-stderr "$SCRIPT"
+    assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
+    [[ "$stderr" == *"warning: couldn't read the openmrs container's settings"* ]]
+    local env
+    for env in 'A=1\n' 'OMRS_CONFIG_CREATE_TABLES=yes\n' 'OMRS_CONFIG_CREATE_TABLES=true\nOMRS_CONFIG_CREATE_TABLES=true\n'; do
+        FAKE_IDS='abc\n' FAKE_ENV=$env FAKE_COUNTS='1\n0\n' run --separate-stderr "$SCRIPT"
+        assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
+        [[ "$stderr" == *"warning: the openmrs container's create_tables is unreadable"* ]] || fail "$env: $stderr"
+    done
 }
