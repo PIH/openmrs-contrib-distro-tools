@@ -35,6 +35,10 @@ files](env.md#where-values-come-from)). `--services=<comma-separated>` chooses t
 instance's volumes from a seed image or a backup, which is much faster than OpenMRS building them up
 itself.
 
+If volumes named `<name>_...` already exist (left by an earlier instance of that name, or one you
+are converting in place), `create` warns and lists them: the new instance uses them, and `destroy`
+would remove them.
+
 ## Starting, stopping and logs
 
 ```bash

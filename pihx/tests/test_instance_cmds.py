@@ -2,6 +2,7 @@ import contextlib
 import io
 import os
 import stat
+import subprocess
 from unittest import mock
 
 from pihx import cli, compose, instance, lock
@@ -26,6 +27,8 @@ class CommandTest(TempDirTest):
         self.home.mkdir()
         self.compose_calls = []
         self.compose_error = None
+        # What `docker volume ls -q` gives (create's check for existing volumes).
+        self.volume_ls = subprocess.CompletedProcess([], 0, stdout="", stderr="")
         self.set_env({})
 
     def set_env(self, environ):
@@ -40,7 +43,8 @@ class CommandTest(TempDirTest):
             self.compose_calls.append(args)
             if self.compose_error:
                 raise self.compose_error
-        with mock.patch.object(compose.Compose, "run", fake_run):
+        with mock.patch.object(compose.Compose, "run", fake_run), \
+                mock.patch.object(compose, "docker", lambda argv, **kw: self.volume_ls):
             return run(list(argv))
 
     def read(self, instance_name, file_name):
@@ -61,6 +65,20 @@ class CreateTest(CommandTest):
                          ["app.env", "db.env", "instance.env", "tools"])
         self.assertEqual(os.readlink(self.home / "kz" / "tools"), str(self.tools))
         self.assertEqual(self.compose_calls, [("config", "-q")])
+
+    def test_existing_volumes_of_the_project_are_warned_of_not_refused(self):
+        self.volume_ls = subprocess.CompletedProcess(
+            [], 0, stdout="kz_db-data\nkz_petl-data\nkzz_db-data\nother_kz_x\n", stderr="")
+        status, _, err = self.run_pihx("kz", "create", "--services=db")
+        self.assertEqual(status, 0, err)
+        self.assertIn("warning: volumes named kz_... already exist: kz_db-data, kz_petl-data. kz "
+                      "will use them, and 'pihx kz destroy' would remove them.", err)
+        self.assertNotIn("kzz_", err)
+        self.assertTrue((self.home / "kz" / "instance.env").is_file())
+        self.volume_ls = subprocess.CompletedProcess([], 1, stdout="", stderr="no daemon")
+        status, _, err = self.run_pihx("ky", "create", "--services=db")
+        self.assertEqual(status, 0, err)
+        self.assertIn("warning: couldn't check for existing volumes named ky_...: no daemon", err)
 
     def test_nothing_is_written_for_unset_defaults(self):
         status, _, err = self.run_pihx("kz", "create", "--services=db")

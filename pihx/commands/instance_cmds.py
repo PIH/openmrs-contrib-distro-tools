@@ -162,6 +162,20 @@ def check_create(name, args):
     return selected
 
 
+def warn_of_existing_volumes(name):
+    """Warns when volumes named <name>_... already exist: the new instance's project is <name>, so
+    it will use them (as converting an instance in place relies on), and destroy would remove them."""
+    result = compose_module.docker(["docker", "volume", "ls", "-q"], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"warning: couldn't check for existing volumes named {name}_...: "
+              f"{(result.stderr or '').strip()}", file=sys.stderr)
+        return
+    existing = sorted(v for v in result.stdout.split() if v.startswith(f"{name}_"))
+    if existing:
+        print(f"warning: volumes named {name}_... already exist: {', '.join(existing)}. {name} "
+              f"will use them, and 'pihx {name} destroy' would remove them.", file=sys.stderr)
+
+
 def cmd_create(name, args):
     selected = check_create(name, args)
     names = [s.name for s in selected]
@@ -184,6 +198,7 @@ def cmd_create(name, args):
         shutil.rmtree(instance_dir, ignore_errors=True)
         raise
     print(f"Created {instance_dir} with {', '.join(sorted(names))}", file=sys.stderr)
+    warn_of_existing_volumes(name)
     return 0
 
 
