@@ -531,6 +531,45 @@ destroyed() { ls -d "$PIHX_HOME/$NAME".destroyed-* 2>/dev/null; }
     assert [ -f "$DIR/instance.env" ]
 }
 
+# Fails, naming them, if anything under <dir>... isn't owned by the caller's uid and gid.
+assert_owned_by_caller() { # <dir>...
+    assert_equal "$(find "$@" ! -uid "$(id -u)")" ""
+    assert_equal "$(find "$@" ! -gid "$(id -g)")" ""
+}
+
+@test "everything start, stop, archive and destroy make on the host is the caller's" {
+    # Its own PIHX_HOME, so only this test's instance is in it. modality-simulator's config and
+    # image directories default to bind sources in the instance directory.
+    export PIHX_HOME="$BATS_TEST_TMPDIR/home"
+    DIR="$PIHX_HOME/$NAME"
+    mkdir "$PIHX_HOME"
+    unset MODALITY_SIMULATOR_IMAGE_DIR
+    create modality-simulator biometrics
+    assert_owned_by_caller "$PIHX_HOME"
+    run "$BIN/pihx" "$NAME" start
+    assert_success
+    assert [ -d "$DIR/modality-simulator-config" ]
+    assert [ -d "$DIR/modality-simulator-images" ]
+    assert_owned_by_caller "$PIHX_HOME"
+    run "$BIN/pihx" "$NAME" stop
+    assert_success
+    assert_owned_by_caller "$PIHX_HOME"
+    run "$BIN/pihx" "$NAME" archive
+    assert_success
+    assert [ -n "$(ls -d "$PIHX_HOME/$NAME".archive-*)" ]
+    assert_owned_by_caller "$PIHX_HOME"
+    run "$BIN/pihx" "$NAME" archive --to="$BATS_TEST_TMPDIR/to"
+    assert_success
+    assert [ -f "$BATS_TEST_TMPDIR/to/RESTORE.txt" ]
+    assert_owned_by_caller "$PIHX_HOME" "$BATS_TEST_TMPDIR/to"
+    export NAME
+    destroy_typing "$NAME" delete
+    assert_success
+    assert [ ! -e "$DIR" ]
+    assert [ -n "$(destroyed)" ]
+    assert_owned_by_caller "$PIHX_HOME" "$BATS_TEST_TMPDIR/to"
+}
+
 @test "a job's kept container and volume go with destroy" {
     create openmrs-db petl
     "$BIN/pihx" "$NAME" start >/dev/null 2>&1
