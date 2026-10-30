@@ -17,6 +17,7 @@ it adds or changes:
   create [--services=a,b]    --services defaults to openmrs-db,openmrs; with openmrs,
                              OPENMRS_IMAGE_NAME must be set, and OPENMRS_DISTRO_DIR is kept in
                              openmrs.env
+  add-service openmrs        The same checks, and OPENMRS_DISTRO_DIR kept in openmrs.env
   start [--build] [--dev]    --build: build the distribution in OPENMRS_DISTRO_DIR (Maven, on this
                              host) and its image first; --dev: mount the distribution built there
                              over the image's, and publish the Java debug port (OPENMRS_DEBUG_PORT)
@@ -48,7 +49,7 @@ def _options(command, args, allowed=()):
     return set(args)
 
 
-# --- create ---------------------------------------------------------------------------------------
+# --- create, add-service ---------------------------------------------------------------------------
 
 def _openmrs_values():
     """For an instance gaining openmrs: checks OPENMRS_IMAGE_NAME, and returns the caller's
@@ -80,6 +81,22 @@ def cmd_create(name, args):
         except BaseException:
             shutil.rmtree(instance_dir, ignore_errors=True)
             raise
+    return 0
+
+
+def cmd_add_service(name, args):
+    """pihx's add-service, with OpenMRS's values when the service is openmrs."""
+    inst, svc = instance_cmds.check_add_service(name, args)
+    distro_dir = _openmrs_values() if svc.name == "openmrs" else None
+    instance_cmds.cmd_add_service(name, args)
+    if distro_dir:
+        path = inst.dir / "openmrs.env"
+        with lock.hold(inst, lock.wait_seconds(), command="add-service"):
+            try:
+                envfile.set_value(path, DISTRO_DIR, distro_dir)
+            except BaseException:
+                path.unlink()
+                raise
     return 0
 
 
@@ -186,6 +203,7 @@ def cmd_initialize(name, args):
 # The commands this extension adds or takes the place of; each takes (instance, args).
 COMMANDS = {
     "create": cmd_create,
+    "add-service": cmd_add_service,
     "start": cmd_start,
     "update": cmd_update,
     "build": cmd_build,

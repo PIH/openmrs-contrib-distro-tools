@@ -145,6 +145,40 @@ class CreateTest(ExtensionTest):
         self.assertIn("already exists", result[2])
 
 
+class AddServiceTest(ExtensionTest):
+    def test_openmrs_gets_the_distro_dir(self):
+        self.make(services=("openmrs-db",))
+        self.set_env({"OPENMRS_IMAGE_NAME": "pih/emr", "OPENMRS_DISTRO_DIR": "/src/distro"})
+        status, _, err = self.openmrs_docker("kz", "add-service", "openmrs")
+        self.assertEqual(status, 0, err)
+        self.assertEqual(self.read("kz", "openmrs.env"),
+                         "OPENMRS_IMAGE_NAME='pih/emr'\nOPENMRS_DISTRO_DIR='/src/distro'\n")
+        self.assertEqual((self.home / "kz" / "openmrs.env").stat().st_mode & 0o777, 0o600)
+
+    def test_openmrs_is_checked_as_create_checks_it(self):
+        self.make(services=("openmrs-db",))
+        for environ, message in (({}, "OPENMRS_IMAGE_NAME must be set"),
+                                 ({"OPENMRS_IMAGE_NAME": "pih/emr", "OPENMRS_DISTRO_DIR": "rel"},
+                                  "OPENMRS_DISTRO_DIR must be an absolute path")):
+            with self.subTest(environ=environ):
+                self.set_env(environ)
+                status, _, err = self.openmrs_docker("kz", "add-service", "openmrs")
+                self.assertEqual(status, 1)
+                self.assertIn(message, err)
+                self.assertFalse((self.home / "kz" / "openmrs.env").exists())
+        self.assertEqual(self.compose_calls, [])
+
+    def test_pihx_s_checks_come_first_and_other_services_are_pihx_s(self):
+        self.make()
+        for argv in (("add-service", "openmrs"), ("add-service",), ("add-service", "nosuch")):
+            with self.subTest(argv=argv):
+                self.assertEqual(self.openmrs_docker("kz", *argv), self.pihx("kz", *argv))
+        self.set_env({"OPENMRS_DISTRO_DIR": "/src/distro"})
+        status, _, err = self.openmrs_docker("kz", "add-service", "openmrs-smoke-tests")
+        self.assertEqual(status, 0, err)
+        self.assertNotIn("OPENMRS_DISTRO_DIR", self.read("kz", "openmrs-smoke-tests.env"))
+
+
 class ModesTest(ExtensionTest):
     DISTRO = {"openmrs": "OPENMRS_DISTRO_DIR='/src/distro'\n"}
 

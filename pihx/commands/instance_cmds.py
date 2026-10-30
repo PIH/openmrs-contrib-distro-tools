@@ -230,7 +230,9 @@ def cmd_config(name, args):
     return 0
 
 
-def cmd_add_service(name, args):
+def check_add_service(name, args):
+    """add-service's checks before it writes anything (its arguments, the instance, the service and
+    what it requires): (the instance, the service to add)."""
     if len(args) != 1:
         raise CliError("usage: pihx <instance> add-service <service>", status=2)
     inst = instance_module.open(instance_module.home(), name, tools=tools_dir())
@@ -242,6 +244,11 @@ def cmd_add_service(name, args):
     if svc.name in present:
         raise InstanceError(f"{name} already has {svc.name}")
     _check_requires(svc, present)
+    return inst, svc
+
+
+def cmd_add_service(name, args):
+    inst, svc = check_add_service(name, args)
     selected = inst.services + [svc]
     _, values = captured_values(inst.tools, selected, dict(os.environ))
     text = _text(values[svc.name])

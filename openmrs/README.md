@@ -11,6 +11,7 @@ What it adds or changes (`openmrs-docker help` lists them after `pihx`'s command
 | Command | What the extension does |
 |---|---|
 | `<name> create [--services=a,b]` | `--services` defaults to `openmrs-db,openmrs`; with `openmrs`, `OPENMRS_IMAGE_NAME` must be set, and `OPENMRS_DISTRO_DIR` (if set) is written to `openmrs.env` |
+| `<name> add-service openmrs` | The same `OPENMRS_IMAGE_NAME` check, and `OPENMRS_DISTRO_DIR` written to `openmrs.env`; any other service is `pihx`'s |
 | `<name> start` / `update [--build] [--dev]` | `--build` and `--dev` add the overlays below; without them it's `pihx`'s |
 | `<name> build` | Builds the distribution and its OpenMRS image from `OPENMRS_DISTRO_DIR` |
 | `<name> initialize --from-image <image>` | `pihx`'s, and says when the image is probably an old-format seed |
@@ -32,8 +33,8 @@ old command names or orders:
 ## OPENMRS_DISTRO_DIR
 
 The path to the OpenMRS distribution's Maven project (an absolute path), which `build`, `--build`
-and `--dev` use. `create` writes it to the instance's `openmrs.env` when it's set in your
-environment; edit it there afterwards. Only the extension reads it.
+and `--dev` use. `create` (or `add-service openmrs`) writes it to the instance's `openmrs.env` when
+it's set in your environment; edit it there afterwards. Only the extension reads it.
 
 ## Overlays: modes/
 
