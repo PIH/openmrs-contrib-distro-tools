@@ -2,7 +2,7 @@ import os
 import stat
 
 from pihx import instance, lock, services
-from pihx.commands import wait
+from pihx.commands import service_cmds, wait
 from pihx.tests.fixtures import two_service_instance, write
 from pihx.tests.test_instance_cmds import CommandTest, run
 
@@ -36,6 +36,19 @@ class CommandsTest(ServiceCommandTest):
         self.assertIn("Says bye", out)
         self.assertNotIn("no-lock", out)
         self.assertIn("db has no commands.", run(["kz", "db"])[1])
+
+    def test_a_description_is_the_first_sentence_across_comment_lines(self):
+        for name, body, expected in [
+            ("two-lines", "# Sets the accounts to the passwords now\n# in the env files. Then more.\n",
+             "Sets the accounts to the passwords now in the env files."),
+            ("blank", "# pihx: no-lock\n# Lists things\n# still the same\n#\n# Details. Later.\n",
+             "Lists things still the same"),
+            ("one", "# Just one sentence.\nset -e\n", "Just one sentence."),
+            ("none", "set -e\n", ""),
+        ]:
+            path = self.app / "commands" / name
+            script(path, body)
+            self.assertEqual(service_cmds.description(path), expected, name)
 
     def test_a_command_runs_with_the_script_environment_and_its_arguments(self):
         script(self.app / "commands" / "hello",

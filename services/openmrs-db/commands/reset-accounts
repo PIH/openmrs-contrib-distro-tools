@@ -1,6 +1,6 @@
 #!/bin/bash
-# Sets the MySQL accounts and OpenMRS's connection settings to the passwords now in the instance's
-# env files (e.g. after rotating them). Changing the files alone changes neither: MySQL takes
+# Sets the MySQL accounts and OpenMRS's connection settings to the passwords now in the env files.
+# Run it after rotating them: changing the files alone changes neither: MySQL takes
 # OPENMRS_DB_ROOT_PASSWORD/OPENMRS_DB_PASSWORD only when it sets up an empty data directory, and
 # openmrs-core 2.6+ applies its connection settings only on its first install. The instance is
 # stopped for it and started again. Run through pihx, which holds the instance lock and sets the

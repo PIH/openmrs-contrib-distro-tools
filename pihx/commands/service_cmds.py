@@ -1,7 +1,7 @@
 """pihx <instance> <service> [<command> [args...]]: a service's own commands, the executable files
 in its commands/ directory. They run like its scripts (pihx/script.py), holding the instance lock
 unless the file's first lines contain `# pihx: no-lock` (for one that only reads). A command's
-description is the first comment line after its shebang."""
+description is the first sentence of the comment after its shebang."""
 
 import contextlib
 
@@ -25,10 +25,24 @@ def wants_lock(path):
 
 
 def description(path):
+    """The first sentence of the header comment: its lines joined, up to the first ". " or the first
+    blank comment line."""
+    words = []
     for line in _header(path)[1:]:
-        if line.startswith("#") and not line.startswith(NO_LOCK):
-            return line.lstrip("# ").strip()
-    return ""
+        if not line.startswith("#"):
+            break
+        if line.startswith(NO_LOCK):
+            continue
+        text = line.lstrip("# ").strip()
+        if not text:
+            if words:
+                break
+            continue
+        words.append(text)
+        joined = " ".join(words)
+        if ". " in joined:
+            return joined.split(". ", 1)[0] + "."
+    return " ".join(words)
 
 
 def is_service(name):
