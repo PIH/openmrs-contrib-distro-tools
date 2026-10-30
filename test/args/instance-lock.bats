@@ -37,8 +37,10 @@ hold_lock() {
 }
 
 @test "run-service refuses while the lock is held, but doesn't hold it itself" {
+    printf 'services:\n  job:\n    image: alpine:3.21\n    profiles: ["job"]\n' \
+        > "$PIHX_HOME/$NAME/openmrs-db.override.yaml"
     hold_lock
-    run "$BIN/openmrs-docker" "$NAME" run-service openmrs-db true
+    run "$BIN/openmrs-docker" "$NAME" run-service job true
     assert_failure
     assert_output --partial "is busy"
 }
