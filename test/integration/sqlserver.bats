@@ -69,12 +69,18 @@ sqlcmd_as() { # <login> <password> <query>
     assert_output 1
 }
 
-@test "a password SQL Server's policy refuses (here: containing the login name) fails start, with SQL Server's message" {
+@test "a password SQL Server's policy refuses (here: containing the login name) fails start before anything is created" {
     printf "SQLSERVER_LOGIN_PETL_USER='petl'\nSQLSERVER_LOGIN_PETL_PASSWORD='Petl-pw-1'\nSQLSERVER_LOGIN_PETL_DATABASES='db1'\n" >> "$ENV"
     run "$BIN/openmrs-docker" "$NAME" start
     assert_failure
     assert_output --partial "sqlserver-setup failed"
-    assert_output --partial "Password validation failed"
+    assert_output --partial "the password for login petl (SQLSERVER_LOGIN_PETL_PASSWORD) contains the login name"
+    assert_output --partial "nothing was changed"
+    refute_output --partial "Petl-pw-1"
+    run sqlcmd_as sa "$SA" "SELECT COUNT(*) FROM sys.server_principals WHERE name = 'petl'"
+    assert_output 0
+    run sqlcmd_as sa "$SA" "SELECT COUNT(*) FROM sys.databases WHERE name = 'db1'"
+    assert_output 0
 }
 
 @test "run-service stops before the service runs when a setup fails" {
