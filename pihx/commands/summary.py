@@ -2,8 +2,8 @@
 restored copy (summarize both and `diff` them).
 
 Each service's summary.sh prints `[section]` lines and one fact per line, sorted, no secrets; the
-sections come out in service order (a service after those it requires). openmrs-db's are the
-fingerprint's (utils/fingerprint.sh), openmrs's the data directory's."""
+sections come out in service order (a service after those it requires), e.g. a database's before
+the application's that uses it."""
 
 import os
 import subprocess

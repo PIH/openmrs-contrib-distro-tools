@@ -219,7 +219,7 @@ def overlay_volumes(data):
 
 
 def in_order(services):
-    """<services> with each one after those it `requires` (so openmrs-db comes before openmrs),
+    """<services> with each one after those it `requires` (e.g. openmrs-db comes before openmrs),
     otherwise by name."""
     by_name = {s.name: s for s in services}
     ordered = []

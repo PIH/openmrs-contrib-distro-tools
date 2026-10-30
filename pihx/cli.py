@@ -41,8 +41,9 @@ Commands:
                              the images replaced
   run-service [--pull] <service> [command...]
                              Run a service once (a job holds the lock); exits with its exit code
-  wait                       Wait until its containers with a healthcheck are healthy (an OpenMRS
-                             that turns unhealthy fails it at once; PIHX_WAIT_TIMEOUT, default 3600 s)
+  wait                       Wait until its containers with a healthcheck are healthy (a container
+                             labelled pihx.wait=fail-on-unhealthy fails it at once; PIHX_WAIT_TIMEOUT,
+                             default 3600 s)
   summary [--output=<file>] [--include-distribution-artifacts]
                              Summarize its data, to diff a source against its restored copy
   <service>                  List a service's commands

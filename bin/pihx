@@ -1,13 +1,13 @@
 #!/bin/sh
 # Usage: pihx <instance> <command> [args...] | pihx list | help | version
 #
-# Runs the pihx package from this checkout inside pihx-runtime, so the host needs only Docker and a
-# POSIX shell. The checkout and PIHX_HOME (default ~/pihx) are mounted at their host paths, so paths
+# Runs the pihx package from this tools directory inside pihx-runtime, so the host needs only Docker and a
+# POSIX shell. The tools directory and PIHX_HOME (default ~/pihx) are mounted at their host paths, so paths
 # pihx hands to Compose resolve on the host. pihx <instance> ... runs the instance's own tools directory,
 # whichever bin/pihx was typed.
 #
-# An extension (bin/openmrs-docker) runs its own Python module through this launcher instead:
-#   PIHX_EXTENSION         the module (e.g. openmrs.extension), a .py file in the checkout
+# An extension (e.g. bin/openmrs-docker) runs its own Python module through this launcher instead:
+#   PIHX_EXTENSION         the module (e.g. openmrs.extension), a .py file in the tools directory
 #   PIHX_EXTENSION_MOUNTS  host paths it needs in the container, one per line, mounted read-only at
 #                          their own paths (those outside the paths every run mounts)
 # Without PIHX_EXTENSION, PIHX_EXTENSION_MOUNTS isn't taken from the caller.

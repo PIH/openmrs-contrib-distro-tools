@@ -10,9 +10,9 @@ from pihx.commands import CliError
 from pihx.commands.instance_cmds import tools_dir
 
 DEFAULT_TIMEOUT = 3600
-# A container with this label fails the wait as soon as it reports unhealthy (OpenMRS's healthcheck
-# only turns unhealthy once it has failed to start); the others, e.g. MySQL during a long import,
-# keep waiting until the timeout.
+# A container with this label fails the wait as soon as it reports unhealthy (e.g. a web
+# application whose healthcheck only turns unhealthy once it has failed to start); the others, e.g. a
+# database during a long import, keep waiting until the timeout.
 LABEL = "pihx.wait"
 FAIL_ON_UNHEALTHY = "fail-on-unhealthy"
 POLL_SECONDS = 0.5
@@ -60,7 +60,7 @@ def cmd_wait(name, args):
         print(f"{name} has no containers with a healthcheck to wait for.", file=sys.stderr)
         return 0
     script = inst.tools / "utils" / "wait-for-healthy.sh"
-    # One wait per container at once, so one that fails (OpenMRS unhealthy) ends the wait while
+    # One wait per container at once, so one that fails (unhealthy, if labelled to) ends the wait while
     # the others are still starting. Logs of the fail-fast containers show why, from now on: a
     # container that has run a while has a long history, which isn't this startup.
     processes = {}
