@@ -18,7 +18,7 @@ DEPS_DIR="$TEST_DIR/.deps"
 # itself runs in, building it if missing.
 run_unit() {
     local image dir status=0
-    image="partnersinhealth/pihx-runtime:$("$REPO_ROOT/lib/image-tag.sh" "$REPO_ROOT/images/pihx-runtime")"
+    image="partnersinhealth/pihx-runtime:$("$REPO_ROOT/utils/hash-directory.sh" "$REPO_ROOT/images/pihx-runtime")"
     docker image inspect "$image" >/dev/null 2>&1 || docker pull -q "$image" >/dev/null 2>&1 \
         || docker build -q -t "$image" "$REPO_ROOT/images/pihx-runtime" >/dev/null
     for dir in pihx/tests openmrs/tests; do

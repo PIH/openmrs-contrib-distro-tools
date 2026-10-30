@@ -1,4 +1,4 @@
-# Image and service folders are content-hashed into image tags (lib/image-tag.sh): checked out with
-# LF everywhere, so every checkout computes the same tags as CI.
+# An image's tag is the hash of its folder (utils/hash-directory.sh): image and service folders are
+# checked out with LF everywhere, so every checkout computes the same tags as CI.
 images/** text=auto eol=lf
 services/** text=auto eol=lf

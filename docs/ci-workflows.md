@@ -408,9 +408,9 @@ An ETL project calls it after building its image:
 `.github/workflows/build-images.yml` builds and publishes the images this repo defines: every
 `images/<name>/` and every `services/<svc>/image/`, as `partnersinhealth/<name>` (multi-arch: amd64
 and arm64). It is not reusable; it runs here, on pushes to `main` and on pull requests that touch
-those folders, `lib/image-tag.sh` or the workflow itself.
+those folders, `utils/hash-directory.sh` or the workflow itself.
 
-- **Tags are content hashes.** An image's tag is `lib/image-tag.sh <folder>` of its folder
+- **Tags are content hashes.** An image's tag is the hash of its folder (`utils/hash-directory.sh`)
   ([Developing this tool](development.md#image-tags)), so one commit changing the folder means one
   new tag, and `pihx` computes the same tag from its checkout to find the image it needs.
 - **A tag is never overwritten.** For each folder, the workflow asks Docker Hub whether the tag

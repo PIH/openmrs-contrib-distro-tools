@@ -94,7 +94,7 @@ esac
 socket_gid=$(stat -c %g "$socket" 2>/dev/null || stat -f %g "$socket" 2>/dev/null) \
     || die "can't read the Docker socket $socket"
 
-image=partnersinhealth/pihx-runtime:$("$PIHX_TOOLS/lib/image-tag.sh" "$PIHX_TOOLS/images/pihx-runtime")
+image=partnersinhealth/pihx-runtime:$("$PIHX_TOOLS/utils/hash-directory.sh" "$PIHX_TOOLS/images/pihx-runtime")
 # Pulled when CI has published the tag; built here only when it hasn't (a changed Dockerfile).
 if ! docker image inspect "$image" >/dev/null 2>&1 \
         && ! docker pull -q "$image" >/dev/null 2>&1; then

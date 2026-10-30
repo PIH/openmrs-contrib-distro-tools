@@ -6,7 +6,6 @@ on:
       - 'main'
     paths:
       - 'bin/**'
-      - 'lib/**'
       - 'utils/**'
       - 'pihx/**'
       - 'services/**'
@@ -21,7 +20,6 @@ on:
   pull_request:
     paths:
       - 'bin/**'
-      - 'lib/**'
       - 'utils/**'
       - 'pihx/**'
       - 'services/**'

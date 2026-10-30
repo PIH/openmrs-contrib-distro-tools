@@ -24,15 +24,16 @@
 - `bin/openmrs-utils` and `utils/` are the standalone Bash utilities, which run on the host and also
   work against legacy servers; `utils/lib/` holds their shared helpers and `utils/lib/in-container/`
   the scripts that run inside a container. `bin/openmrs-sdk` wraps the OpenMRS SDK.
-- `images/<name>/` holds images this repo builds, `lib/image-tag.sh` computes their tags, and
-  `instance.env.defaults` the values every instance starts from.
+- `images/<name>/` holds images this repo builds (an image's tag is the hash of its folder,
+  `utils/hash-directory.sh`), and `instance.env.defaults` the values every instance starts from.
 
 ## Image tags
 
-An image built from this repo is `partnersinhealth/<name>:<tag>`, where the tag is a content hash
-of its folder: `lib/image-tag.sh <dir>` prints the first 12 hex digits of the sha256 of the sorted
-`<sha256>  <path>` lines of every file in it. Only content and paths count, so CI and every checkout
-compute the same tag, and a change to the folder is a new tag, never an overwritten one. `bin/pihx`
+An image built from this repo is `partnersinhealth/<name>:<tag>`, where the tag is the hash of its
+folder (`utils/hash-directory.sh`). `hash-directory.sh <dir>` prints a short content hash of a
+directory that comes out the same on every checkout: the first 12 hex digits of the sha256 of the
+sorted `<sha256>  <path>` lines of every file in it. Only content and paths count, so CI and every
+checkout compute the same tag, and a change to the folder is a new tag, never an overwritten one. `bin/pihx`
 runs `partnersinhealth/pihx-runtime:<tag of images/pihx-runtime>`, never `latest`, so a checkout
 always runs the image that matches its source. After a change to `images/pihx-runtime`, the first run
 builds the new image locally (CI publishes it when the change reaches `main`).
@@ -69,5 +70,5 @@ random host ports, a placeholder OpenMRS image -- `initialize` only ever starts 
 remove it all afterwards, so they don't touch existing instances.
 
 `.github/workflows/test.yml` runs `unit`, `static`, `args` and `integration` on pushes to `main` and on pull
-requests that touch `bin/`, `lib/`, `utils/`, `pihx/`, `services/`, `openmrs/`, `images/`,
+requests that touch `bin/`, `utils/`, `pihx/`, `services/`, `openmrs/`, `images/`,
 `instance.env.defaults`, `test/`, `docs/` or the README.

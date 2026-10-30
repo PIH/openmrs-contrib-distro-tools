@@ -8,10 +8,10 @@ setup() {
     export STUB_LOG="$BATS_TEST_TMPDIR/docker.log"
     : > "$STUB_LOG"
     mkdir -p "$BATS_TEST_TMPDIR/bin" "$BATS_TEST_TMPDIR/repo/images/a" "$BATS_TEST_TMPDIR/repo/images/b" \
-        "$BATS_TEST_TMPDIR/repo/services/s/image" "$BATS_TEST_TMPDIR/repo/lib"
+        "$BATS_TEST_TMPDIR/repo/services/s/image" "$BATS_TEST_TMPDIR/repo/utils"
     cd "$BATS_TEST_TMPDIR/repo"
     echo a > images/a/Dockerfile; echo b > images/b/Dockerfile; echo s > services/s/image/Dockerfile
-    cp "$REPO_ROOT/lib/image-tag.sh" lib/
+    cp "$REPO_ROOT/utils/hash-directory.sh" utils/
     cat > "$BATS_TEST_TMPDIR/bin/docker" <<'STUB'
 #!/bin/sh
 echo "$*" >> "$STUB_LOG"
@@ -39,7 +39,7 @@ print(next(s["run"] for s in w["jobs"]["build"]["steps"] if s.get("id") == "imag
         "$REPO_ROOT/.github/workflows/build-images.yml")"
 }
 
-tag() { lib/image-tag.sh "$1"; }
+tag() { utils/hash-directory.sh "$1"; }
 build() { run bash -c "$script"; }
 
 @test "build-images never overwrites a tag: an existing tag is neither built nor pushed" {

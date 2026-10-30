@@ -16,50 +16,50 @@ teardown() { common_teardown; }
 # A copy of the checkout at <dir>. images/ is copied as is, so it shares pihx-runtime's tag.
 copy_tools() { # <dir>
     mkdir -p "$1"
-    cp -R "$REPO_ROOT/bin" "$REPO_ROOT/lib" "$REPO_ROOT/images" "$REPO_ROOT/pihx" "$1"
+    cp -R "$REPO_ROOT/bin" "$REPO_ROOT/utils" "$REPO_ROOT/images" "$REPO_ROOT/pihx" "$1"
 }
 
-@test "image-tag is stable and changes with content" {
+@test "hash-directory is stable and changes with content" {
     mkdir -p d/sub
     echo a > d/a; echo b > d/sub/b
-    run "$REPO_ROOT/lib/image-tag.sh" d
+    run "$REPO_ROOT/utils/hash-directory.sh" d
     assert_success
     assert_output --regexp '^[0-9a-f]{12}$'
     first=$output
 
-    run "$REPO_ROOT/lib/image-tag.sh" d
+    run "$REPO_ROOT/utils/hash-directory.sh" d
     assert_output "$first"
 
     # Same content, created in the other order with other mtimes.
     mkdir -p e/sub
     echo b > e/sub/b; touch -d '2001-01-01' e/sub/b; echo a > e/a
-    run "$REPO_ROOT/lib/image-tag.sh" e
+    run "$REPO_ROOT/utils/hash-directory.sh" e
     assert_output "$first"
 
     echo changed > d/sub/b
-    run "$REPO_ROOT/lib/image-tag.sh" d
+    run "$REPO_ROOT/utils/hash-directory.sh" d
     assert_success
     refute_output "$first"
 }
 
-@test "image-tag fails on a file it can't read, rather than print a tag" {
+@test "hash-directory fails on a file it can't read, rather than print a hash" {
     [ "$(id -u)" -ne 0 ] || skip "root reads any file"
     mkdir d
     echo a > d/a; echo b > d/b
     chmod 000 d/b
-    run "$REPO_ROOT/lib/image-tag.sh" d
+    run "$REPO_ROOT/utils/hash-directory.sh" d
     chmod 600 d/b
     assert_failure
     assert_line --index 1 "error: can't read d/b"
     refute_output --regexp '^[0-9a-f]{12}$'
 }
 
-@test "image-tag fails when the hash comes out empty" {
+@test "hash-directory fails when the hash comes out empty" {
     mkdir d bin
     echo a > d/a
     printf '#!/bin/sh\ncat >/dev/null\n' > bin/sha256sum
     chmod +x bin/sha256sum
-    PATH="$BATS_TEST_TMPDIR/bin:$PATH" run "$REPO_ROOT/lib/image-tag.sh" d
+    PATH="$BATS_TEST_TMPDIR/bin:$PATH" run "$REPO_ROOT/utils/hash-directory.sh" d
     assert_failure
     assert_output --partial "error: no hash for d/a"
     refute_output --regexp '^[0-9a-f]{12}$'

@@ -1,7 +1,7 @@
 name: Build helper images
 
 # Every images/<name>/ and services/<name>/image/ is published as partnersinhealth/<name>, tagged by the
-# content hash of its folder (lib/image-tag.sh). A tag that exists is never rebuilt or overwritten. On
+# hash of its folder (utils/hash-directory.sh). A tag that exists is never rebuilt or overwritten. On
 # main, missing tags are pushed and `latest` is moved to each image's current tag; pull requests build
 # without pushing. A push from outside this workflow could still overwrite a tag with identical
 # content at the same moment; that is accepted. (Seed images are built by build-seeded-image.yml, not here.)
@@ -13,13 +13,13 @@ on:
     paths:
       - 'images/**'
       - 'services/*/image/**'
-      - 'lib/image-tag.sh'
+      - 'utils/hash-directory.sh'
       - '.github/workflows/build-images.yml'
   pull_request:
     paths:
       - 'images/**'
       - 'services/*/image/**'
-      - 'lib/image-tag.sh'
+      - 'utils/hash-directory.sh'
       - '.github/workflows/build-images.yml'
 
 # Two runs on main would race to push the same tag, so they queue; a PR's newer commit cancels its older run.
@@ -64,7 +64,7 @@ jobs:
               *) name=$(basename "$dir") ;;
             esac
             image=partnersinhealth/$name
-            tag=$(lib/image-tag.sh "$dir")
+            tag=$(utils/hash-directory.sh "$dir")
             platforms=linux/amd64,linux/arm64
             echo "::group::$image:$tag"
             # Only a definite "not found" means the tag is missing. Any other failure (network,
