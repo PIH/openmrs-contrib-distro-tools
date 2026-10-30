@@ -12,7 +12,6 @@ setup_file() {
     export PETL_SQLSERVER_PASSWORD=Placeholder-1 SQLSERVER_SA_PASSWORD=Placeholder-1 PETL_MYSQL_PASSWORD=Placeholder-1
     export ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret
-    export MODALITY_SIMULATOR_GATEWAY_AE=PLACEHOLDER_GW
     export BIOMETRICS_LICENSE_BASE64=cGxhY2Vob2xkZXI=
     SERVICES="$ALL_SERVICES" create_instance "$CONFIG_INSTANCE"
 }
@@ -259,7 +258,7 @@ assert_valid() {
     assert_output /opt/AdvaHealthSolutions/AdvaPACSGateway
 }
 
-@test "modality-simulator reaches the gateway through the host, keeps its log in a volume, and mounts its image library read-only" {
+@test "modality-simulator reaches the gateway through the host, keeps its log in a volume, and mounts its stations file and image library read-only" {
     local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f config
     for f in "$dir"/*.yaml; do args+=(-f "$f"); done
     run docker compose --env-file "$dir/env" "${args[@]}" config --format json
@@ -274,13 +273,14 @@ assert_valid() {
     assert_output false
     run jq -r '.services["modality-simulator"].ports[] | "\(.published):\(.target)"' <<< "$config"
     assert_output '8095:8080'
-    # the instance's MODALITY_SIMULATOR_* settings, under the same names; Compose-only ones not passed
-    run jq -r '.services["modality-simulator"].environment
-        | .MODALITY_SIMULATOR_GATEWAY_AE, .MODALITY_SIMULATOR_GATEWAY_HOST, .MODALITY_SIMULATOR_GATEWAY_PORT,
-          has("MODALITY_SIMULATOR_IMAGE_DIR")' <<< "$config"
-    assert_output $'PLACEHOLDER_GW\nhost.docker.internal\n11112\nfalse'
+    # its settings are in the stations file, not the environment; the MODALITY_SIMULATOR_* ones are Compose's
+    run jq -r '.services["modality-simulator"].environment | keys | map(select(startswith("MODALITY_SIMULATOR_"))) | length' <<< "$config"
+    assert_output 0
     run jq -r '.services["modality-simulator"].volumes[] | "\(.type) \(.target) \(.read_only // false)"' <<< "$config"
-    assert_output $'volume /data false\nbind /images true'
+    assert_output $'volume /data false\nbind /config true\nbind /images true'
+    # the stations file's directory, not a *.yaml in the instance directory, which would be read as a fragment
+    run jq -r '.services["modality-simulator"].volumes[] | select(.target == "/config") | .source' <<< "$config"
+    assert_output "$dir/modality-simulator-config"
     # the image library defaults to a directory in the instance
     run jq -r '.services["modality-simulator"].volumes[] | select(.target == "/images") | .source' <<< "$config"
     assert_output "$dir/modality-simulator-images"
