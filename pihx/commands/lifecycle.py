@@ -269,6 +269,13 @@ COMPOSE_INSTEAD = {
 }
 
 
+def _writes_a_file(arg):
+    """Whether <arg> is config's -o/--output (alone, with its value, or in a cluster such as -qo)."""
+    if arg.startswith("--"):
+        return arg == "--output" or arg.startswith("--output=")
+    return arg.startswith("-") and "o" in arg[1:]
+
+
 def cmd_compose(name, args):
     """docker compose on the instance, as pihx runs it, with <args> after its options: only the
     inspecting subcommands, the first argument. No lock. Start-env values aren't computed (that
@@ -285,6 +292,9 @@ def cmd_compose(name, args):
                            f"pihx {name} {COMPOSE_INSTEAD[subcommand]}", status=2)
         raise CliError(f"compose only inspects: '{subcommand}' isn't one of "
                        f"{', '.join(COMPOSE_INSPECT)}", status=2)
+    if subcommand == "config" and any(_writes_a_file(a) for a in args[1:]):
+        raise CliError("compose config only prints: -o/--output could overwrite one of the "
+                       "instance's files (redirect its output instead)", status=2)
     inst = _open(name)
     declared = {n for svc in inst.services for entry in svc.manifest.start_env for n in entry.sets
                 if n not in compose_module.RESERVED_NAMES}

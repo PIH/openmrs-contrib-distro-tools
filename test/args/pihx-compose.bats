@@ -60,6 +60,16 @@ teardown() { destroy_instance "$NAME"; common_teardown; }
     assert_equal "$(docker ps -aq --filter "label=com.docker.compose.project=$NAME")" ""
 }
 
+@test "compose config refuses to write a file, so an env file can't be overwritten" {
+    local before
+    before=$(cat "$PIHX_HOME/$NAME"/*.env)
+    PIHX_DEBUG=1 run --separate-stderr "$BIN/pihx" "$NAME" compose config -o "$PIHX_HOME/$NAME/instance.env"
+    assert_failure 2
+    [[ $stderr == *"-o/--output could overwrite"* ]]
+    [[ $stderr != *"+ docker"* ]]
+    assert_equal "$(cat "$PIHX_HOME/$NAME"/*.env)" "$before"
+}
+
 @test "compose takes the subcommand first" {
     run "$BIN/pihx" "$NAME" compose -f x.yaml config
     assert_failure 2

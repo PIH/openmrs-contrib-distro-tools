@@ -35,7 +35,7 @@ Commands:
   compose <subcommand> [args...]
                              Inspect the instance with docker compose (config, ps, logs, exec, ...);
                              doesn't take the instance lock. Values a service's start script
-                             decides are empty
+                             decides are empty. 'compose config' prints secrets unmasked
   pull                       Pull its images
   update                     Pull, bring up (removing containers of removed services), and remove
                              the images replaced

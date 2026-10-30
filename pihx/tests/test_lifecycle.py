@@ -426,6 +426,19 @@ class ComposeCommandTest(LifecycleTest):
         hold.assert_not_called()
         return result, calls
 
+    def test_config_output_to_a_file_is_refused(self):
+        for args in (["-o", "x.env"], ["--output", "x.env"], ["--output=x.env"], ["-qo", "x"],
+                     ["openmrs", "-ox.env"]):
+            with self.subTest(args=args):
+                (status, _, err), calls = self.run_compose("config", *args)
+                self.assertEqual(status, 2)
+                self.assertIn("-o/--output could overwrite", err)
+                self.assertEqual(calls, [])
+        for args in (["config", "--format", "json"], ["config", "-q"], ["exec", "db", "ls", "-o"]):
+            with self.subTest(args=args):
+                (status, _, err), calls = self.run_compose(*args)
+                self.assertEqual(status, 0, err)
+
     def test_argv_is_docker_compose_pihx_options_then_the_arguments(self):
         (status, _, err), calls = self.run_compose("exec", "-T", "app", "sh", "-c", "echo $X")
         self.assertEqual(status, 0, err)

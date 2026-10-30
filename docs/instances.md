@@ -96,7 +96,12 @@ Maven project (an absolute path), then:
 pihx's own commands use: the instance's project name, project directory, env files and compose files.
 The subcommand (first, before any option) is one of `config`, `ps`, `images`, `top`, `port`, `logs`,
 `events`, `ls`, `version` and `exec`; its arguments go to Compose untouched, and its exit status is
-the command's. The others (`up`, `down`, `run`, ...) are refused with the managed command to use.
+the command's. The others (`up`, `down`, `run`, ...) are refused with the managed command to use,
+and so is `config -o`/`--output`, which could overwrite one of the instance's files: redirect the
+output instead.
+
+**`compose config` prints every secret unmasked** (passwords in the services' environment), unlike
+`pihx <name> config`: don't paste its output anywhere, and delete any copy you redirect it to.
 
 ```bash
 pihx <name> compose config            # the resolved model: what runs for each service
