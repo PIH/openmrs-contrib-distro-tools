@@ -134,6 +134,15 @@ class CreateTest(ExtensionTest):
         self.assertEqual((status, out, err),
                          self.pihx("kz", "create", "extra", "--services=openmrs-db"))
         self.assertEqual(status, 2)
+        # With openmrs, and no OPENMRS_IMAGE_NAME: pihx's checks still come first.
+        default = "--services=openmrs-db,openmrs"
+        result = self.openmrs_docker("kz", "create", "extra")
+        self.assertEqual(result, self.pihx("kz", "create", "extra", default))
+        self.assertIn("unexpected argument 'extra'", result[2])
+        self.make()
+        result = self.openmrs_docker("kz", "create")
+        self.assertEqual(result, self.pihx("kz", "create", default))
+        self.assertIn("already exists", result[2])
 
 
 class ModesTest(ExtensionTest):

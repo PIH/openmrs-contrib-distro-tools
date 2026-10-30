@@ -50,17 +50,12 @@ def _options(command, args, allowed=()):
 
 # --- create ---------------------------------------------------------------------------------------
 
-def cmd_create(name, args):
-    services, _ = instance_cmds.option(args, "services")
-    if services is None:
-        services = DEFAULT_SERVICES
-        args = [*args, f"--services={services}"]
-    distro_dir = None
-    if "openmrs" in services.split(","):
-        if not os.environ.get("OPENMRS_IMAGE_NAME"):
-            raise CliError("OPENMRS_IMAGE_NAME must be set to create an instance that includes "
-                           "the 'openmrs' service")
-        distro_dir = os.environ.get(DISTRO_DIR) or None
+def _openmrs_values():
+    """For an instance gaining openmrs: checks OPENMRS_IMAGE_NAME, and returns the caller's
+    OPENMRS_DISTRO_DIR (checked), or None."""
+    if not os.environ.get("OPENMRS_IMAGE_NAME"):
+        raise CliError("OPENMRS_IMAGE_NAME must be set to add the 'openmrs' service")
+    distro_dir = os.environ.get(DISTRO_DIR) or None
     if distro_dir:
         if not os.path.isabs(distro_dir):
             raise CliError(f"{DISTRO_DIR} must be an absolute path, not '{distro_dir}'")
@@ -68,6 +63,15 @@ def cmd_create(name, args):
             envfile.format_line(DISTRO_DIR, distro_dir)
         except ValueError as e:
             raise CliError(str(e)) from None
+    return distro_dir
+
+
+def cmd_create(name, args):
+    """pihx's create, with --services defaulting to openmrs-db,openmrs, and OpenMRS's values."""
+    if instance_cmds.option(args, "services")[0] is None:
+        args = [*args, f"--services={DEFAULT_SERVICES}"]
+    selected = instance_cmds.check_create(name, args)
+    distro_dir = _openmrs_values() if "openmrs" in {s.name for s in selected} else None
     instance_cmds.cmd_create(name, args)
     if distro_dir:
         instance_dir = instance_module.home() / name

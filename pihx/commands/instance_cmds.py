@@ -140,7 +140,9 @@ def _validate(instance):
 
 # --- commands -------------------------------------------------------------------------------------
 
-def cmd_create(name, args):
+def check_create(name, args):
+    """create's checks before it writes anything (its arguments, an existing directory, the
+    services and what they require): the services (Service) it would create <name> with."""
     value, rest = option(args, "services")
     _no_arguments(rest, "create")
     if value is None:
@@ -148,17 +150,24 @@ def cmd_create(name, args):
     names = [n for n in value.split(",") if n]
     if not names or len(set(names)) != len(names):
         raise CliError("--services needs a comma-separated list of distinct services", status=2)
-    tools = tools_dir()
-    home = instance_module.home()
-    instance_dir = home / name
+    instance_dir = instance_module.home() / name
     if os.path.lexists(instance_dir):
         raise InstanceError(f"{instance_dir} already exists")
     try:
-        selected = [services_module.load(tools, n) for n in names]
+        selected = [services_module.load(tools_dir(), n) for n in names]
     except services_module.ServiceError as e:
         raise InstanceError(str(e)) from None
     for svc in selected:
         _check_requires(svc, set(names))
+    return selected
+
+
+def cmd_create(name, args):
+    selected = check_create(name, args)
+    names = [s.name for s in selected]
+    tools = tools_dir()
+    home = instance_module.home()
+    instance_dir = home / name
     instance_values, values = captured_values(tools, selected, dict(os.environ))
     files = {instance_module.INSTANCE_ENV: _text(instance_values)}
     files.update({f"{s}.env": _text(v) for s, v in values.items()})
