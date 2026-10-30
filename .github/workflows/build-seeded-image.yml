@@ -102,9 +102,11 @@ jobs:
             --volume="${{ env.INSTANCE_NAME }}_openmrs-data" --output=openmrs.tar.gz
           echo "openmrs.tar.gz size: $(du -sh openmrs.tar.gz | cut -f1)"
 
-      - name: Destroy instance
+      # Its containers only, freeing the runner for the build; the runner (and its volumes) are
+      # discarded after the job.
+      - name: Stop instance
         if: always()
-        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} destroy --force
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} stop
 
       # Named after the services they restore, as `initialize --from-image` takes them.
       - name: Build seed image

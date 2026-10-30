@@ -6,7 +6,7 @@
 load ../helpers
 
 teardown() {
-    destroy_instance "$(instance)"
+    remove_test_instance "$(instance)"
     common_teardown
 }
 

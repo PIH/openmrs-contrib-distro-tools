@@ -21,5 +21,9 @@ services:
     volumes:
       - petl-data:/home/petl/data
 
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
 volumes:
   petl-data:
+    external: true
+    name: ${SERVICE_NAME}_petl-data

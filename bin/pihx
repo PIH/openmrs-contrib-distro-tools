@@ -135,6 +135,37 @@ if [ "${2-}" = initialize ]; then
     fi
 fi
 
+# archive --to <dir> writes there, so the directory is resolved here, as on the host, made (as the
+# caller) if it doesn't exist yet, and mounted read-write at that path when it's elsewhere. pihx gets
+# it as PIHX_TO, and PIHX_TO_CREATED=1 if it was made here (removed again if it's left empty).
+unset PIHX_TO PIHX_TO_CREATED
+to_mount=
+to_created=
+if [ "${2-}" = archive ]; then
+    to=
+    take=false
+    for arg in "$@"; do
+        if $take; then to=$arg; take=false; continue; fi
+        case $arg in
+            --to) take=true ;;
+            --to=*) to=${arg#--to=} ;;
+        esac
+    done
+    if [ -n "$to" ]; then
+        if [ ! -e "$to" ]; then
+            mkdir -m 700 "$to" || die "can't make $to"
+            to_created=1
+            PIHX_TO_CREATED=1
+            export PIHX_TO_CREATED
+        fi
+        [ -d "$to" ] || die "--to $to isn't a directory"
+        PIHX_TO=$(cd -P "$to" && pwd)
+        export PIHX_TO
+        case $PIHX_TO in *'"'*) die "--to $to can't be mounted (it has a double quote)" ;; esac
+        if outside_mounts "$PIHX_TO"; then to_mount=type=bind,\"source=$PIHX_TO\",\"target=$PIHX_TO\"; fi
+    fi
+fi
+
 # Only a service command that holds an instance's lock sets this, for its own children: never taken
 # from the caller (see lifecycle.cmd_start_locked).
 unset PIHX_LOCK_HELD
@@ -175,6 +206,7 @@ fi
 set -- "$image" python3 -m "$module" "$@"
 [ -z "$use_tools_mount" ] || set -- -v "$use_tools_mount" "$@"
 [ -z "$from_mount" ] || set -- -v "$from_mount" "$@"
+[ -z "$to_mount" ] || set -- --mount "$to_mount" "$@"
 # An extension's extra mounts, one host path per line.
 if [ -n "${PIHX_EXTENSION_MOUNTS-}" ]; then
     saved_ifs=$IFS
@@ -255,6 +287,20 @@ if [ -n "$output" ]; then
         rm -f "$output_tmp"
         exit "$status"
     fi
+fi
+# A directory made here for archive --to goes again if the archive left it empty (it failed).
+if [ -n "$to_created" ]; then
+    status=0
+    # shellcheck disable=SC2086
+    docker run --rm -i --init $tty \
+        -u "$(id -u):$(id -g)" --group-add "$socket_gid" \
+        -v "$socket:/var/run/docker.sock" \
+        -v "$PIHX_TOOLS:$PIHX_TOOLS:ro" -v "$PIHX_HOME:$PIHX_HOME" \
+        -w "$workdir" \
+        -e HOME=/tmp -e PYTHONPATH="$PIHX_TOOLS" -e PYTHONDONTWRITEBYTECODE=1 $env_args \
+        "$@" || status=$?
+    rmdir "$PIHX_TO" 2>/dev/null || true
+    exit "$status"
 fi
 # shellcheck disable=SC2086
 exec docker run --rm -i --init $tty \

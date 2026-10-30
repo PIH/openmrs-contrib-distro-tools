@@ -8,7 +8,7 @@ setup() {
     NAME="$(instance)"
     create_instance "$NAME"
 }
-teardown() { destroy_instance "$NAME"; common_teardown; }
+teardown() { remove_test_instance "$NAME"; common_teardown; }
 
 @test "compose config runs docker compose with the instance's project name and files" {
     run "$BIN/pihx" "$NAME" compose config openmrs-db

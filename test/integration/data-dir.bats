@@ -10,7 +10,7 @@ setup() {
     write_tiny_dump dump.sql
 }
 teardown() {
-    [ -n "${NAME:-}" ] && destroy_instance "$NAME"
+    [ -n "${NAME:-}" ] && remove_test_instance "$NAME"
     common_teardown
 }
 

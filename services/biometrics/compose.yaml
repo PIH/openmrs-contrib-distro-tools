@@ -21,6 +21,12 @@ services:
       # The Neurotechnology license follows the hostname and an identity kept here: see docs/services.md.
       - biometrics-licensing:/var/tmp
 
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
 volumes:
   biometrics-data:
+    external: true
+    name: ${SERVICE_NAME}_biometrics-data
   biometrics-licensing:
+    external: true
+    name: ${SERVICE_NAME}_biometrics-licensing

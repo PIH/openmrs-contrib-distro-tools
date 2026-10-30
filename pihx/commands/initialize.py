@@ -21,6 +21,7 @@ import tempfile
 from pathlib import Path
 
 from pihx import compose as compose_module, envfile, instance as instance_module, lock, script
+from pihx import volumes as volumes_module
 from pihx import services as services_module
 from pihx.commands import CliError
 from pihx.commands.instance_cmds import tools_dir
@@ -269,12 +270,7 @@ def _is_dir_entry(choice):
     return any(n.rstrip("/") == choice.entry and n.endswith("/") for n in choice.restore.names)
 
 
-def _human(kb):
-    if kb >= 1048576:
-        return f"{kb / 1048576:.1f}G"
-    if kb >= 1024:
-        return f"{kb / 1024:.1f}M"
-    return f"{kb}K"
+_human = volumes_module.human
 
 
 def check_space(env, images, choices):
@@ -346,8 +342,9 @@ class Restore:
 
     def volumes_to_be_new(self):
         """The volumes of every service of the instance that declares a restore: those its own
-        containers mount and those its overlays mount or declare. External volumes aren't the
-        instance's (e.g. a shared backups volume), so they're left out."""
+        containers mount and those its overlays mount or declare. Of the external volumes, only
+        the instance's own (<instance>_<volume>, as its services declare them): another (e.g. a
+        backups volume an override shares) isn't the instance's, so it's left out."""
         config = json.loads(self.base.run("--profile", "*", "config", "--format", "json",
                                           stdout=subprocess.PIPE, text=True).stdout or "{}")
         top = config.get("volumes") or {}
@@ -355,7 +352,8 @@ class Restore:
         def name_of(volume):
             spec = top.get(volume) or {}
             if spec.get("external"):
-                return None
+                own = f"{self.inst.name}_{volume}"
+                return own if spec.get("name") == own else None
             return spec.get("name") or f"{self.inst.name}_{volume}"
 
         names = set()
@@ -494,7 +492,11 @@ def restore_folder(inst, folder, label=None):
     # service's volumes (e.g. petl-data) for new ones.
     before = restore.project_volumes()
     env_files = {p: p.read_bytes() for p in inst.dir.glob("*.env")}
+    # The instance's external volumes this run creates (those of the restored services, refused
+    # above if they existed, and any other service's still missing), recorded as each is made.
+    created = []
     try:
+        volumes_module.ensure(restore.compose, created)
         restore.run()
         left = restore.remove_volumes(restore.restore_volumes())
         if left:
@@ -511,9 +513,10 @@ def restore_folder(inst, folder, label=None):
             sys.stderr.write(logs.stdout or "")
         restore.compose.run("down", check=False, stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL)
-        # Only volumes shown to be new: the restore's own (refused above if they existed) and those
-        # a successful listing finds that the one before didn't.
-        made = set(restore.restore_volumes())
+        # Only volumes shown to be new: the restore's own (refused above if they existed), the
+        # external ones it created, and those a successful listing finds that the one before
+        # didn't.
+        made = set(restore.restore_volumes()) | set(created)
         try:
             made |= restore.project_volumes() - before
         except CliError as listing:

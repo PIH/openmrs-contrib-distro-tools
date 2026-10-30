@@ -18,7 +18,7 @@ setup() {
     done
 }
 teardown() {
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     common_teardown
 }
 
@@ -55,7 +55,7 @@ running() { docker ps -q --filter "label=com.docker.compose.project=$NAME"; }
     assert_failure
     assert_output --partial "openmrs requires openmrs-db"
     [ -e "$PIHX_HOME/$other/openmrs-db.env" ]
-    destroy_instance "$other"
+    remove_test_instance "$other"
 }
 
 @test "run-service runs a profiled container once with the given command, and start leaves it alone" {
@@ -80,18 +80,19 @@ YAML
     assert_equal "$(running | wc -l)" 2
     # shellcheck disable=SC2016 # for Compose to interpolate
     printf 'services:\n  modality-simulator:\n    image: alpine:${NOT_SET_ANYWHERE?}\n' > "$DIR/modality-simulator.override.yaml"
-    run "$BIN/openmrs-docker" "$NAME" destroy --force
+    run_destroy "$BIN/openmrs-docker" "$NAME"
     assert_success
     # (pihx-runtime's Compose brings the project down by its label itself, so pihx's own fallback
     # by label, which says so, isn't always reached; either way everything goes.)
     assert_equal "$(docker ps -aq --filter "label=com.docker.compose.project=$NAME")" ""
-    assert_equal "$(docker volume ls -q --filter "label=com.docker.compose.project=$NAME")" ""
+    run docker volume ls -q --filter "name=^${NAME}_"
+    assert_output ''
     [ ! -e "$DIR" ]
 }
 
 @test "destroy removes root-owned files a container left in the instance directory" {
     docker run --rm -v "$DIR:/d" alpine:3.21 sh -c 'mkdir /d/out && touch /d/out/report && chmod 700 /d/out'
-    run "$BIN/openmrs-docker" "$NAME" destroy --force
+    run_destroy "$BIN/openmrs-docker" "$NAME"
     assert_success
     [ ! -e "$DIR" ]
 }

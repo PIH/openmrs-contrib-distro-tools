@@ -321,3 +321,87 @@ class InitializeCommandTest(InitializeTest):
         status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.home / "empty"))
         self.assertEqual(status, 1)
         self.assertIn("nothing to restore", err)
+
+
+class ExternalVolumesTest(InitializeCommandTest):
+    """The services' volumes are external: initialize refuses an existing one of a restored
+    service, creates the missing ones (labelled) before its first `up`, and after a failure removes
+    exactly those it created."""
+
+    def setUp(self):
+        super().setUp()
+        self.config["volumes"] = {
+            "db-data": {"name": "kz_db-data", "external": True},
+            # Another service's.
+            "petl-data": {"name": "kz_petl-data", "external": True},
+            "backups": {"name": "backups", "external": True}}
+        self.ups_at_create = []
+
+    def fake_docker(self, argv, **kwargs):
+        if argv[1:3] == ["volume", "create"]:
+            self.docker_calls.append(argv[1:])
+            # How many `up`s had run when it was created.
+            self.ups_at_create.append(len(self.up_calls()))
+            self.existing_volumes = self.existing_volumes | {argv[-1]}
+            return done()
+        if argv[1:3] == ["volume", "rm"]:
+            self.existing_volumes = self.existing_volumes - set(argv[3:])
+        return super().fake_docker(argv, **kwargs)
+
+    def creates(self):
+        return [c[-1] for c in self.docker_calls if c[:2] == ["volume", "create"]]
+
+    def test_an_existing_external_volume_of_a_restored_service_is_refused(self):
+        self.existing_volumes = {"kz_db-data"}
+        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+        self.assertEqual(status, 1)
+        self.assertIn("kz_db-data already exists", err)
+        self.assertEqual(self.creates(), [])
+        self.assertEqual(self.removed_volumes(), [])
+        self.assertEqual(self.up_calls(), [])
+
+    def test_the_missing_volumes_are_created_labelled_before_the_first_up(self):
+        self.existing_volumes = {"backups", "kz_petl-data"}
+        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+        self.assertEqual(status, 0, err)
+        self.assertEqual([c for c in self.docker_calls if c[:2] == ["volume", "create"]],
+                         [["volume", "create", "--label", "pihx.instance=kz", "kz_db-data"]])
+        self.assertEqual(self.ups_at_create, [0])
+        self.assertEqual(len(self.up_calls()), 1)
+        self.assertEqual(self.removed_volumes(), [])
+
+    def test_a_failure_removes_exactly_the_volumes_it_created(self):
+        write(self.tools / "services" / "db" / "restore" / "finish", "")
+        self.hooks["finish"] = lambda: done(returncode=1)
+        for existing, removed in (({"backups"}, ["kz_db-data", "kz_petl-data"]),
+                                  ({"backups", "kz_petl-data"}, ["kz_db-data"])):
+            with self.subTest(existing=existing):
+                self.docker_calls.clear()
+                self.existing_volumes = set(existing)
+                status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+                self.assertEqual(status, 1)
+                self.assertIn("db: restore/finish failed", err)
+                self.assertEqual(self.removed_volumes(), [removed])
+                self.assertEqual(self.existing_volumes, existing)
+
+    def test_a_volume_that_cannot_be_created_removes_those_created_before_it(self):
+        self.existing_volumes = {"backups"}
+        real = self.fake_docker
+
+        def failing(argv, **kwargs):
+            if argv[1:3] == ["volume", "create"] and argv[-1] == "kz_petl-data":
+                self.docker_calls.append(argv[1:])
+                return done(returncode=1)
+            return real(argv, **kwargs)
+        self.fake_docker = failing
+        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+        self.assertEqual(status, 1)
+        self.assertIn("couldn't create the volume kz_petl-data", err)
+        self.assertEqual(self.removed_volumes(), [["kz_db-data"]])
+        self.assertEqual(self.up_calls(), [])
+
+
+# InitializeCommandTest's own tests run there, not again here.
+for _name in [n for n in vars(InitializeCommandTest) if n.startswith("test_")]:
+    if _name not in vars(ExternalVolumesTest):
+        setattr(ExternalVolumesTest, _name, None)

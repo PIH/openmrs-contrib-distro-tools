@@ -51,5 +51,9 @@ services:
       - ${PIHX_TOOLS}/services/sqlserver/scripts/sqlserver-setup.sh:/sqlserver-setup.sh:ro
     restart: "no"
 
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
 volumes:
   sqlserver-data:
+    external: true
+    name: ${SERVICE_NAME}_sqlserver-data

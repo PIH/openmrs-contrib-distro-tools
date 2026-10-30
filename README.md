@@ -81,7 +81,8 @@ pihx lesotho status      # the containers, and what holds the instance's lock
 pihx lesotho compose config   # inspect with docker compose (config, ps, logs, exec, ...)
 pihx lesotho update      # pull the images, and recreate what changed
 pihx lesotho stop        # the data stays in the instance's volumes
-pihx lesotho destroy     # removes the instance and its data
+pihx lesotho archive     # a full copy of the stopped instance, to ~/pihx/lesotho.archive-<time>/
+pihx lesotho destroy     # archives it, then removes the instance and its data (asks twice)
 pihx list                # every instance
 ```
 

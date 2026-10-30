@@ -117,7 +117,18 @@ of a service declares exactly:
 ```
 
 `PIHX_TOOLS` is the instance's tools directory, `PIHX_INSTANCE_DIR` its directory, and `SERVICE_NAME` its
-name, which names containers: `container_name: ${SERVICE_NAME}-<container>`. A compose file has no
+name, which names containers: `container_name: ${SERVICE_NAME}-<container>`, and volumes. Every
+volume a compose file declares is external, named as Compose would have named it, so pihx creates it
+and no `docker compose down -v` deletes it ([Volumes](instances.md#volumes)):
+
+```yaml
+volumes:
+  <volume>:
+    external: true
+    name: ${SERVICE_NAME}_<volume>
+```
+
+Only a restore overlay's staging volumes (e.g. `db-init`) stay Compose's own. A compose file has no
 relative host paths (Compose would resolve them against the instance directory), so what it mounts
 from the tools directory is `${PIHX_TOOLS}/services/<svc>/scripts/<file>`.
 

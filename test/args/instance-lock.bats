@@ -11,7 +11,7 @@ setup() {
 }
 teardown() {
     [ -z "${HOLDER:-}" ] || kill "$HOLDER" 2>/dev/null || true
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     common_teardown
 }
 
@@ -24,7 +24,7 @@ hold_lock() {
 
 @test "a changing command refuses while another holds the lock, naming the holder" {
     hold_lock
-    for cmd in start stop restart update pull 'openmrs-db reset-accounts' 'destroy --force'; do
+    for cmd in start stop restart update pull 'openmrs-db reset-accounts' destroy archive; do
         # shellcheck disable=SC2086 # a command and its arguments
         run "$BIN/openmrs-docker" "$NAME" $cmd
         assert_failure

@@ -18,7 +18,7 @@ setup() {
     SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 create_instance "$NAME" --services=sqlserver
     ENV="$(env_file_of "$NAME" sqlserver)"
 }
-teardown() { destroy_instance "$NAME"; common_teardown; }
+teardown() { remove_test_instance "$NAME"; common_teardown; }
 
 # Starts the instance and waits for sqlserver-setup to exit; prints its exit code.
 start_and_wait_for_setup() {
@@ -78,7 +78,7 @@ sqlcmd_as() { # <login> <password> <query>
 }
 
 @test "run-service stops before the service runs when a setup fails" {
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     NAME="$(instance)-petl"
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 \
         SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 create_instance "$NAME" --services=openmrs-db,petl,sqlserver
@@ -91,7 +91,7 @@ sqlcmd_as() { # <login> <password> <query>
 }
 
 @test "an instance with petl and sqlserver but no PETL_SQLSERVER_PASSWORD fails start, naming the login's password" {
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     NAME="$(instance)-petl"
     env -u PETL_SQLSERVER_PASSWORD PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=My-pw-1 \
         SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 \

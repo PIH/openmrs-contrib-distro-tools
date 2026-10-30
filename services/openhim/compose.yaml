@@ -152,5 +152,9 @@ services:
       timeout: 30s
       retries: 3
 
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
 volumes:
   mongo-data:
+    external: true
+    name: ${SERVICE_NAME}_mongo-data

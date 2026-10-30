@@ -45,5 +45,9 @@ services:
         limits:
           memory: ${OPENMRS_MEMORY_LIMIT}
 
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
 volumes:
   openmrs-data:
+    external: true
+    name: ${SERVICE_NAME}_openmrs-data

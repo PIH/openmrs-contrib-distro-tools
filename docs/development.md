@@ -10,8 +10,10 @@
   (below), or built when CI hasn't published it yet.
 - `pihx/` is the core, which knows nothing about any product: `instance.py` (the directory and its
   files), `envfile.py` (the env file format), `services.py` (manifests), `compose.py` (running
-  Compose on an instance), `lock.py`, `script.py` (running a service's scripts) and `commands/`
-  (`instance_cmds.py`, `lifecycle.py`, `initialize.py`, `summary.py`, `wait.py`, `service_cmds.py`).
+  Compose on an instance), `volumes.py` (the instance's external volumes, which it creates),
+  `lock.py`, `script.py` (running a service's scripts) and `commands/` (`instance_cmds.py`,
+  `lifecycle.py`, `initialize.py`, `archive.py`, `destroy.py`, `summary.py`, `wait.py`,
+  `service_cmds.py`).
 - `services/<svc>/` holds everything of one service: manifest, compose file, env defaults,
   restore overlays, summary and commands ([Writing a service](services.md#writing-a-service)). Its
   README is its docs.

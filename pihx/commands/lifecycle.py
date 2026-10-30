@@ -1,17 +1,16 @@
-"""start, stop, restart, status, logs, pull, update, run-service and destroy."""
+"""start, stop, restart, status, logs, pull, update and run-service."""
 
 import contextlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 
-from pihx import compose as compose_module, instance as instance_module, lock, script
+from pihx import compose as compose_module, instance as instance_module, lock, script, volumes
 from pihx.commands import CliError
 from pihx.commands.instance_cmds import tools_dir
-from pihx.instance import Instance, InstanceError
+from pihx.instance import InstanceError
 
 def exit_status(returncode):
     """A process's exit status as a shell reports it: 128+n when signal n killed it."""
@@ -148,10 +147,12 @@ def with_start_values(inst, compose):
 
 def start_stack(inst, compose, *up_options, build=False):
     """(With <build>, builds the images the compose files build, then) brings the instance up with
-    the start-env scripts' values, then fails if a setup container did."""
+    the start-env scripts' values, then fails if a setup container did. Its missing volumes are
+    created before anything starts (a start-env script may start a container)."""
     before = instance_images(inst, compose)
     if build:
         compose.run("build")
+    volumes.ensure(compose)
     with_start_values(inst, compose).run("up", "-d", *up_options)
     check_setup_services(inst, compose)
     remove_replaced_images(inst, compose, before)
@@ -203,12 +204,13 @@ def cmd_update(name, args):
 def update_stack(inst, compose, build=False):
     """Pulls, (with <build>, builds), brings the instance up (with the start-env scripts' values)
     removing the containers of services it no longer has, fails if a setup container did, and
-    removes the images replaced."""
+    removes the images replaced. Its missing volumes are created before anything starts."""
     # Images before the pull, so the ones it replaces can go.
     before = instance_images(inst, compose)
     compose.run("pull")
     if build:
         compose.run("build")
+    volumes.ensure(compose)
     with_start_values(inst, compose).run("up", "-d", "--remove-orphans")
     check_setup_services(inst, compose)
     remove_replaced_images(inst, compose, before)
@@ -372,6 +374,7 @@ def cmd_run_service(name, args):
 
 
 def _run(inst, compose, svc, command, pull, job):
+    volumes.ensure(compose)
     # Named explicitly, so a profiled service's image is pulled too (a plain `pull` skips them).
     if pull:
         compose.run("pull", svc)
@@ -380,116 +383,3 @@ def _run(inst, compose, svc, command, pull, job):
         return exit_status(compose.run("run", "--rm", "--no-deps", svc, *command,
                                        check=False).returncode)
     return _run_job(inst, compose, svc, command)
-
-
-# --- destroy --------------------------------------------------------------------------------------
-
-def _alpine_image(inst):
-    """The tools' ALPINE_IMAGE (utils/lib/images.sh), the one image for chores like this."""
-    text = (inst.tools / "utils" / "lib" / "images.sh").read_text()
-    found = re.search(r"^ALPINE_IMAGE=(\S+)", text, re.MULTILINE)
-    if not found:
-        raise InstanceError(f"no ALPINE_IMAGE in {inst.tools / 'utils' / 'lib' / 'images.sh'}")
-    return found.group(1)
-
-
-def _remove_directory(inst, compose):
-    """Removes the instance directory, reclaiming root-owned files first if need be (a one-off
-    service, e.g. smoke tests via run-service, may have written some into a bind-mounted directory
-    under it). A symlinked tools goes, never what it points to; a real tools directory
-    (Puppet keeps it as a git checkout) stays, and so does the instance directory then."""
-    if inst.dir.is_symlink():
-        # Only the link: what it points to isn't this instance's to remove.
-        inst.dir.unlink()
-        return f"Removed instance directory {inst.dir}"
-    tools = inst.dir / "tools"
-    keep_tools = tools.is_dir() and not tools.is_symlink()
-
-    def remove():
-        for entry in inst.dir.iterdir():
-            if keep_tools and entry == tools:
-                continue
-            if entry.is_dir() and not entry.is_symlink():
-                shutil.rmtree(entry)
-            else:
-                entry.unlink()
-        if not keep_tools:
-            inst.dir.rmdir()
-
-    try:
-        remove()
-    except OSError:
-        owner = f"{os.getuid()}:{os.getgid()}"
-        # Never the kept tools directory: it is Puppet's, whose ownership stays as it is.
-        chown = (["find", "/target", "-mindepth", "1", "-maxdepth", "1", "!", "-name", "tools",
-                  "-exec", "chown", "-R", owner, "{}", "+"] if keep_tools
-                 else ["chown", "-R", owner, "/target"])
-        result = _docker(compose, "run", "--rm", "-v", f"{inst.dir}:/target", _alpine_image(inst),
-                         *chown)
-        if result.returncode != 0:
-            raise InstanceError(f"couldn't remove {inst.dir}: {result.stderr.strip()}")
-        try:
-            remove()
-        except OSError as e:
-            raise InstanceError(f"couldn't remove {inst.dir}: {e}") from None
-    if keep_tools:
-        note(f"Kept {tools}: it is a directory of its own, not a symlink")
-        return f"Removed instance {inst.name}'s files from {inst.dir}"
-    return f"Removed instance directory {inst.dir}"
-
-
-def cmd_destroy(name, args):
-    unknown = [a for a in args if a != "--force"]
-    _no_arguments(unknown, "destroy")
-    force = bool(args)
-    try:
-        inst = _open(name)
-    except InstanceError as e:
-        # Still destroyable: its containers and volumes are found by their Compose project label.
-        error = instance_module.instance_name_error(name)
-        instance_dir = instance_module.home() / name
-        if error or not instance_dir.is_dir():
-            raise
-        note(f"warning: {e}")
-        inst = Instance(name=name, dir=instance_dir, tools=tools_dir(), services=[])
-    # PIHX_HOME may be /home, whose other directories are users' homes: only an instance's goes.
-    if not (inst.dir / instance_module.INSTANCE_ENV).is_file():
-        raise InstanceError(f"{inst.dir} has no {instance_module.INSTANCE_ENV}, so it isn't an "
-                            "instance: not destroying it")
-    if not force:
-        print(f"This will stop the stack, delete all volumes, and remove {inst.dir}.")
-        try:
-            answer = input("Are you sure? [y/N] ")
-        except EOFError:
-            answer = ""
-        if not re.fullmatch(r"[Yy]", answer):
-            return 0
-    compose = compose_module.Compose(inst)
-    with lock.hold(inst, lock.wait_seconds(), command="destroy"):
-        # An instance whose files don't interpolate (e.g. a required variable unset) must still be
-        # destroyable, so its containers and volumes are then found by Compose's project label. All
-        # profiles, so a profiled service's volumes (petl-data) and kept container go too.
-        if not inst.services or compose.run("--profile", "*", "down", "-v", "--remove-orphans",
-                                            check=False).returncode != 0:
-            note("warning: 'docker compose down' failed -- removing this instance's containers and "
-                 "volumes by their Compose project label instead.")
-            label = _project_label(inst)
-            # Both listings first, checked: a failed one stops destroy before anything goes.
-            listings = [_docker(compose, *what, "-q", "--filter", label)
-                        for what in (("ps", "-a"), ("volume", "ls"))]
-            for listing in listings:
-                if listing.returncode != 0:
-                    raise InstanceError(f"couldn't list {name}'s containers and volumes, so "
-                                        f"nothing was removed: {listing.stderr.strip()}")
-            ids, volumes = (listing.stdout.split() for listing in listings)
-            if ids:
-                _docker(compose, "rm", "-f", *ids)
-            if volumes:
-                _docker(compose, "volume", "rm", *volumes)
-        # Volumes only restore overlays declare (initialize's staging): `down -v` doesn't know them.
-        restore_volumes = sorted({v for s in inst.services for v in s.restore_volumes()})
-        if restore_volumes:
-            _docker(compose, "volume", "rm", *(f"{inst.name}_{v}" for v in restore_volumes))
-        message = _remove_directory(inst, compose)
-    print(message)
-    return 0

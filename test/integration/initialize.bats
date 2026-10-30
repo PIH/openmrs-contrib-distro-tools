@@ -43,7 +43,7 @@ setup() {
     NAME="$(instance)"
 }
 teardown() {
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     common_teardown
 }
 

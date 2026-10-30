@@ -5,12 +5,13 @@ import sys
 import traceback
 
 from pihx import __version__, runtime
-from pihx.commands import (CliError, initialize, instance_cmds, lifecycle, service_cmds, summary,
-                           wait)
+from pihx.commands import (CliError, archive, destroy, initialize, instance_cmds, lifecycle,
+                           service_cmds, summary, wait)
 from pihx.compose import ComposeError
 from pihx.instance import InstanceError, instance_name_error
 from pihx.lock import LockError
 from pihx.services import ServiceError
+from pihx.volumes import VolumeError
 
 USAGE = """\
 Usage:
@@ -53,7 +54,13 @@ Commands:
   initialize --from <dir> | --from-image <image>
                              Fill a new instance's volumes from a directory with an entry per service
                              (or an image's /seed directory), before its first start
-  destroy [--force]          Remove its containers, volumes and directory (asks first)
+  archive [--to=<dir>]       Archive the stopped instance: one <volume>.tar.gz per volume (those
+                             of removed services too), copies of its env files and RESTORE.txt, in
+                             $PIHX_HOME/<instance>.archive-<time>/ or a new or empty <dir>
+  destroy                    For development and test instances: archive it to
+                             $PIHX_HOME/<instance>.destroyed-<time>/, then remove its containers,
+                             volumes and directory. Asks for the instance's name, then for 'delete'
+                             once the archive is written; there is no --force
   help                       Show this help
   version                    Show pihx's version and the tools directory it runs from
 """
@@ -99,7 +106,8 @@ INSTANCE_COMMANDS = {
     "update": lifecycle.cmd_update,
     "run-service": lifecycle.cmd_run_service,
     "initialize": initialize.cmd_initialize,
-    "destroy": lifecycle.cmd_destroy,
+    "archive": archive.cmd_archive,
+    "destroy": destroy.cmd_destroy,
     "wait": wait.cmd_wait,
     "summary": summary.cmd_summary,
 }
@@ -143,7 +151,7 @@ def main(argv, extension=None):
             runtime.install_docker_config(docker_config, os.environ["HOME"])
         return dispatch(argv, extension)
     except (CliError, runtime.SetupError, InstanceError, ServiceError, ComposeError, LockError,
-            OSError) as e:
+            VolumeError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return getattr(e, "status", 1)
     except KeyboardInterrupt:

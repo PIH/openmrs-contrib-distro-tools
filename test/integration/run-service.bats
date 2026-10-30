@@ -20,7 +20,7 @@ setup() {
         create_instance "$NAME" --services=openmrs-db,petl
     DIR="$PIHX_HOME/$NAME"
 }
-teardown() { destroy_instance "$NAME"; remove_images "$NAME-"; common_teardown; }
+teardown() { remove_test_instance "$NAME"; remove_images "$NAME-"; common_teardown; }
 
 running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.project=$NAME" | sort; }
 
@@ -98,7 +98,7 @@ petl_container() { docker ps -aq --filter "name=^$NAME-petl$"; }
     assert_output --partial 'PETL-RAN'
     run docker volume ls -q --filter "name=^${NAME}_petl-data$"
     assert_output "${NAME}_petl-data"
-    run "$BIN/openmrs-docker" "$NAME" destroy --force
+    run_destroy "$BIN/openmrs-docker" "$NAME"
     assert_success
     run docker volume ls -q --filter "name=^${NAME}_petl-data$"
     assert_output ''

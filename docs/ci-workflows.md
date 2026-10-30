@@ -361,7 +361,8 @@ instance's `openmrs-smoke-tests.env`), or edit that file afterwards.
 | `SMOKE_TESTS_ADMIN_PASSWORD` | image default (`Admin123`) | Admin password baked into this site's seed data |
 | `SMOKE_TESTS_IMAGE_NAME`, `SMOKE_TESTS_IMAGE_TAG` | `partnersinhealth/pihemr-smoke-tests`, `latest` | Smoke-tests image to run |
 
-Once done, tear the instance down with `openmrs-docker myinstance destroy --force`.
+There's nothing to tear down on a GitHub-hosted runner, which is discarded after the job. Elsewhere,
+`openmrs-docker myinstance destroy` archives the instance and asks twice before removing it.
 
 ## Deploys and PETL runs on self-hosted runners
 

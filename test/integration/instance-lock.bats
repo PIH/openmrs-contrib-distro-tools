@@ -5,7 +5,7 @@ load ../helpers
 
 setup() { cd "$BATS_TEST_TMPDIR"; }
 teardown() {
-    [ -n "${NAME:-}" ] && destroy_instance "$NAME"
+    [ -n "${NAME:-}" ] && remove_test_instance "$NAME"
     common_teardown
 }
 

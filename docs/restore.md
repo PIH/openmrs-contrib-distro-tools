@@ -55,9 +55,9 @@ instance's files for this one run: `initialize` brings up the containers they na
 with a healthcheck (the database) to turn healthy and for the others to exit, brings everything
 down, and removes the staging volumes the overlays declare. A restored service may also have
 `restore/prepare`, run first, whose `KEY=value` output is used for that run only (`openmrs`'s finds
-the owner for `openmrs-data`), and `restore/finish`, run once the restore has worked. If anything
-fails, it removes the containers and every
-volume it made, and undoes what a `finish` wrote to the instance's env files. Archives are extracted by
+the owner for `openmrs-data`), and `restore/finish`, run once the restore has worked. It creates the
+instance's volumes that don't exist yet (labelled `pihx.instance=<name>`, as `start` would). If
+anything fails, it removes the containers and every volume it made in that run, and only those, and undoes what a `finish` wrote to the instance's env files. Archives are extracted by
 `utils/lib/in-container/extract.sh`, into a volume, never onto the host.
 
 `openmrs-docker <name> initialize` is the same command (it also says when an image given to

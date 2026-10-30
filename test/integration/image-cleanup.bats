@@ -23,7 +23,7 @@ setup() {
         create_instance "$NAME" --services=modality-simulator 2>/dev/null
 }
 teardown() {
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     remove_images "$NAME-"
     remove_images "$REGISTRY/$NAME-"
     common_teardown

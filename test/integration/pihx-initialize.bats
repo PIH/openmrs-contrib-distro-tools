@@ -30,7 +30,7 @@ setup() {
     mkdir run
 }
 teardown() {
-    "$BIN/pihx" "$NAME" destroy --force >/dev/null 2>&1 || true
+    remove_test_instance "$NAME"
     common_teardown
 }
 
@@ -81,8 +81,12 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     assert_success
     run db_marker_in_volume "${NAME}_db-data"
     assert_output 3
-    # openmrs-data is OpenMRS's to build up on its first start.
-    assert_equal "$(volumes)" "${NAME}_db-data"
+    # openmrs-data is OpenMRS's to build up on its first start: created (as start would), empty.
+    assert_equal "$(volumes)" "$(printf '%s\n' "${NAME}_db-data" "${NAME}_openmrs-data")"
+    run tree_of_volume "${NAME}_openmrs-data"
+    assert_output ''
+    run docker volume ls -q --filter "label=pihx.instance=$NAME"
+    assert_output "$(printf '%s\n' "${NAME}_db-data" "${NAME}_openmrs-data")"
 }
 
 @test "an existing volume of a restoring service is refused, even one its restore doesn't name" {
@@ -94,6 +98,27 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     assert_failure
     assert_output --partial "${NAME}_db-data already exists"
     assert_equal "$(volumes)" "${NAME}_db-data"
+}
+
+@test "a failed restore removes the volumes it created, and only those" {
+    MODALITY_SIMULATOR_IMAGE_NAME=alpine MODALITY_SIMULATOR_IMAGE_TAG=3.21 \
+        MODALITY_SIMULATOR_GATEWAY_AE=GW MODALITY_SIMULATOR_HOST_PORT=0 \
+        MODALITY_SIMULATOR_IMAGE_DIR=/tmp create openmrs-db,openmrs,modality-simulator
+    # A service that restores nothing has its volume already (e.g. kept from before): not refused,
+    # and it stays; its other volumes are created, and removed again.
+    docker volume create "${NAME}_modality-simulator-data" >/dev/null
+    docker run --rm -v "${NAME}_modality-simulator-data:/v" alpine:3.21 touch /v/kept
+    make_data_fixture data
+    ARCHIVE_PASSWORD=pw "$UTILS/backup-openmrs-data-directory.sh" --volume="$BATS_TEST_TMPDIR/data" \
+        --output="$BATS_TEST_TMPDIR/run/openmrs.7z" 2>/dev/null
+    ARCHIVE_PASSWORD=wrong initialize --from run
+    assert_failure
+    assert_output --partial "Created volume ${NAME}_openmrs-data"
+    assert_output --partial 'initialize failed'
+    assert_equal "$(volumes)" "${NAME}_modality-simulator-data"
+    run tree_of_volume "${NAME}_modality-simulator-data"
+    assert_output './kept'
+    assert_equal "$(containers)" ""
 }
 
 @test "a dangling link entry is an error, not an empty restore" {

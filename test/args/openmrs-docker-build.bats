@@ -38,7 +38,7 @@ services:
 YAML
 }
 teardown() {
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     remove_images "$IMAGE"
     common_teardown
 }

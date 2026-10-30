@@ -228,6 +228,17 @@ class ServiceTreeTest(unittest.TestCase):
                 self.assertLessEqual(used - declared, own, overlay)
                 self.assertFalse(declared & own, overlay)
 
+    def test_every_volume_is_external_and_named_as_compose_named_it(self):
+        """So no `docker compose down -v` deletes data, and existing volumes keep working: pihx
+        creates them (pihx/volumes.py). Only restore overlays' staging volumes are Compose's."""
+        for name, svc in SERVICES.items():
+            for volume, spec in (compose(svc).get("volumes") or {}).items():
+                self.assertEqual(spec, {"external": True, "name": f"${{SERVICE_NAME}}_{volume}"},
+                                 f"{name}: {volume}")
+            for overlay in svc.restore_overlays():
+                for volume, spec in (services.read_overlay(overlay).get("volumes") or {}).items():
+                    self.assertFalse((spec or {}).get("external"), f"{overlay}: {volume}")
+
     def test_no_comment_directives_are_left(self):
         for name, svc in SERVICES.items():
             text = (svc.dir / "env.defaults").read_text()

@@ -208,16 +208,20 @@ class ModesTest(ExtensionTest):
         with mock.patch.object(lifecycle, "instance_images", return_value=set()):
             status, _, err = self.openmrs_docker("kz", "start", "--dev", "--build")
         self.assertEqual(status, 0, err)
-        self.assertEqual(self.compose_calls[0], (("build",), [str(modes / "dev.yaml"),
-                                                              str(modes / "build.yaml")]))
-        self.assertEqual(self.compose_calls[1][0], ("up", "-d"))
+        files = [str(modes / "dev.yaml"), str(modes / "build.yaml")]
+        self.assertEqual(self.compose_calls[0], (("build",), files))
+        # The volumes come from the same files, before up.
+        self.assertEqual(self.compose_calls[1],
+                         (("--profile", "*", "config", "--format", "json"), files))
+        self.assertEqual(self.compose_calls[2][0], ("up", "-d"))
 
     def test_update_pulls_then_builds(self):
         self.make(**self.DISTRO)
         with mock.patch.object(lifecycle, "instance_images", return_value=set()):
             status, _, err = self.openmrs_docker("kz", "update", "--build")
         self.assertEqual(status, 0, err)
-        self.assertEqual([c[0][0] for c in self.compose_calls][:3], ["pull", "build", "up"])
+        self.assertEqual([c[0][0] for c in self.compose_calls][:4],
+                         ["pull", "build", "--profile", "up"])
 
     def test_start_and_update_without_options_are_pihx_s(self):
         self.make()

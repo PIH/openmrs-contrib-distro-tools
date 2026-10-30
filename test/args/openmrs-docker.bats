@@ -10,7 +10,7 @@ setup() {
 }
 teardown() {
     [ -z "${SHARED_PIHX_HOME-}" ] || export PIHX_HOME=$SHARED_PIHX_HOME
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     common_teardown
 }
 
@@ -35,7 +35,7 @@ assert_same_as_pihx() { # <args...>
     mkdir -p "$PIHX_HOME"
     create_instance "$NAME-list"
     assert_same_as_pihx list
-    destroy_instance "$NAME-list"
+    remove_test_instance "$NAME-list"
     export PIHX_HOME=$SHARED_PIHX_HOME
 }
 
@@ -45,7 +45,7 @@ assert_same_as_pihx() { # <args...>
     run "$BIN/openmrs-docker" "$other" create --services=openmrs-db
     assert_success
     assert [ -f "$(env_file_of "$other" openmrs-db)" ]
-    destroy_instance "$other"
+    remove_test_instance "$other"
 }
 
 @test "the old create order and the dropped commands are pihx's usual errors" {

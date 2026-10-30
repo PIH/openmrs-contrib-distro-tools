@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
-# pihx start, stop, restart, status, pull, update, run-service and destroy, black-box through
-# bin/pihx, against throwaway instances. modality-simulator and biometrics, given alpine as their
-# image and an override that makes it sleep, are the light services; openmrs-db and petl are the
-# ones with a setup and a job.
+# pihx start, stop, restart, status, pull, update, run-service, external volumes, archive and
+# destroy, black-box through bin/pihx, against throwaway instances. modality-simulator and
+# biometrics, given alpine as their image and an override that makes it sleep, are the light
+# services; openmrs-db and petl are the ones with a setup and a job.
 
 load ../helpers
 
@@ -33,7 +33,7 @@ setup() {
         PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=Pw-1
 }
 teardown() {
-    "$BIN/pihx" "$NAME" destroy --force >/dev/null 2>&1 || true
+    remove_test_instance "$NAME"
     remove_images "$NAME-"
     remove_images "$REGISTRY/$NAME-"
     common_teardown
@@ -274,7 +274,7 @@ petl_container() { docker ps -aq --filter "name=^$NAME-petl$"; }
     "$BIN/pihx" "$NAME" start >/dev/null 2>&1
     run "$BIN/pihx" "$NAME" run-service petl
     assert_failure 3
-    run "$BIN/pihx" "$NAME" destroy --force
+    run_destroy "$BIN/pihx" "$NAME"
     assert_success
     run docker volume ls -q --filter "name=^${NAME}_petl-data$"
     assert_output ''
@@ -339,9 +339,100 @@ start_on() { # <ref>
     [ -n "$(image_id "$old")" ] || fail "$old, in use by $NAME-other, was removed"
 }
 
+# --- external volumes --------------------------------------------------------------------------
+
+@test "start creates the instance's volumes, labelled; compose down -v leaves them" {
+    create modality-simulator biometrics
+    run docker volume ls -q --filter "name=^${NAME}_"
+    assert_output ''
+    run "$BIN/pihx" "$NAME" start
+    assert_success
+    assert_output --partial "Created volume ${NAME}_modality-simulator-data"
+    run bash -c "docker volume ls -q --filter label=pihx.instance=$NAME | sort"
+    assert_output "$(printf '%s\n' "${NAME}_biometrics-data" "${NAME}_biometrics-licensing" \
+        "${NAME}_modality-simulator-data" | sort)"
+    docker run --rm -v "${NAME}_modality-simulator-data:/v" alpine:3.21 touch /v/marker
+    # What an operator might type: Compose takes the containers, never the external volumes.
+    run instance_compose_of "$NAME" --profile '*' down -v
+    assert_success
+    assert_equal "$(docker ps -aq --filter "label=com.docker.compose.project=$NAME")" ""
+    run docker run --rm -v "${NAME}_modality-simulator-data:/v:ro" alpine:3.21 ls /v
+    assert_output marker
+    run "$BIN/pihx" "$NAME" start
+    assert_success
+    refute_output --partial "Created volume"
+}
+
+@test "a bare docker compose up with the volumes missing fails, and creates none" {
+    create modality-simulator
+    run instance_compose_of "$NAME" up -d
+    assert_failure
+    assert_output --partial "external volume \"${NAME}_modality-simulator-data\" not found"
+    run docker volume ls -q --filter "name=^${NAME}_"
+    assert_output ''
+    assert_equal "$(running)" ""
+}
+
+@test "start keeps using a volume Compose made before (an existing instance)" {
+    create modality-simulator
+    docker volume create --label "com.docker.compose.project=$NAME" \
+        --label com.docker.compose.volume=modality-simulator-data "${NAME}_modality-simulator-data" >/dev/null
+    docker run --rm -v "${NAME}_modality-simulator-data:/v" alpine:3.21 touch /v/marker
+    run "$BIN/pihx" "$NAME" start
+    assert_success
+    refute_output --partial "Created volume"
+    run docker exec "$NAME-modality-simulator" ls /data
+    assert_output --partial marker
+}
+
+# --- archive -----------------------------------------------------------------------------------
+
+@test "archive refuses a running instance" {
+    create modality-simulator
+    "$BIN/pihx" "$NAME" start >/dev/null 2>&1
+    run "$BIN/pihx" "$NAME" archive
+    assert_failure
+    assert_output --partial "stop it first: pihx $NAME stop"
+    run ls "$PIHX_HOME"
+    refute_output --partial "$NAME.archive-"
+    # A --to directory the launcher made for it goes again.
+    run "$BIN/pihx" "$NAME" archive --to="$BATS_TEST_TMPDIR/new"
+    assert_failure
+    assert [ ! -e "$BATS_TEST_TMPDIR/new" ]
+}
+
+@test "archive writes every volume, owners kept, with the env files and RESTORE.txt, to --to" {
+    create modality-simulator
+    "$BIN/pihx" "$NAME" start >/dev/null 2>&1
+    "$BIN/pihx" "$NAME" stop >/dev/null 2>&1
+    docker run --rm -v "${NAME}_modality-simulator-data:/v" alpine:3.21 \
+        sh -c 'echo hi > /v/f && chown 999:33 /v/f && chmod 640 /v/f'
+    run "$BIN/pihx" "$NAME" archive --to "$BATS_TEST_TMPDIR/arch"
+    assert_success
+    assert_output --partial "Archived $NAME to $BATS_TEST_TMPDIR/arch/"
+    run ls "$BATS_TEST_TMPDIR/arch"
+    assert_output "$(printf '%s\n' RESTORE.txt instance.env modality-simulator.env \
+        modality-simulator.override.yaml "${NAME}_modality-simulator-data.tar.gz")"
+    run stat -c '%a' "$BATS_TEST_TMPDIR/arch" "$BATS_TEST_TMPDIR/arch/instance.env"
+    assert_output $'700\n600'
+    run tar -tzvf "$BATS_TEST_TMPDIR/arch/${NAME}_modality-simulator-data.tar.gz" --numeric-owner ./f
+    assert_output --partial '-rw-r----- 999/33'
+    # Not into a directory that isn't empty.
+    run "$BIN/pihx" "$NAME" archive --to "$BATS_TEST_TMPDIR/arch"
+    assert_failure
+    assert_output --partial "isn't empty"
+}
+
 # --- destroy -----------------------------------------------------------------------------------
 
-@test "destroy removes the instance's containers, volumes and directory, and nothing else" {
+# Runs destroy on the instance, typing each of <answers> in turn.
+destroy_typing() { # <answer>...
+    run bash -c 'printf "%s\n" "${@:2}" | "$1" "$NAME" destroy' _ "$BIN/pihx" "$@"
+}
+
+destroyed() { ls -d "$PIHX_HOME/$NAME".destroyed-* 2>/dev/null; }
+
+@test "destroy archives, then removes the instance's containers, volumes and directory, and nothing else" {
     create modality-simulator
     "$BIN/pihx" "$NAME" start >/dev/null 2>&1
     local other="$NAME-b"
@@ -349,37 +440,96 @@ start_on() { # <ref>
     printf 'services:\n  modality-simulator:\n    init: true\n    command: ["sleep", "3600"]\n' \
         > "$PIHX_HOME/$other/modality-simulator.override.yaml"
     "$BIN/pihx" "$other" start >/dev/null 2>&1
-    run "$BIN/pihx" "$NAME" destroy --force
+    export NAME
+    destroy_typing "$NAME" delete
     assert_success
     assert_output --partial "Removed instance directory $DIR"
+    assert_output --partial "Removed volume ${NAME}_modality-simulator-data"
     assert_equal "$(docker ps -aq --filter "label=com.docker.compose.project=$NAME")" ""
-    assert_equal "$(docker volume ls -q --filter "label=com.docker.compose.project=$NAME")" ""
+    run docker volume ls -q --filter "name=^${NAME}_"
+    assert_output ''
     assert [ ! -e "$DIR" ]
+    assert [ -f "$(destroyed)/${NAME}_modality-simulator-data.tar.gz" ]
     assert_equal "$(docker ps --format '{{.Names}}' --filter "label=com.docker.compose.project=$other")" "$other-modality-simulator"
-    assert [ -d "$PIHX_HOME/$other" ]
     run docker volume inspect "${other}_modality-simulator-data"
     assert_success
-    "$BIN/pihx" "$other" destroy --force >/dev/null
+    remove_test_instance "$other"
 }
 
-@test "destroy asks first: anything but y leaves the instance alone" {
+@test "destroy: anything but the name changes nothing; anything but delete keeps the volumes and the archive" {
     create modality-simulator
-    run bash -c "echo n | '$BIN/pihx' '$NAME' destroy"
-    assert_success
-    assert_output --partial "This will stop the stack, delete all volumes, and remove $DIR."
-    assert [ -d "$DIR" ]
+    "$BIN/pihx" "$NAME" start >/dev/null 2>&1
+    export NAME
+    for answers in "" "y" "$NAME-b"; do
+        destroy_typing $answers
+        assert_failure
+        assert_output --partial "nothing was changed"
+        assert_equal "$(running)" "$NAME-modality-simulator"
+        assert_equal "$(destroyed)" ""
+    done
     run bash -c "'$BIN/pihx' '$NAME' destroy < /dev/null"
+    assert_failure
+    assert_equal "$(running)" "$NAME-modality-simulator"
+    destroy_typing "$NAME" no
+    assert_failure
+    assert_output --partial "nothing was deleted"
+    assert_output --partial "pihx $NAME start"
+    assert_equal "$(running)" ""
+    assert [ -f "$DIR/instance.env" ]
+    run docker volume inspect "${NAME}_modality-simulator-data"
     assert_success
-    assert [ -d "$DIR" ]
-    run bash -c "echo y | '$BIN/pihx' '$NAME' destroy"
-    assert_success
-    assert [ ! -e "$DIR" ]
+    assert [ -f "$(destroyed)/RESTORE.txt" ]
+    run "$BIN/pihx" "$NAME" destroy --force
+    assert_failure 2
+    assert_output --partial "destroy has no --force"
 }
 
-@test "destroy removes a profiled service's kept container and volume too" {
-    create openmrs-db petl
-    run "$BIN/pihx" "$NAME" destroy --force
+@test "destroy archives a removed service's volume, and RESTORE.txt brings it back" {
+    create modality-simulator biometrics
+    "$BIN/pihx" "$NAME" start >/dev/null 2>&1
+    docker run --rm -v "${NAME}_biometrics-data:/v" alpine:3.21 \
+        sh -c 'echo kept > /v/f && chown 999:33 /v/f && chmod 640 /v/f'
+    "$BIN/pihx" "$NAME" remove-service biometrics >/dev/null 2>&1
+    export NAME
+    destroy_typing "$NAME" delete
     assert_success
+    assert_output --partial "Removed volume ${NAME}_biometrics-data"
+    local archive
+    archive=$(destroyed)
+    assert [ -f "$archive/${NAME}_biometrics-data.tar.gz" ]
+    run stat -c '%a' "$archive" "$archive/modality-simulator.env" "$archive/RESTORE.txt"
+    assert_output $'700\n600\n600'
+    # Its commands, but the last (pihx start), as written.
+    sed -n '/^  mkdir/,$p' "$archive/RESTORE.txt" | grep -v '^  pihx ' > "$BATS_TEST_TMPDIR/restore.sh"
+    run bash -e "$BATS_TEST_TMPDIR/restore.sh"
+    assert_success
+    run docker run --rm -v "${NAME}_biometrics-data:/v:ro" alpine:3.21 stat -c '%u:%g %a %n' /v/f
+    assert_output '999:33 640 /v/f'
+    run "$BIN/pihx" "$NAME" start
+    assert_success
+    assert_equal "$(running)" "$NAME-modality-simulator"
+}
+
+@test "destroy with PIHX_HOME not writable changes nothing" {
+    create modality-simulator
+    "$BIN/pihx" "$NAME" start >/dev/null 2>&1
+    export NAME
+    chmod 555 "$PIHX_HOME"
+    destroy_typing "$NAME" delete
+    chmod 755 "$PIHX_HOME"
+    assert_failure
+    assert_output --partial "can't write the archive"
+    assert_equal "$(running)" "$NAME-modality-simulator"
+    assert [ -f "$DIR/instance.env" ]
+}
+
+@test "a job's kept container and volume go with destroy" {
+    create openmrs-db petl
+    "$BIN/pihx" "$NAME" start >/dev/null 2>&1
+    export NAME
+    destroy_typing "$NAME" delete
+    assert_success
+    assert_output --partial "Removed volume ${NAME}_petl-data"
     assert [ ! -e "$DIR" ]
 }
 
@@ -388,19 +538,20 @@ start_on() { # <ref>
     "$BIN/pihx" "$NAME" start >/dev/null 2>&1
     assert_equal "$(running)" "$NAME-modality-simulator"
     echo 'services: [' > "$DIR/modality-simulator.override.yaml"   # Compose can't read it
-    run "$BIN/pihx" "$NAME" destroy --force
+    export NAME
+    destroy_typing "$NAME" delete
     assert_success
-    # (Recent Compose's `down` finds the containers by their project label itself, and then pihx's
-    # own fallback by label isn't reached; either way everything goes.)
     assert_equal "$(docker ps -aq --filter "label=com.docker.compose.project=$NAME")" ""
-    assert_equal "$(docker volume ls -q --filter "label=com.docker.compose.project=$NAME")" ""
+    run docker volume ls -q --filter "name=^${NAME}_"
+    assert_output ''
     assert [ ! -e "$DIR" ]
 }
 
 @test "destroy removes root-owned files a container left in the instance directory" {
     create modality-simulator
     docker run --rm -v "$DIR:/d" alpine:3.21 sh -c 'mkdir /d/out && touch /d/out/report && chmod 700 /d/out'
-    run "$BIN/pihx" "$NAME" destroy --force
+    export NAME
+    destroy_typing "$NAME" delete
     assert_success
     assert [ ! -e "$DIR" ]
 }

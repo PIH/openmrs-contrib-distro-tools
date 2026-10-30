@@ -7,7 +7,7 @@ load ../helpers
 # Needs quoting in SQL and the shell; a single quote can't be in an env file at all.
 PW='pa$s "w;d`x'
 
-teardown() { destroy_instance "$NAME"; common_teardown; }
+teardown() { remove_test_instance "$NAME"; common_teardown; }
 
 new_instance() { # [image name] [image tag]
     NAME="$(instance)"

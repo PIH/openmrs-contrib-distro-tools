@@ -39,6 +39,46 @@ If volumes named `<name>_...` already exist (left by an earlier instance of that
 are converting in place), `create` warns and lists them: the new instance uses them, and `destroy`
 would remove them.
 
+## Volumes
+
+An instance's data is in Docker volumes named `<name>_<volume>` (e.g. `lesotho_db-data`), declared
+in the services' compose files as external: Compose never creates or removes them. `pihx` creates
+the missing ones, labelled `pihx.instance=<name>`, before anything starts containers (`start`,
+`update`, `run-service`, `initialize`, a service command's own start), and only `destroy` removes
+them, after archiving them. So a `docker compose ... down -v` typed by hand leaves the data where
+it is, and a bare `docker compose ... up` on an instance whose volumes don't exist fails
+(`external volume "<name>_<volume>" not found`) instead of starting on new, empty ones. Volumes
+Compose made before (an existing instance, or one converted in place) have the same names and keep
+working unchanged. `remove-service` keeps a service's volumes.
+
+## Archive and destroy
+
+```bash
+pihx <name> stop
+pihx <name> archive [--to=<dir>]
+```
+
+`archive` takes a full, cold copy of a stopped instance (it refuses while any of its containers is
+running, and holds the instance lock throughout): one `<volume>.tar.gz` per volume (the whole
+volume, owners and permissions kept), including volumes of services removed since and older
+Compose-made ones (labelled `com.docker.compose.project=<name>`); copies of the instance's env and
+override files (mode 0600, the directory 0700); and `RESTORE.txt`, the exact commands that recreate
+the instance from them (`mkdir` the instance directory, copy the files back, link `tools`,
+`docker volume create` and untar each volume, `pihx <name> start`). It goes to
+`$PIHX_HOME/<name>.archive-<UTC time>/`, or to `--to`, a new or empty directory. It checks there's
+room for the volumes first, reads every archive back, and if anything fails removes what it wrote,
+so a directory it leaves is complete.
+
+`destroy` is for development and test instances. It lists the instance directory and every volume
+it would delete, with their sizes, and asks you to type the instance's name; then it stops the
+instance, archives it as above to `$PIHX_HOME/<name>.destroyed-<UTC time>/`, prints where and how
+big, and asks you to type `delete`. Only then does it remove exactly the volumes it listed, and the
+instance directory (keeping a real `tools` directory, and the instance directory with it). Any
+other answer, or no input, stops it: before the archive with nothing changed, after it with the
+instance stopped and its archive and volumes kept. There's no `--force`. It needs `PIHX_HOME` to be
+writable, so it refuses on a Puppet host, whose `/home` isn't; and it refuses a directory without
+`instance.env`.
+
 ## Starting, stopping and logs
 
 ```bash
@@ -53,7 +93,8 @@ pihx <name> logs [service]   # follow the logs, of every service by default
 pihx <name> status           # the containers, and the command holding the lock, if any
 pihx <name> stop             # removes the containers; the data stays in the volumes
 pihx <name> compose <args>   # inspect with docker compose: `config`, `ps`, `exec openmrs-db sh`, ...
-pihx <name> destroy          # removes the containers, the volumes and the instance directory (asks first; refuses a directory without instance.env; keeps a real `tools` directory, and the instance directory with it)
+pihx <name> archive          # a full copy of the stopped instance ([Archive and destroy](#archive-and-destroy))
+pihx <name> destroy          # archives it, then removes its containers, volumes and directory; asks twice
 pihx list                    # the instances, with their services and the tools directory each runs
 pihx <name> config           # the merged values, secrets masked
 ```
@@ -121,7 +162,7 @@ empty, as when the script fails, so `config` shows the fail-closed default.
 ## One command at a time
 
 Every command that changes an instance (`initialize`, `start`, `stop`, `restart`, `update`, `pull`,
-`add-service`, `remove-service`, `use-tools`, `destroy`, a job's `run-service` and a service's commands
+`add-service`, `remove-service`, `use-tools`, `archive`, `destroy`, a job's `run-service` and a service's commands
 unless they say `# pihx: no-lock`) holds a lock on it until it exits, and refuses to run while another
 command holds it, naming that command:
 

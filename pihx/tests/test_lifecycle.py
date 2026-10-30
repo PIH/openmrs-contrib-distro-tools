@@ -21,9 +21,15 @@ class LifecycleTest(CommandTest):
         self.set_env({})
         self.docker_calls = []
         self.docker_results = {}
+        # The compose model's `config --format json` calls (volumes.ensure's), kept apart.
+        self.config_calls = []
+        self.model = {}
+        # Both kinds of call, in order.
+        self.events = []
 
     def fake_docker(self, argv, **kwargs):
         self.docker_calls.append(argv[1:])
+        self.events.append(argv[1:])
         for prefix, result in self.docker_results.items():
             if argv[1:1 + len(prefix)] == list(prefix):
                 return result
@@ -31,7 +37,11 @@ class LifecycleTest(CommandTest):
 
     def run_pihx(self, *argv):
         def fake_run(compose_self, *args, **kwargs):
+            if args[-3:] == ("config", "--format", "json"):
+                self.config_calls.append(args)
+                return done(json.dumps(self.model))
             self.compose_calls.append(args)
+            self.events.append(["compose", *args])
             if kwargs.get("stdout") == subprocess.PIPE:
                 return done("")
             return done()
@@ -83,6 +93,47 @@ class CommandsTest(LifecycleTest):
         self.run_pihx("kz", "stop")
         self.assertEqual(self.compose_calls, [("--profile", "*", "down", "--remove-orphans")])
 
+    def test_start_update_and_run_service_create_the_missing_volumes_before_any_container(self):
+        self.model = {"services": {"app": {"profiles": ["app"]}}, "volumes": {
+            "data": {"external": True, "name": "kz_data"},
+            "new": {"external": True, "name": "kz_new"},
+            # Not the instance's: another name, or Compose's own.
+            "shared": {"external": True, "name": "backups"},
+            "staging": {"name": "kz_staging"}}}
+        self.docker_results = {("volume", "ls"): done("kz_data\nother_x\n")}
+        for argv in (["start"], ["update"], ["run-service", "app"]):
+            with self.subTest(argv=argv):
+                self.docker_calls.clear()
+                self.events.clear()
+                status, _, err = self.run_pihx("kz", *argv)
+                self.assertEqual(status, 0, err)
+                creates = [c for c in self.docker_calls if c[:2] == ["volume", "create"]]
+                self.assertEqual(creates, [["volume", "create", "--label", "pihx.instance=kz",
+                                            "kz_new"]])
+                self.assertIn("Created volume kz_new", err)
+                # Before any container is started, or a start-env script could start one.
+                create = self.events.index(creates[0])
+                first = next(i for i, c in enumerate(self.events)
+                             if c[:2] in (["compose", "up"], ["compose", "run"]))
+                self.assertLess(create, first)
+
+    def test_a_volume_that_cannot_be_created_stops_the_start(self):
+        self.model = {"volumes": {"data": {"external": True, "name": "kz_data"}}}
+        self.docker_results = {("volume", "create"): done(returncode=1)}
+        status, _, err = self.run_pihx("kz", "start")
+        self.assertEqual(status, 1)
+        self.assertIn("couldn't create the volume kz_data", err)
+        self.assertFalse([c for c in self.compose_calls if c[:1] == ("up",)])
+
+    def test_a_failed_volume_listing_stops_the_start(self):
+        self.model = {"volumes": {"data": {"external": True, "name": "kz_data"}}}
+        self.docker_results = {("volume", "ls"): done(returncode=1)}
+        status, _, err = self.run_pihx("kz", "start")
+        self.assertEqual(status, 1)
+        self.assertIn("couldn't list Docker's volumes", err)
+        self.assertFalse([c for c in self.docker_calls if c[:2] == ["volume", "create"]])
+        self.assertFalse([c for c in self.compose_calls if c[:1] == ("up",)])
+
     def test_arguments_are_checked(self):
         for argv in (["start", "--build"], ["stop", "x"], ["logs", "-f"], ["logs", "a", "b"],
                      ["destroy", "--forced"], ["run-service"], ["run-service", "--pull"]):
@@ -95,8 +146,7 @@ class CommandsTest(LifecycleTest):
         with lock.hold(self.inst(), 0, command="run-service"):
             for command in ("start", "stop", "restart", "pull", "update", "destroy"):
                 with self.subTest(command=command):
-                    args = ["--force"] if command == "destroy" else []
-                    status, _, err = self.run_pihx("kz", command, *args)
+                    status, _, err = self.run_pihx("kz", command)
                     self.assertEqual(status, 1)
                     self.assertIn("kz is busy: pihx kz run-service", err)
             self.assertEqual(self.compose_calls, [])
@@ -164,126 +214,6 @@ class ReplacedImagesTest(LifecycleTest):
                          [["image", "rm", "sha256:a"]])
         self.docker_calls.clear()
         self.assertEqual(self.remove_replaced({"sha256:a"}, ["sha256:b"], "x:1", ""), [])
-
-
-class DestroyTest(LifecycleTest):
-    def test_anything_but_y_leaves_the_instance(self):
-        for answer in ("n", "", "yes please", "N"):
-            with self.subTest(answer=answer), mock.patch("builtins.input", return_value=answer):
-                status, out, _ = self.run_pihx("kz", "destroy")
-                self.assertEqual(status, 0)
-                self.assertIn("This will stop the stack", out)
-                self.assertTrue((self.home / "kz").is_dir())
-        self.assertEqual(self.compose_calls, [])
-
-    def test_a_directory_without_instance_env_is_refused(self):
-        (self.home / "kz" / "instance.env").unlink()
-        (self.home / "user").mkdir()
-        for name in ("kz", "user"):
-            with self.subTest(name=name):
-                status, _, err = self.run_pihx(name, "destroy", "--force")
-                self.assertEqual(status, 1)
-                self.assertIn(f"{self.home / name} has no instance.env, so it isn't an instance",
-                              err)
-                self.assertTrue((self.home / name).is_dir())
-        self.assertTrue((self.home / "kz" / "db.env").is_file())
-        self.assertEqual(self.compose_calls, [])
-        self.assertEqual(self.docker_calls, [])
-
-    def test_eof_at_the_prompt_leaves_the_instance(self):
-        with mock.patch("builtins.input", side_effect=EOFError):
-            self.assertEqual(self.run_pihx("kz", "destroy")[0], 0)
-        self.assertTrue((self.home / "kz").is_dir())
-
-    def test_force_removes_volumes_and_the_directory_but_not_a_tools_link(self):
-        (self.home / "kz" / "tools").symlink_to(self.tools)
-        # Volumes only the restore overlays declare go too.
-        write(self.tools / "services" / "db" / "restore" / "dump.yaml",
-              "volumes:\n  db-init:\n  percona-staging:\n")
-        status, out, err = self.run_pihx("kz", "destroy", "--force")
-        self.assertEqual(status, 0, err)
-        self.assertEqual(self.compose_calls, [("--profile", "*", "down", "-v", "--remove-orphans")])
-        self.assertIn(["volume", "rm", "kz_db-init", "kz_percona-staging"], self.docker_calls)
-        self.assertFalse((self.home / "kz").exists())
-        self.assertTrue((self.tools / "services").is_dir())
-
-    def test_a_tools_directory_is_kept(self):
-        (self.home / "kz" / "tools").mkdir()
-        status, _, err = self.run_pihx("kz", "destroy", "--force")
-        self.assertEqual(status, 0, err)
-        self.assertEqual([p.name for p in (self.home / "kz").iterdir()], ["tools"])
-
-    def test_a_symlinked_instance_directory_is_only_unlinked(self):
-        real = self.root / "real"
-        (self.home / "kz").rename(real)
-        (self.home / "kz").symlink_to(real)
-        status, _, err = self.run_pihx("kz", "destroy", "--force")
-        self.assertEqual(status, 0, err)
-        self.assertFalse((self.home / "kz").is_symlink())
-        self.assertTrue((real / "db.env").is_file())
-
-    def test_root_owned_files_are_reclaimed_without_touching_a_kept_tools_directory(self):
-        (self.home / "kz" / "tools").mkdir()
-        (self.home / "kz" / "out").mkdir()
-        write(self.tools / "utils" / "lib" / "images.sh", "ALPINE_IMAGE=alpine:3.21\n")
-        original = lifecycle.shutil.rmtree
-        calls = []
-
-        def rmtree(path, *a, **k):
-            if not calls:
-                calls.append(path)
-                raise PermissionError("root-owned")
-            return original(path, *a, **k)
-        with mock.patch.object(lifecycle.shutil, "rmtree", rmtree):
-            status, _, err = self.run_pihx("kz", "destroy", "--force")
-        self.assertEqual(status, 0, err)
-        chown = next(c for c in self.docker_calls if c[:1] == ["run"])
-        self.assertIn("find", chown)
-        self.assertIn("tools", chown)
-        self.assertEqual(chown[chown.index("alpine:3.21") + 1:][:2], ["find", "/target"])
-        self.assertEqual(chown.count("/target"), 1)
-        self.assertEqual([p.name for p in (self.home / "kz").iterdir()], ["tools"])
-
-    def test_a_removal_that_still_fails_is_an_error_line(self):
-        (self.home / "kz" / "out").mkdir()
-        write(self.tools / "utils" / "lib" / "images.sh", "ALPINE_IMAGE=alpine:3.21\n")
-        with mock.patch.object(lifecycle.shutil, "rmtree", side_effect=PermissionError("denied")):
-            status, _, err = self.run_pihx("kz", "destroy", "--force")
-        self.assertEqual(status, 1)
-        self.assertIn("error: couldn't remove", err)
-
-    def test_a_failed_down_falls_back_to_the_project_label(self):
-        def fake_run(compose_self, *args, **kwargs):
-            return done(returncode=1)
-        self.docker_results = {("ps",): done("c1\nc2\n"), ("volume", "ls"): done("v1\n")}
-        with mock.patch.object(compose.Compose, "run", fake_run), \
-                mock.patch.object(lifecycle.subprocess, "run", self.fake_docker):
-            status, _, err = run(["kz", "destroy", "--force"])
-        self.assertEqual(status, 0, err)
-        self.assertIn(["rm", "-f", "c1", "c2"], self.docker_calls)
-        self.assertIn(["volume", "rm", "v1"], self.docker_calls)
-        self.assertFalse((self.home / "kz").exists())
-
-    def test_a_failed_listing_in_the_fallback_removes_nothing(self):
-        def fake_run(compose_self, *args, **kwargs):
-            return done(returncode=1)
-        for failing in (("ps",), ("volume", "ls")):
-            with self.subTest(failing=failing):
-                self.docker_calls.clear()
-                self.docker_results = {("ps",): done("c1\n"), ("volume", "ls"): done("v1\n"),
-                                       failing: done(returncode=1)}
-                with mock.patch.object(compose.Compose, "run", fake_run), \
-                        mock.patch.object(lifecycle.subprocess, "run", self.fake_docker):
-                    status, _, err = run(["kz", "destroy", "--force"])
-                self.assertEqual(status, 1)
-                self.assertIn("nothing was removed", err)
-                self.assertEqual([c for c in self.docker_calls if "rm" in c], [])
-                self.assertTrue((self.home / "kz" / "instance.env").is_file())
-
-    def test_an_unknown_instance_is_an_error(self):
-        status, _, err = self.run_pihx("nope", "destroy", "--force")
-        self.assertEqual(status, 2)
-        self.assertIn("no instance 'nope'", err)
 
 
 class RunServiceTest(LifecycleTest):

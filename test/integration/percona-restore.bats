@@ -14,7 +14,7 @@ teardown_file() { common_teardown_file; }
 
 setup() { cd "$BATS_TEST_TMPDIR"; }
 teardown() {
-    [ -n "${NAME:-}" ] && destroy_instance "$NAME"
+    [ -n "${NAME:-}" ] && remove_test_instance "$NAME"
     common_teardown
 }
 
@@ -95,7 +95,7 @@ in_7z() { # <archive> <password> <7z args...>
     restore_percona notpercona.tar.gz
     assert_failure
     assert_output --partial "isn't a Percona/xtrabackup backup"
-    destroy_instance "$NAME"; NAME=
+    remove_test_instance "$NAME"; NAME=
     assert_no_leftovers
 }
 

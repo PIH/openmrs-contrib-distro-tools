@@ -18,7 +18,7 @@ CORE_COMMANDS = frozenset({
     "create", "add-service", "remove-service", "config", "use-tools",
     "start", "stop", "restart", "status", "logs", "update", "pull", "wait", "run-service",
     "backup", "upload-backups", "list-backups", "copy-backup",
-    "initialize", "destroy", "summary",
+    "initialize", "archive", "destroy", "summary",
 })
 RESERVED_NAMES = CORE_COMMANDS | {"instance"}
 

@@ -19,7 +19,7 @@ setup() {
     mkdir run
 }
 teardown() {
-    "$BIN/pihx" "$NAME" destroy --force >/dev/null 2>&1 || true
+    remove_test_instance "$NAME"
     common_teardown
 }
 

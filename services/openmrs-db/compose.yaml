@@ -93,5 +93,9 @@ services:
       - ${PIHX_TOOLS}/services/openmrs-db/scripts/mysql-accounts.sh:/mysql-accounts.sh:ro
     restart: "no"
 
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
 volumes:
   db-data:
+    external: true
+    name: ${SERVICE_NAME}_db-data

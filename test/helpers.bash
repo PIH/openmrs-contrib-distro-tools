@@ -217,8 +217,36 @@ from_folder() { # <entry> <source> [<entry> <source>...]
     echo "$folder"
 }
 
-destroy_instance() { # <name>
-    "$BIN/openmrs-docker" "$1" destroy --force >/dev/null 2>&1 || true
+# Test-only cleanup of a test's instance <name> (pihx destroy asks, and archives first): its
+# containers and networks (Compose's project label), its volumes (pihx's label, Compose's project
+# label, or named <name>_...) and its directory. Only a name under this run's RUN_PREFIX, so it can't
+# touch anything that isn't a test's.
+remove_test_instance() { # <name>
+    local name=${1:-} ids
+    [ -n "$name" ] || return 0
+    case $name in
+        "$RUN_PREFIX"-*) ;;
+        *) echo "remove_test_instance: '$name' isn't a test instance (under $RUN_PREFIX)" >&2; return 1 ;;
+    esac
+    ids=$(docker ps -aq --filter "label=com.docker.compose.project=$name")
+    [ -z "$ids" ] || docker rm -f $ids >/dev/null
+    ids=$( { docker volume ls -q --filter "label=pihx.instance=$name"
+             docker volume ls -q --filter "label=com.docker.compose.project=$name"
+             docker volume ls -q | awk -v p="${name}_" 'index($0, p) == 1'
+           } | sort -u)
+    [ -z "$ids" ] || docker volume rm -f $ids >/dev/null
+    ids=$(docker network ls -q --filter "label=com.docker.compose.project=$name")
+    [ -z "$ids" ] || docker network rm $ids >/dev/null
+    if [ -d "$PIHX_HOME/$name" ]; then
+        reclaim "$PIHX_HOME/$name"
+        rm -rf "${PIHX_HOME:?}/$name"
+    fi
+    return 0
+}
+
+# Runs `<command> <name> destroy` via bats `run`, typing the instance's name and then `delete`.
+run_destroy() { # <bin/pihx or bin/openmrs-docker> <name>
+    run bash -c 'printf "%s\ndelete\n" "$2" | "$1" "$2" destroy' _ "$1" "$2"
 }
 
 # A tiny, valid logical dump (plain SQL), for tests that need initialize to have a db source but

@@ -8,7 +8,7 @@ setup() {
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=Pw-1 PETL_SQLSERVER_PASSWORD=Pw-1 \
         create_instance "$NAME" --services=openmrs-db,petl
 }
-teardown() { destroy_instance "$NAME"; common_teardown; }
+teardown() { remove_test_instance "$NAME"; common_teardown; }
 
 @test "run-service --pull pulls the service's image first, even a profiled one" {
     # A container that doesn't hold the lock, so nothing else of the instance is involved, added by

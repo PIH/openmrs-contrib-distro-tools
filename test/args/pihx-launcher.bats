@@ -67,7 +67,7 @@ copy_tools() { # <dir>
 
 @test "the launcher runs pihx under an init process, so Ctrl-C reaches it" {
     run grep -c 'docker run --rm -i --init' "$BIN/pihx"
-    assert_output 2
+    assert_output 3
 }
 
 @test "pihx version prints a version and exits 0" {

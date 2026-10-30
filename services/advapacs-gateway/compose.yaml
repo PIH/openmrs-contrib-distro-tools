@@ -28,5 +28,9 @@ services:
     volumes:
       - advapacs-gateway-data:/opt/AdvaHealthSolutions/AdvaPACSGateway
 
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
 volumes:
   advapacs-gateway-data:
+    external: true
+    name: ${SERVICE_NAME}_advapacs-gateway-data

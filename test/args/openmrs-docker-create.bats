@@ -179,7 +179,7 @@ assert_env_files_unchanged() {
     assert_output ''
     run "$BIN/openmrs-docker" "$NAME" status
     assert_success
-    run "$BIN/openmrs-docker" "$NAME" destroy --force
+    run_destroy "$BIN/openmrs-docker" "$NAME"
     assert_success
     [ ! -e "$PIHX_HOME/$NAME" ]
 }
@@ -357,7 +357,7 @@ assert_env_files_unchanged() {
     run env PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 PETL_SQLSERVER_HOST=reports.example.org \
         "$BIN/openmrs-docker" "$NAME" add-service petl
     assert_success
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 SQLSERVER_SA_PASSWORD=Sa-pw-1 \
         create_instance "$NAME" --services=openmrs-db,petl,sqlserver
     run "$BIN/openmrs-docker" "$NAME" remove-service sqlserver
