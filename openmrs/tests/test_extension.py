@@ -74,15 +74,22 @@ class CommandLineTest(ExtensionTest):
                 self.assertEqual(status, 2)
                 self.assertIn("unknown command", err)
 
-    def test_options_a_command_doesn_t_take(self):
+    def test_start_and_update_refuse_arguments_as_pihx_s_do(self):
         self.make()
-        for argv, message in [(("start", "--force"), "unknown option '--force' for start"),
-                              (("update", "--force"), "unknown option '--force' for update"),
-                              (("build", "--dev"), "unknown option '--dev' for build")]:
+        for argv, pihx in [(("start", "foo"), ("start", "foo")),
+                           (("start", "--build", "foo"), ("start", "foo")),
+                           (("update", "--force", "--dev"), ("update", "--force"))]:
             with self.subTest(argv=argv):
-                status, _, err = self.openmrs_docker("kz", *argv)
-                self.assertEqual(status, 2)
-                self.assertIn(message, err)
+                result = self.openmrs_docker("kz", *argv)
+                self.assertEqual(result, self.pihx("kz", *pihx))
+                self.assertEqual(result[0], 2)
+        self.assertEqual(self.compose_calls, [])
+
+    def test_build_refuses_an_option(self):
+        self.make()
+        status, _, err = self.openmrs_docker("kz", "build", "--dev")
+        self.assertEqual(status, 2)
+        self.assertIn("unknown option '--dev' for build", err)
 
 
 class CreateTest(ExtensionTest):

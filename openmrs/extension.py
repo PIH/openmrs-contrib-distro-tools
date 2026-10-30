@@ -27,6 +27,8 @@ it adds or changes:
 """
 
 DEFAULT_SERVICES = "openmrs-db,openmrs"
+# start's and update's options for the dev and build overlays.
+MODE_OPTIONS = ("--build", "--dev")
 # The OpenMRS distribution's Maven project, which build, --build and --dev use. Kept in openmrs.env.
 DISTRO_DIR = "OPENMRS_DISTRO_DIR"
 # What a seed image pihx can't restore from probably is.
@@ -106,10 +108,16 @@ def _compose(inst, build=False, dev=False):
     return compose_module.Compose(inst, extra_files=files)
 
 
+def _modes(args):
+    """The extension's options in <args> (--build, --dev), and the rest, left for pihx's own command
+    to refuse in its own words."""
+    return ({a for a in args if a in MODE_OPTIONS}, [a for a in args if a not in MODE_OPTIONS])
+
+
 def cmd_start(name, args):
-    options = _options("start", args, ("--build", "--dev"))
-    if not options:
-        return lifecycle.cmd_start(name, args)
+    options, rest = _modes(args)
+    if rest or not options:
+        return lifecycle.cmd_start(name, rest)
     inst = _open(name)
     build = "--build" in options
     compose = _compose(inst, build=build, dev="--dev" in options)
@@ -121,9 +129,9 @@ def cmd_start(name, args):
 
 
 def cmd_update(name, args):
-    options = _options("update", args, ("--build", "--dev"))
-    if not options:
-        return lifecycle.cmd_update(name, args)
+    options, rest = _modes(args)
+    if rest or not options:
+        return lifecycle.cmd_update(name, rest)
     inst = _open(name)
     build = "--build" in options
     compose = _compose(inst, build=build, dev="--dev" in options)
@@ -142,7 +150,7 @@ def cmd_build(name, args):
 
 
 # The options of the commands that build.
-BUILD_OPTIONS = {"start": ("--build", "--dev"), "update": ("--build", "--dev"), "build": ()}
+BUILD_OPTIONS = {"start": MODE_OPTIONS, "update": MODE_OPTIONS, "build": ()}
 
 
 def cmd_distro_dir(name, args):
