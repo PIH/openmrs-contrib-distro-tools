@@ -295,7 +295,7 @@ class UseToolsTest(CommandTest):
         (self.root / "empty").mkdir()
         status, _, err = self.run_pihx("kz", "use-tools", str(self.root / "empty"))
         self.assertNotEqual(status, 0)
-        self.assertIn("isn't a distro-tools checkout", err)
+        self.assertIn("isn't a tools directory", err)
         self.assertEqual(os.readlink(self.home / "kz" / "tools"), str(self.tools))
 
     def test_refuses_to_replace_a_real_directory(self):
@@ -303,7 +303,7 @@ class UseToolsTest(CommandTest):
         (self.home / "kz" / "tools").mkdir()
         status, _, err = self.run_pihx("kz", "use-tools", str(self.other))
         self.assertNotEqual(status, 0)
-        self.assertIn("isn't a link", err)
+        self.assertIn("is a directory of its own", err)
         self.assertTrue((self.home / "kz" / "tools").is_dir())
         self.assertFalse((self.home / "kz" / "tools").is_symlink())
 

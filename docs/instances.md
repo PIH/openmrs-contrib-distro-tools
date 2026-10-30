@@ -49,7 +49,7 @@ pihx <name> logs [service]   # follow the logs, of every service by default
 pihx <name> status           # the containers, and the command holding the lock, if any
 pihx <name> stop             # removes the containers; the data stays in the volumes
 pihx <name> destroy          # removes the containers, the volumes and the instance directory (asks first; refuses a directory without instance.env)
-pihx list                    # the instances, with their services and the checkout each runs
+pihx list                    # the instances, with their services and the tools directory each runs
 pihx <name> config           # the merged values, secrets masked
 ```
 
@@ -75,8 +75,8 @@ after a tag change. Never a local build still tagged, which no registry may have
 another container is made from (another instance on the same version): Docker refuses those, and
 they're left quietly. `start` removes them too.
 
-An instance runs the service files of its own checkout, `tools` ([An instance's
-files](env.md#the-checkout-tools)), so there is nothing to sync: updating the tool updates its
+An instance runs the service files of its own `tools` directory ([An instance's
+files](env.md#the-tools-directory)), so there is nothing to sync: updating the tool updates its
 instances, once the containers are recreated.
 
 ## Building a distro from source (developers)
@@ -119,7 +119,7 @@ itself: see [`reset-accounts`](../services/openmrs-db/README.md#changing-the-pas
 ## Updating this tool, and pinning it
 
 The tool is a git clone, so `git pull` in it updates it, and `git checkout <commit/branch/tag>` pins
-it. Each instance runs the checkout its `tools` link names, so to keep some instances on a stable
+it. Each instance runs its own `tools` directory, so to keep some instances on a stable
 version while you work on the tool in another checkout (e.g. a `git worktree` on `main`), point them
 at it with `pihx <name> use-tools <path>`. The first run with a new version of
 `images/pihx-runtime` pulls that image (or builds it, when CI hasn't published it yet).

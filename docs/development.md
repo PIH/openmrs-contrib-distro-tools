@@ -5,8 +5,8 @@
 - `bin/pihx` is a short POSIX-sh launcher. It runs the `pihx` Python package from the checkout inside
   the `pihx-runtime` image (Python, the Docker CLI and the Compose plugin), with the checkout and
   `PIHX_HOME` mounted at their own paths so bind mounts resolve on the host, the Docker socket, and
-  the caller's uid and terminal. `pihx <instance> ...` hands off to the instance's own checkout
-  (`tools`). The host needs only Docker and a shell. The runtime image is pulled by its content tag
+  the caller's uid and terminal. `pihx <instance> ...` hands off to the instance's own `tools`
+  directory. The host needs only Docker and a shell. The runtime image is pulled by its content tag
   (below), or built when CI hasn't published it yet.
 - `pihx/` is the core, which knows nothing about any product: `instance.py` (the directory and its
   files), `envfile.py` (the env file format), `services.py` (manifests), `compose.py` (running

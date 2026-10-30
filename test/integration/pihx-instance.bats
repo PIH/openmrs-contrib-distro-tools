@@ -91,7 +91,7 @@ teardown() { common_teardown; }
     assert_line --regexp "^kz +openmrs-db +$REPO_ROOT\$"
 }
 
-@test "a dangling tools link is an error naming use-tools" {
+@test "an instance with no tools directory is an error naming use-tools" {
     "$BIN/pihx" kz create --services=openmrs-db
     ln -sfn "$BATS_TEST_TMPDIR/moved" "$PIHX_HOME/kz/tools"
     run "$BIN/pihx" kz config
@@ -109,7 +109,7 @@ teardown() { common_teardown; }
     assert_success
 }
 
-@test "use-tools moves the instance to another checkout" {
+@test "use-tools moves the instance to another tools directory" {
     "$BIN/pihx" kz create --services=openmrs-db
     mkdir other
     cp -R "$REPO_ROOT/bin" "$REPO_ROOT/utils" "$REPO_ROOT/images" "$REPO_ROOT/pihx" \
@@ -125,7 +125,7 @@ teardown() { common_teardown; }
 
     run "$BIN/pihx" kz use-tools "$BATS_TEST_TMPDIR"
     assert_failure
-    assert_output --partial "isn't a distro-tools checkout"
+    assert_output --partial "isn't a tools directory"
 }
 
 @test "use-tools resolves a path through a link or .. outside the mounted paths" {
@@ -149,5 +149,5 @@ teardown() { common_teardown; }
         "$REPO_ROOT/services" "$REPO_ROOT/instance.env.defaults" "$PIHX_HOME/kz/tools"
     run "$BIN/pihx" kz use-tools "$REPO_ROOT"
     assert_failure
-    assert_line --index -1 --partial "isn't a link"
+    assert_line --index -1 --partial "is a directory of its own"
 }

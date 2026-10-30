@@ -193,10 +193,10 @@ copy_tools() { # <dir>
     assert_success
 }
 
-@test "an instance whose tools link points nowhere is an error naming use-tools" {
+@test "an instance with no tools directory is an error naming use-tools" {
     mkdir -p "$PIHX_HOME/inst"
     ln -s "$BATS_TEST_TMPDIR/gone" "$PIHX_HOME/inst/tools"
     run "$BIN/pihx" inst version
     assert_failure
-    assert_output "error: $PIHX_HOME/inst/tools doesn't resolve to a checkout; point it at one with: pihx inst use-tools <path>"
+    assert_output "error: $PIHX_HOME/inst/tools is missing; point it at a tools directory with: pihx inst use-tools <path>"
 }

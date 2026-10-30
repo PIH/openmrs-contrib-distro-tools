@@ -1,7 +1,7 @@
 # An instance's files
 
 An instance is a directory under `PIHX_HOME` (default `~/pihx`) holding one env file per service,
-`instance.env` for the values every service shares, and a link to the checkout of this tool it runs.
+`instance.env` for the values every service shares, and the `tools` directory it runs.
 `pihx <name> create` writes them (Puppet writes them for the instances it manages).
 
 ```
@@ -13,7 +13,7 @@ An instance is a directory under `PIHX_HOME` (default `~/pihx`) holding one env 
   petl.env             (one file per service of the instance)
   openmrs.override.yaml   optional: see below
   .lock                the instance lock
-  tools -> /home/me/distro-tools    the checkout this instance runs
+  tools -> /home/me/distro-tools    the tools directory this instance runs
 ```
 
 ## The files present are the instance's services
@@ -21,7 +21,7 @@ An instance is a directory under `PIHX_HOME` (default `~/pihx`) holding one env 
 Adding `petl.env` adds PETL ([`add-service`](services.md#adding-and-removing-services) writes it);
 removing a service's file removes the service, when `pihx <name> update` brings the instance up and
 removes the containers of services it no longer has. Volumes are kept. A `<name>.env` that is not a
-service in the checkout is an error, naming the file; `instance` is `instance.env`, so it is not a
+service in the tools directory is an error, naming the file; `instance` is `instance.env`, so it is not a
 service name.
 
 ## Format
@@ -33,10 +33,10 @@ variable. If you edit a file by hand, keep to single quotes: Compose expands `$`
 unquoted or double-quoted value.
 
 Each file holds only this instance's values for its service. Defaults are not copied into it: they
-stay in the checkout, in `services/<svc>/env.defaults` ([Writing a
+stay in the tools directory, in `services/<svc>/env.defaults` ([Writing a
 service](services.md#variables-envdefaults-and-the-instances-files)) and `instance.env.defaults`. So
 a variable absent from the instance's files has its default, and a new default arrives with the
-checkout.
+tools directory.
 
 ## Where values come from
 
@@ -85,16 +85,16 @@ service, and two services never define the same one.
 (and any `with-<other>.yaml`), for one-off changes that aren't env values: an extra port, a debug
 mount. It survives updates of the tool.
 
-## The checkout: tools
+## The tools directory
 
-`tools` is the checkout the instance runs: `pihx <name> ...` runs the instance's own `tools`, whichever
-`pihx` you typed (the launcher hands off to `tools/bin/pihx`). `create` links it to the checkout it
-was run from (on a Puppet host, `tools` is the checkout itself). To move an instance to another
-checkout, such as a worktree on a stable branch:
+`tools` is the directory of this tool that the instance runs: `pihx <name> ...` runs the instance's own
+`tools`, whichever `pihx` you typed (the launcher hands off to `tools/bin/pihx`). `create` points it at
+the tools directory it was run from. To move an instance to another tools directory, such as a worktree on
+a stable branch:
 
 ```bash
 pihx <name> use-tools <path>
-pihx list        # the instances, their services and what their tools point to
+pihx list        # the instances, their services and their tools directorys
 ```
 
 ## Variables

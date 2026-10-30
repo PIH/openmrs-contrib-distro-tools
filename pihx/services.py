@@ -117,7 +117,7 @@ class Service:
 
 
 def load(tools, name):
-    """The service <name> in the checkout <tools>."""
+    """The service <name> in the tools directory <tools>."""
     tools = Path(tools)
     svc_dir = tools / "services" / name
     if not svc_dir.is_dir():
@@ -238,7 +238,7 @@ def in_order(services):
 
 
 def all(tools):
-    """Every service in the checkout <tools>, by name."""
+    """Every service in the tools directory <tools>, by name."""
     services_dir = Path(tools) / "services"
     if not services_dir.is_dir():
         return {}

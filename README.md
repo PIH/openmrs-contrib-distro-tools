@@ -100,7 +100,7 @@ Run `pihx`, `openmrs-docker` or `openmrs-utils` with no arguments for every comm
 | | |
 |---|---|
 | [Running an instance](docs/instances.md) | Creating, starting, updating and pinning instances; the instance lock |
-| [An instance's files](docs/env.md) | `instance.env` and one env file per service: where values come from, what a container sees, overrides, the checkout an instance runs |
+| [An instance's files](docs/env.md) | `instance.env` and one env file per service: where values come from, what a container sees, overrides, the tools directory an instance runs |
 | [Services](docs/services.md) | The services, adding and removing them, and how to write one; each service's README has its variables |
 | [Initializing an instance](docs/restore.md) | Filling a new instance from a seed image, dumps, data directories or Percona backups, and checking the result |
 | [The openmrs-docker extension](openmrs/README.md) | `openmrs-docker`: what it adds to `pihx`, building and running a distro from source |

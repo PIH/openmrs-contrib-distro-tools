@@ -38,7 +38,7 @@ manifest's `capture-env` says):
 | `net_read_timeout`, `net_write_timeout` | `3600` |
 | `log_bin_trust_function_creators` | `1` (only matters when binary logging is on, e.g. by default on MySQL 8+: lets PETL create functions) |
 
-Defaults live in the checkout, so one can't be dropped by deleting a line from an instance's file;
+Defaults live in the tools directory, so one can't be dropped by deleting a line from an instance's file;
 set it to the value you want instead. Binary logging, e.g. for a CDC tool such as Debezium, is left
 at the server's default: off on MySQL 5.6 and MariaDB, on (30-day expiry) on MySQL 8+. To turn it on
 for 5.6, in `openmrs-db.env`:

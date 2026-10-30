@@ -112,10 +112,10 @@ of a service declares exactly:
         required: false
 ```
 
-`PIHX_TOOLS` is the instance's checkout, `PIHX_INSTANCE_DIR` its directory, and `SERVICE_NAME` its
+`PIHX_TOOLS` is the instance's tools directory, `PIHX_INSTANCE_DIR` its directory, and `SERVICE_NAME` its
 name, which names containers: `container_name: ${SERVICE_NAME}-<container>`. A compose file has no
 relative host paths (Compose would resolve them against the instance directory), so what it mounts
-from the checkout is `${PIHX_TOOLS}/services/<svc>/scripts/<file>`.
+from the tools directory is `${PIHX_TOOLS}/services/<svc>/scripts/<file>`.
 
 ### Contributing to another service: `with-<other>.yaml`
 
@@ -173,7 +173,7 @@ merged values as environment variables (the defaults, the `<svc>.env` files and 
 | Variable | |
 |---|---|
 | `PIHX_INSTANCE`, `PIHX_INSTANCE_DIR` | the instance's name and directory |
-| `PIHX_TOOLS`, `PIHX_HOME` | the instance's checkout, and the directory of instances |
+| `PIHX_TOOLS`, `PIHX_HOME` | the instance's tools directory, and the directory of instances |
 | `PIHX_SERVICE` | the script's own service |
 | `SERVICE_NAME` | the instance's name, as compose files interpolate it |
 | `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE`, `COMPOSE_ENV_FILES` | so a plain `docker compose ...` targets the instance |

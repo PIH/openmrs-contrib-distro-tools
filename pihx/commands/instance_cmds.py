@@ -77,8 +77,8 @@ def captured_values(tools, selected, environ):
     """Which of the caller's variables <environ> go in which env file: ({instance.env values},
     {service name: {name: value}}) for the services <selected> (a list of Service). Only a name that
     is set is written, and only into a file that knows it: instance.env for the names in the
-    checkout's instance.env.defaults; the owner's file for a name in a service's env.defaults; else
-    the first service (by name) that captures its prefix (capture-env) or that its compose files
+    tools directory's instance.env.defaults; the owner's file for a name in a service's env.defaults;
+    else the first service (by name) that captures its prefix (capture-env) or that its compose files
     refer to."""
     defaults_file = Path(tools) / instance_module.INSTANCE_DEFAULTS
     try:
@@ -206,7 +206,7 @@ def cmd_list(args):
     rows = []
     for d, svcs in instances(instance_module.home()):
         tools = d / "tools"
-        # As written: other instances' links are never resolved here.
+        # As written: other instances' tools are never resolved here.
         target = os.readlink(tools) if tools.is_symlink() else (
             "(directory)" if tools.is_dir() else "(none)")
         rows.append((d.name, ",".join(svcs) or "-", target))
@@ -322,11 +322,11 @@ def cmd_use_tools(name, args):
     cwd = os.environ.get("PIHX_CWD") or os.getcwd()
     target = Path(os.path.realpath(os.environ.get("PIHX_USE_TOOLS") or os.path.join(cwd, args[0])))
     if not (target / "bin" / "pihx").is_file() or not (target / "services").is_dir():
-        raise InstanceError(f"{target} isn't a distro-tools checkout (no bin/pihx or services/)")
+        raise InstanceError(f"{target} isn't a tools directory (no bin/pihx or services/)")
     link = instance_dir / "tools"
     if link.exists() and not link.is_symlink():
-        raise InstanceError(f"{link} isn't a link (on a Puppet host it is the checkout itself): "
-                            "change the checkout there, not with use-tools")
+        raise InstanceError(f"{link} is a directory of its own, not one use-tools can replace (on a Puppet host "
+                            "it is Puppet's git checkout): change it there")
     with lock.hold(instance_module.Instance(name, instance_dir, link, []), lock.wait_seconds(),
                    command="use-tools"):
         new = instance_dir / ".tools.new"

@@ -1,6 +1,6 @@
 """Instances: a directory under PIHX_HOME holding instance.env, one <svc>.env per service (its
 presence makes the service part of the instance), optional <svc>.override.yaml, .lock, and tools,
-the checkout the instance runs."""
+the tools directory the instance runs."""
 
 import dataclasses
 import os
@@ -43,7 +43,7 @@ class Instance:
     services: list
 
     def env_files(self):
-        """The env files whose values the instance sees, later ones winning: the checkout's
+        """The env files whose values the instance sees, later ones winning: the tools directory's
         instance.env.defaults, every service's defaults, then every <svc>.env, then instance.env
         (if present)."""
         files = []
@@ -65,9 +65,9 @@ class Instance:
 
 
 def open(home, name, tools=None):
-    """The instance <name> under <home>. <tools> is the checkout it runs: by default PIHX_TOOLS,
-    since the launcher has already handed off to the instance's own checkout (its tools link is
-    resolved on the host, not here)."""
+    """The instance <name> under <home>. <tools> is the tools directory it runs: by default PIHX_TOOLS,
+    since the launcher has already handed off to the instance's own tools directory (resolved on the
+    host, not here)."""
     error = instance_name_error(name)
     if error:
         raise InstanceError(error)
@@ -78,7 +78,7 @@ def open(home, name, tools=None):
         tools = os.environ.get("PIHX_TOOLS")
         if not tools:
             raise InstanceError("PIHX_TOOLS isn't set (run pihx through bin/pihx)")
-    # Not resolved: tools may be a link the host resolves.
+    # Not resolved: the host may resolve it differently.
     tools = Path(tools).absolute()
     found = []
     for env_file in sorted(instance_dir.glob("*.env")):

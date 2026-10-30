@@ -3,8 +3,8 @@
 #
 # Runs the pihx package from this checkout inside pihx-runtime, so the host needs only Docker and a
 # POSIX shell. The checkout and PIHX_HOME (default ~/pihx) are mounted at their host paths, so paths
-# pihx hands to Compose resolve on the host. pihx <instance> ... runs the instance's own checkout
-# (its tools link), whichever bin/pihx was typed.
+# pihx hands to Compose resolve on the host. pihx <instance> ... runs the instance's own tools directory,
+# whichever bin/pihx was typed.
 #
 # An extension (bin/openmrs-docker) runs its own Python module through this launcher instead:
 #   PIHX_EXTENSION         the module (e.g. openmrs.extension), a .py file in the checkout
@@ -33,9 +33,9 @@ PIHX_HOME=${PIHX_HOME:-$HOME/pihx}
 mkdir -p "$PIHX_HOME"
 PIHX_HOME=$(cd -P "$PIHX_HOME" && pwd)
 
-# Hand-off: an instance runs the checkout its tools link names. Only for a valid instance name, so
-# the argument can't point outside PIHX_HOME. A tools link that resolves nowhere is pihx's to report.
-# Once only: the launcher handed to never hands off again, so links can't send it round in a loop.
+# Hand-off: `pihx <instance> ...` re-runs itself from the instance's own tools directory, so an instance
+# always runs one version of the tools. Only for a valid instance name, so the argument can't point
+# outside PIHX_HOME. Once only: the launcher handed to never hands off again, so it can't loop.
 if [ -z "${PIHX_HANDED_OFF-}" ]; then
     case ${1-} in
         '' | [!a-z0-9]* | *[!a-z0-9_-]*) ;;
@@ -47,15 +47,14 @@ if [ -z "${PIHX_HANDED_OFF-}" ]; then
                 export PIHX_HANDED_OFF
                 exec "$instance_tools/bin/pihx" "$@"
             fi
-            # An instance whose tools link resolves nowhere (the checkout moved or was deleted) has
-            # no checkout to run. Python never resolves other instances' links, so this is the one
-            # place that says so. use-tools is the fix, and create refuses an existing directory
-            # itself.
+            # An instance with no tools directory (it was moved or deleted) has nothing to run.
+            # Python never looks at other instances' tools, so this is the one place that says so.
+            # use-tools is the fix, and create refuses an existing directory itself.
             case $1:${2-} in
                 list:* | help:* | version:* | *:use-tools | *:create) ;;
                 *)
                     if [ -d "$PIHX_HOME/$1" ] && [ ! -d "$PIHX_HOME/$1/tools" ]; then
-                        die "$PIHX_HOME/$1/tools doesn't resolve to a checkout; point it at one with: pihx $1 use-tools <path>"
+                        die "$PIHX_HOME/$1/tools is missing; point it at a tools directory with: pihx $1 use-tools <path>"
                     fi
                     ;;
             esac

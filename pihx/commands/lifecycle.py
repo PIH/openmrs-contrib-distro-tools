@@ -331,8 +331,8 @@ def _alpine_image(inst):
 def _remove_directory(inst, compose):
     """Removes the instance directory, reclaiming root-owned files first if need be (a one-off
     service, e.g. smoke tests via run-service, may have written some into a bind-mounted directory
-    under it). Its tools link goes, never what it points to; a tools directory (Puppet's
-    checkout) stays, and so does the directory then."""
+    under it). A symlinked tools goes, never what it points to; a real tools directory
+    (Puppet keeps it as a git checkout) stays, and so does the instance directory then."""
     if inst.dir.is_symlink():
         # Only the link: what it points to isn't this instance's to remove.
         inst.dir.unlink()
@@ -355,7 +355,7 @@ def _remove_directory(inst, compose):
         remove()
     except OSError:
         owner = f"{os.getuid()}:{os.getgid()}"
-        # Never the kept tools directory: it is Puppet's checkout, whose ownership stays as it is.
+        # Never the kept tools directory: it is Puppet's, whose ownership stays as it is.
         chown = (["find", "/target", "-mindepth", "1", "-maxdepth", "1", "!", "-name", "tools",
                   "-exec", "chown", "-R", owner, "{}", "+"] if keep_tools
                  else ["chown", "-R", owner, "/target"])
@@ -368,7 +368,7 @@ def _remove_directory(inst, compose):
         except OSError as e:
             raise InstanceError(f"couldn't remove {inst.dir}: {e}") from None
     if keep_tools:
-        note(f"Kept {tools}: it is a checkout, not a link")
+        note(f"Kept {tools}: it is a directory of its own, not a symlink")
         return f"Removed instance {inst.name}'s files from {inst.dir}"
     return f"Removed instance directory {inst.dir}"
 

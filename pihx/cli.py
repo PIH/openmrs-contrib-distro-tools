@@ -26,7 +26,7 @@ Commands:
   config [--show-secrets]    Print the merged values, secrets masked
   add-service <service>      Add a service to the instance
   remove-service <service>   Remove a service's containers (not its volumes) and env file
-  use-tools <path>           Run the instance from another distro-tools checkout
+  use-tools <path>           Run the instance from another tools directory
   start                      Bring the instance up and check its setup containers
   stop                       Remove its containers (not its volumes)
   restart                    Restart its containers
@@ -49,7 +49,7 @@ Commands:
                              (or an image's /seed folder), before its first start
   destroy [--force]          Remove its containers, volumes and directory (asks first)
   help                       Show this help
-  version                    Show pihx's version and the checkout it runs from
+  version                    Show pihx's version and the tools directory it runs from
 """
 
 
@@ -73,7 +73,7 @@ def cmd_version(args):
 # help, there or after an instance, is dispatch's: an extension adds to it.
 GLOBAL_COMMANDS = {"version": cmd_version, "list": instance_cmds.cmd_list}
 
-# Commands on an instance; each takes (instance, args). version reports the checkout the instance
+# Commands on an instance; each takes (instance, args). version reports the tools directory the instance
 # runs (the launcher has already handed off to it).
 INSTANCE_COMMANDS = {
     "version": lambda instance, args: cmd_version(args),

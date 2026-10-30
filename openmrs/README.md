@@ -27,7 +27,7 @@ old command names or orders:
 | `INITIALIZE_DB_TIMEOUT` | `PIHX_INITIALIZE_TIMEOUT` |
 | `<name> fingerprint` | `<name> summary` (openmrs-db's, then openmrs-data's without the distribution artifacts; `--include-distribution-artifacts` adds them) |
 | `<name> reset-openmrs-db-accounts` | `<name> openmrs-db reset-accounts` |
-| `<name> sync` | nothing: instances use their checkout's service files directly |
+| `<name> sync` | nothing: instances use their tools directory's service files directly |
 | `SMOKE_TESTS_*` set for one `run-service` | set them when adding the service (`add-service openmrs-smoke-tests`), or in `openmrs-smoke-tests.env` |
 
 ## OPENMRS_DISTRO_DIR
