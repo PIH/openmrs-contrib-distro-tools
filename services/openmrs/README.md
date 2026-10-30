@@ -12,7 +12,7 @@ defaults are in [`env.defaults`](env.defaults).
 | `OPENMRS_HTTP_PORT`, `OPENMRS_DEBUG_PORT` | `8080`, `1044` | published ports; set them differently to run more than one instance at once |
 | `OPENMRS_MEMORY_LIMIT`, `OPENMRS_JAVA_MEMORY_OPTS` | `4g`, `-Xms512m -Xmx2g -XX:NewSize=128m` | memory |
 | `OPENMRS_ACTIVITYLOG_ENABLED` | `false` | |
-| `OPENMRS_CREATE_TABLES` | unset | `true` or `false` overrides whether OpenMRS creates its tables. Unset, pihx decides at each `start` and `update` ([below](#creating-the-tables)) |
+| `OPENMRS_CREATE_TABLES` | unset | `false` stops OpenMRS creating its tables. It can't force them: `true` still needs an empty database, and any other value is false. Unset, pihx decides at each `start` and `update` ([below](#creating-the-tables)) |
 | `OMRS_EXTRA_*`, `OMRS_JAVA_SERVER_OPTS` | none | runtime properties and Java options ([below](#runtime-properties-omrs_extra_)) |
 
 The database password and user come from `openmrs-db.env`: `openmrs` doesn't redefine them.
@@ -27,7 +27,8 @@ zero gives true, for that start only; anything else -- tables, a failed or timed
 recorded, and a plain `docker compose up` that bypasses pihx gets false. If the script fails,
 pihx passes `OPENMRS_DB_FOUND_EMPTY` empty, which is false too, and an instance whose env files set
 `OPENMRS_DB_FOUND_EMPTY` is refused, so no file can stand in for the check. `OPENMRS_CREATE_TABLES`
-in `openmrs.env`, if set, decides instead.
+in `openmrs.env` can only force false: `false` (or any value but `true`) skips the check and gives
+false; `true` warns that it can only apply to an empty database and counts the tables as usual.
 
 An existing `openmrs` container keeps its value, so a start or update doesn't recreate it for this,
 only where that is safe (read with `docker inspect`): false always, and true only while OpenMRS's

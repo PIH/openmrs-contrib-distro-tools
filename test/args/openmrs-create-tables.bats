@@ -63,10 +63,31 @@ FAKE
     done
 }
 
-@test "OPENMRS_CREATE_TABLES decides without touching the database" {
-    OPENMRS_CREATE_TABLES=true FAKE_COUNTS='1\n0\n' run --separate-stderr "$SCRIPT"
+@test "OPENMRS_CREATE_TABLES=false decides without touching the database" {
+    OPENMRS_CREATE_TABLES=false FAKE_COUNTS='1\n0\n' run --separate-stderr "$SCRIPT"
     assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
-    [[ "$stderr" == *"OPENMRS_CREATE_TABLES=true (openmrs.env) decides"* ]]
+    [[ "$stderr" == *"OPENMRS_CREATE_TABLES=false (openmrs.env): OpenMRS won't create tables"* ]]
+    [ ! -e docker-calls ]
+}
+
+@test "OPENMRS_CREATE_TABLES=true still counts the tables: true only for an empty database" {
+    OPENMRS_CREATE_TABLES=true FAKE_COUNTS='1\n187\n' run --separate-stderr "$SCRIPT"
+    assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
+    [[ "$stderr" == *"OPENMRS_CREATE_TABLES=true (openmrs.env) can only apply to an empty database"* ]]
+    [[ "$stderr" == *"the database has tables"* ]]
+    OPENMRS_CREATE_TABLES=true FAKE_UP=1 run --separate-stderr "$SCRIPT"
+    assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
+    OPENMRS_CREATE_TABLES=true FAKE_COUNTS='1\n0\n' run --separate-stderr "$SCRIPT"
+    assert_output 'OPENMRS_DB_FOUND_EMPTY=true'
+}
+
+@test "any other OPENMRS_CREATE_TABLES gives false without touching the database" {
+    local value
+    for value in TRUE yes 1 ' true'; do
+        OPENMRS_CREATE_TABLES=$value FAKE_COUNTS='1\n0\n' run --separate-stderr "$SCRIPT"
+        assert_output 'OPENMRS_DB_FOUND_EMPTY=false'
+        [[ "$stderr" == *"neither true nor false"* ]] || fail "$value: $stderr"
+    done
     [ ! -e docker-calls ]
 }
 

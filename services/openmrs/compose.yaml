@@ -21,8 +21,8 @@ services:
       OMRS_CONFIG_AUTO_UPDATE_DATABASE: "true"
       # false unless start/create-tables has just found the database to hold no tables (pihx runs
       # it before every start and update; a plain `docker compose up` gets false).
-      # OPENMRS_CREATE_TABLES, if set in openmrs.env, decides instead.
-      OMRS_CONFIG_CREATE_TABLES: "${OPENMRS_CREATE_TABLES:-${OPENMRS_DB_FOUND_EMPTY:-false}}"
+      # OPENMRS_CREATE_TABLES (openmrs.env) is read there: it can only force false.
+      OMRS_CONFIG_CREATE_TABLES: "${OPENMRS_DB_FOUND_EMPTY:-false}"
       OMRS_CONFIG_CONNECTION_SERVER: openmrs-db
       OMRS_CONFIG_CONNECTION_DATABASE: openmrs
       OMRS_CONFIG_CONNECTION_USERNAME: ${OPENMRS_DB_USER}

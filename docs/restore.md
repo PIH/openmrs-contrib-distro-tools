@@ -147,7 +147,8 @@ keeps true only while its first install can't have finished (running, never stop
 any other container is decided from the database ([openmrs](../services/openmrs/README.md#creating-the-tables)). Anything else (tables, a failed or timed-out
 query, `openmrs-db` not healthy) gives false, with a line saying why, and so does a plain
 `docker compose up` that doesn't go through pihx. Nothing is recorded: each start decides from the
-database. `OPENMRS_CREATE_TABLES` in `openmrs.env`, if set, decides instead.
+database. `OPENMRS_CREATE_TABLES` in `openmrs.env` can only force false: `true` still needs an
+empty database.
 
 ### Carrying over runtime properties
 

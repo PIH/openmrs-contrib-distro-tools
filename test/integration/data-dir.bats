@@ -267,8 +267,8 @@ FIXTURE_TREE_EXCLUDING="./.openmrs-lib-cache
 }
 
 # OpenMRS creates its tables only when a pihx start has just found the database empty
-# (services/openmrs/start/create-tables): a plain `docker compose` gets false, unless
-# OPENMRS_CREATE_TABLES says otherwise. Nothing is recorded in the instance's files.
+# (services/openmrs/start/create-tables): a plain `docker compose` gets false, whatever
+# OPENMRS_CREATE_TABLES says. Nothing is recorded in the instance's files.
 create_tables_setting() { # what the openmrs container gets
     instance_compose_of "$NAME" config --format json | jq -r '.services.openmrs.environment.OMRS_CONFIG_CREATE_TABLES'
 }
@@ -281,7 +281,7 @@ create_tables_setting() { # what the openmrs container gets
     assert_output false
 }
 
-@test "OPENMRS_CREATE_TABLES in openmrs.env decides" {
+@test "OPENMRS_CREATE_TABLES=true in openmrs.env doesn't bypass the check" {
     NAME="$(instance)"
     create_instance "$NAME"
     echo 'OPENMRS_CREATE_TABLES=true' >> "$(env_file_of "$NAME" openmrs)"
@@ -290,7 +290,7 @@ create_tables_setting() { # what the openmrs container gets
     run grep '^OPENMRS_CREATE_TABLES=' "$(env_file_of "$NAME" openmrs)"
     assert_output 'OPENMRS_CREATE_TABLES=true'
     run create_tables_setting
-    assert_output true
+    assert_output false
 }
 
 # --- initialize: ownership of a restored openmrs-data ----------------------------------------------
