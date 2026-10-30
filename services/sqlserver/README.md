@@ -23,12 +23,22 @@ SQLSERVER_LOGIN_<ID>_ROLE='db_owner'          # the default
 As for [MySQL accounts](../openmrs-db/README.md#mysql-accounts), logins that aren't declared are left
 alone, anything wrong fails with SQL Server's own error, and a failure stops `start`, `update` and a
 lock-holding `run-service`. A service's login belongs in its own `with-sqlserver.yaml`, as
-[petl's](../petl/with-sqlserver.yaml) is. SQL Server's policy also refuses a password containing its
-login's name. `sa` can't be declared (it's the server's admin, set by `SQLSERVER_SA_PASSWORD`).
+[petl's](../petl/with-sqlserver.yaml) is. `sa` can't be declared (it's the server's admin, set by
+`SQLSERVER_SA_PASSWORD`).
+
+Passwords must meet SQL Server's policy (`CHECK_POLICY`):
+
+- at least 8 characters;
+- characters from at least 3 of 4 sets: upper case, lower case, digits and symbols (anything else);
+- not containing the login's name, in any case (`Petl-pass1` for `petl` is refused).
+
+`sqlserver-setup` checks every declared login's password, and the `sa` password (the name rule doesn't
+apply to it), before creating or altering anything. On a failure it prints a line naming the login and
+variable and the rule broken (never the password), and exits non-zero.
 
 | Variable | Default | |
 |---|---|---|
-| `SQLSERVER_SA_PASSWORD` | must be set | the `sa` password: at least 8 characters, with three of upper case, lower case, digits and symbols |
+| `SQLSERVER_SA_PASSWORD` | must be set | the `sa` password: at least 8 characters, with 3 of upper case, lower case, digits and symbols (policy above) |
 | `SQLSERVER_PUBLISHED_PORT` | `1433` | where it's reachable from outside Docker (e.g. for reporting tools): the port, or `<address>:<port>`. The instance's services reach it on 1433 |
 | `SQLSERVER_DATABASES` | empty | databases to create |
 | `SQLSERVER_MEMORY_MB`, `SQLSERVER_MEMORY_LIMIT` | `2048`, `3g` | SQL Server's max server memory, and the container's memory limit |

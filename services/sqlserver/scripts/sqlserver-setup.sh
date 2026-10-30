@@ -8,9 +8,30 @@
 #   - each login declared as SQLSERVER_LOGIN_<ID>_USER, _PASSWORD, _DATABASES, _ROLE (db_owner):
 #     created if missing, its password set on every run, a user in each of its databases with the role
 #     (an existing user remapped to the login, e.g. after a restore from another server).
-# A declaration missing a value changes nothing; anything else wrong (e.g. a password SQL Server's
-# policy refuses) fails with SQL Server's own error. Undeclared logins are left alone.
+# A declaration missing a value, or a password SQL Server's policy would refuse (password_problem),
+# changes nothing; anything else wrong fails with SQL Server's own error. Undeclared logins are left
+# alone.
 #   SQLCMDPASSWORD  sa's password (required)
+
+# Prints what is wrong with a password under SQL Server's CHECK_POLICY, nothing if it is fine:
+# <login> <password>; an empty login skips the login-name rule.
+password_problem() {
+    local login=$1 pw=$2 sets=0
+    if [ ${#pw} -lt 8 ]; then echo "is shorter than 8 characters"; return; fi
+    local LC_ALL=C
+    [[ $pw =~ [[:upper:]] ]] && sets=$((sets + 1))
+    [[ $pw =~ [[:lower:]] ]] && sets=$((sets + 1))
+    [[ $pw =~ [[:digit:]] ]] && sets=$((sets + 1))
+    [[ $pw =~ [^[:alnum:]] ]] && sets=$((sets + 1))
+    if [ "$sets" -lt 3 ]; then
+        echo "has characters from only $sets of upper case, lower case, digits and symbols (3 are needed)"
+    elif [ -n "$login" ] && [[ ${pw,,} == *"${login,,}"* ]]; then
+        echo "contains the login name"
+    fi
+}
+# Sourced (by the tests) for the function only.
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
+
 set -euo pipefail
 : "${SQLCMDPASSWORD:?}"
 SQLCMD=/opt/mssql-tools18/bin/sqlcmd
@@ -19,12 +40,19 @@ run_sql() { "$SQLCMD" -C -S sqlserver -U sa -b -x -h -1 -W -i /dev/stdin <<< "SE
 q() { printf "N'%s'" "${1//\'/\'\'}"; }   # an N'...' string literal
 
 errors=()
+# sa's password gets the same policy, except the login-name rule (the image accepts one containing "sa").
+problem=$(password_problem "" "$SQLCMDPASSWORD")
+[ -z "$problem" ] || errors+=("the password for login sa (SQLCMDPASSWORD) $problem, which SQL Server refuses")
 ids=$(compgen -v | sed -n 's/^SQLSERVER_LOGIN_\(.*\)_\(USER\|PASSWORD\|DATABASES\|ROLE\)$/\1/p' | sort -u)
 for id in $ids; do
     p="SQLSERVER_LOGIN_${id}"; u="${p}_USER" pw="${p}_PASSWORD" d="${p}_DATABASES"
     [ -n "${!u:-}" ] || errors+=("$u must be set")
     [ -n "${!pw:-}" ] || errors+=("$pw must be set")
     [ -n "${!d:-}" ] || errors+=("$d must list at least one database")
+    if [ -n "${!u:-}" ] && [ -n "${!pw:-}" ]; then
+        problem=$(password_problem "${!u}" "${!pw}")
+        [ -z "$problem" ] || errors+=("the password for login ${!u} ($pw) $problem, which SQL Server refuses")
+    fi
     # sa is the server's admin (SQLSERVER_SA_PASSWORD): declaring it would change its password.
     [ "${!u:-}" != sa ] || errors+=("$u can't be sa: declare a login of its own")
 done

@@ -8,7 +8,7 @@ services:
         required: false
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "${SQLSERVER_SA_PASSWORD:?must be set: the SQL Server sa password (8+ characters, with 3 of upper case, lower case, digits and symbols)}"
+      MSSQL_SA_PASSWORD: "${SQLSERVER_SA_PASSWORD:?must be set: the SQL Server sa password (SQL Server's policy: at least 8 characters, and characters from at least 3 of upper case, lower case, digits and symbols)}"
       MSSQL_MEMORY_LIMIT_MB: ${SQLSERVER_MEMORY_MB}
       # For sqlcmd (healthcheck), so the password isn't on its command line.
       SQLCMDPASSWORD: ${SQLSERVER_SA_PASSWORD}
