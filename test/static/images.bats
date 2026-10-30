@@ -18,7 +18,7 @@ load ../helpers
     assert_failure
 }
 
-@test "every folder under images/ has a Dockerfile" {
+@test "every directory under images/ has a Dockerfile" {
     local dir
     for dir in "$REPO_ROOT"/images/*/; do
         [ -f "$dir/Dockerfile" ] || fail "$dir has no Dockerfile"

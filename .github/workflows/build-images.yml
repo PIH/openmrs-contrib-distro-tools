@@ -1,7 +1,7 @@
 name: Build helper images
 
 # Every images/<name>/ and services/<name>/image/ is published as partnersinhealth/<name>, tagged by the
-# hash of its folder (utils/hash-directory.sh). A tag that exists is never rebuilt or overwritten. On
+# hash of its directory (utils/hash-directory.sh). A tag that exists is never rebuilt or overwritten. On
 # main, missing tags are pushed and `latest` is moved to each image's current tag; pull requests build
 # without pushing. A push from outside this workflow could still overwrite a tag with identical
 # content at the same moment; that is accepted. (Seed images are built by build-seeded-image.yml, not here.)

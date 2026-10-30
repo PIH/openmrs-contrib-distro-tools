@@ -93,7 +93,7 @@ the tools directory it was run from. To move an instance to another tools direct
 a stable branch:
 
 ```bash
-pihx <name> use-tools <path>
+pihx <name> use-tools <dir>
 pihx list        # the instances, their services and their tools directorys
 ```
 

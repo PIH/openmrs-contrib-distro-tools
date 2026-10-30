@@ -1,5 +1,5 @@
 # initialize, openmrs-db.percona/ or an archive of one (.7z, .zip, .tar.gz, .tgz, .tar): extracts
-# the backup into percona-staging (a legacy flat percona.7z, or one <name>-percona/ folder),
+# the backup into percona-staging (a legacy flat percona.7z, or one <name>-percona/ directory),
 # prepares it if it isn't already (innobackupex --apply-log; legacy nightly backups are), and
 # copies it into db-data. The manifest runs reset-accounts.yaml after it.
 

@@ -125,7 +125,7 @@ without_accounts() { # <fingerprint file>
     assert_output --partial "is in use by a running container"
 }
 
-@test "--data-dir summarizes each top-level folder, leaving out distribution artifacts when asked" {
+@test "--data-dir summarizes each top-level directory, leaving out distribution artifacts when asked" {
     mkdir -p data/complex_obs/2026 data/modules data/.openmrs-lib-cache
     head -c 1000 /dev/urandom > data/complex_obs/2026/a.png
     head -c 500 /dev/urandom > data/complex_obs/b.pdf

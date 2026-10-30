@@ -6,7 +6,7 @@ load ../helpers
 
 # Seed images as build-seeded-image.yml makes them, from openmrs/seed/Dockerfile: openmrs-db.sql.gz
 # with marker 7, and openmrs.tar.gz from backup-openmrs-data-directory holding seed-only.txt and
-# runtime properties (in one data/ folder). FLAT_SEED_IMAGE's openmrs.tar.gz is flat.
+# runtime properties (in one data/ directory). FLAT_SEED_IMAGE's openmrs.tar.gz is flat.
 setup_file() {
     export SEED_IMAGE="$(file_res seed)" FLAT_SEED_IMAGE="$(file_res flat-seed)"
     local ctx="$BATS_FILE_TMPDIR/seed" flat="$BATS_FILE_TMPDIR/flat-seed"

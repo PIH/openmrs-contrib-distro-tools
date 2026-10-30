@@ -5,19 +5,19 @@ start: much faster than letting OpenMRS build them up from nothing, and the way 
 data onto an instance.
 
 ```bash
-pihx <name> initialize --from <folder>
+pihx <name> initialize --from <dir>
 pihx <name> initialize --from-image <image>
 ```
 
 It runs only on an instance that has never been started, and refuses if any volume a service's
 restore would write exists, so it can't overwrite data.
 
-## The folder
+## The directory
 
-The folder holds at most one entry per service, named after the service, in a form that service's
+The directory holds at most one entry per service, named after the service, in a form that service's
 manifest (`services/<svc>/service.yaml`, `restore:`) accepts. A service with no entry starts empty.
 An entry that no service of the instance accepts, or two entries for one service, is an error;
-so is anything else in the folder, hidden files (e.g. `.DS_Store`) included.
+so is anything else in the directory, hidden files (e.g. `.DS_Store`) included.
 
 | Service | Entry | Restored |
 |---|---|---|
@@ -29,9 +29,9 @@ so is anything else in the folder, hidden files (e.g. `.DS_Store`) included.
 
 An entry may be a link: its host path is what the restore containers mount, and one that doesn't
 resolve on the host is an error before anything runs. A relative `--from`
-is the caller's directory's. `--from-image` copies the image's `/seed` folder (a distribution's
+is the caller's directory's. `--from-image` copies the image's `/seed` directory (a distribution's
 seed image, built by `.github/workflows/build-seeded-image.yml` from `openmrs/seed/Dockerfile`,
-holds `openmrs-db.sql.gz` and `openmrs.tar.gz`) to a temporary folder in the instance directory and restores
+holds `openmrs-db.sql.gz` and `openmrs.tar.gz`) to a temporary directory in the instance directory and restores
 from that; it removes the image afterwards if it pulled it.
 
 | Variable | |
@@ -71,8 +71,8 @@ A seed image is used once, and carries a whole database: `initialize` removes it
 are filled if it pulled it, and keeps one that was already on the host (e.g. built locally).
 
 Archives are extracted into a volume, never onto the host. A dump archive must hold exactly one dump
-(`.sql` or `.sql.gz`). An `openmrs-data` archive with a single top-level folder (as
-`backup-openmrs-data-directory` makes) has that folder's contents restored; otherwise its top level
+(`.sql` or `.sql.gz`). An `openmrs-data` archive with a single top-level directory (as
+`backup-openmrs-data-directory` makes) has that directory's contents restored; otherwise its top level
 is used as is.
 
 ```bash
@@ -92,8 +92,8 @@ ARCHIVE_PASSWORD=<password> pihx <name> initialize --from run
 
 An `openmrs-db.percona` entry is a Percona/xtrabackup backup as it is. In a temporary
 `percona-staging` volume, `initialize` extracts the archive (or copies the directory), unwrapping a
-single top-level folder, so both a flat legacy `percona.7z` and an archive holding one
-`<name>-percona/` folder work. It then runs `innobackupex --apply-log` if the backup isn't prepared
+single top-level directory, so both a flat legacy `percona.7z` and an archive holding one
+`<name>-percona/` directory work. It then runs `innobackupex --apply-log` if the backup isn't prepared
 yet (legacy nightly backups are), copies it into `db-data` with `--copy-back`, and removes the
 staging volume. Nothing unencrypted is written to the host, and it needs about twice the database's
 size on Docker's volumes. Anything without an `xtrabackup_checkpoints` file is refused.

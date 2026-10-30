@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# initialize --from a folder with an openmrs-db.percona entry restores a Percona/xtrabackup backup in containers: from a
+# initialize --from a directory with an openmrs-db.percona entry restores a Percona/xtrabackup backup in containers: from a
 # .7z like the legacy nightly percona.7z (which backup-percona --output=<.7z> also writes), a
-# folder-wrapped .tar.gz, or an unprepared directory. backup-percona --host backs up a MySQL that
+# directory-wrapped .tar.gz, or an unprepared directory. backup-percona --host backs up a MySQL that
 # isn't in a container.
 
 load ../helpers
@@ -80,7 +80,7 @@ in_7z() { # <archive> <password> <7z args...>
     assert_output 1
 }
 
-@test "a .tar.gz holding one <name>-percona folder restores" {
+@test "a .tar.gz holding one <name>-percona directory restores" {
     percona_backup site-percona >/dev/null 2>&1
     tar czf site-percona.tar.gz site-percona
     restore_percona site-percona.tar.gz

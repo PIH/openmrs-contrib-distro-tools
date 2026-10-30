@@ -5,7 +5,7 @@
 #
 # Usage: extract.sh <archive or directory> <dir> [--print-root]
 #   <archive>     .7z or .zip (with ARCHIVE_PASSWORD, if set, on 7z's stdin), .tar.gz, .tgz or .tar
-#   --print-root  prints where the contents are: the single top-level folder, if that's all there
+#   --print-root  prints where the contents are: the single top-level directory, if that's all there
 #                 is (as backup-openmrs-data-directory makes), otherwise <dir>
 set -eu
 src=$1 dir=$2

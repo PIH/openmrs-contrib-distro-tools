@@ -37,17 +37,17 @@ Run one as `openmrs-utils <name> [options]` (a passthrough to `utils/<name>.sh`)
 |---|---|
 | `backup-mysqldump` | Dumps a database, with its routines and triggers, to `.sql`, `.gz` or `.7z` (streamed in, so never on disk unencrypted), usable as an `openmrs-db.sql*` entry of `initialize --from` ([Initializing an instance](restore.md)). `--strip-definers` removes `DEFINER=` clauses as it dumps |
 | `backup-percona` | Takes a prepared physical (XtraBackup) backup of a running server's data directory: a directory, or a `.7z` in the legacy nightly `percona.7z` layout, for an `openmrs-db.percona*` entry of `initialize --from` and the DW refresh. `--databases` limits it (the `mysql` system database is always included) |
-| `backup-openmrs-data-directory` | Archives an OpenMRS data directory to `.tar.gz` or `.7z`, holding one folder named after the archive, usable as an `openmrs.*` entry of `initialize --from`. `--exclude-distribution-artifacts` leaves out what the image supplies on every start (the contents of `modules/`, `owa/`, `configuration/` and `frontend/`, and `.openmrs-lib-cache`). `--exclude=<path>` (repeatable) leaves out a path relative to the directory: a file, folder or link, e.g. a link the image recreates on every start. Refuses while a container uses the directory, unless `--allow-running`. Refuses a directory holding symbolic links that point outside it (absolute, or climbing above it with `..`), outside what `--exclude-distribution-artifacts` and `--exclude` leave out, listing each with its target: delete the ones not needed, leave them out with `--exclude`, or replace them with what they point to. Links within the directory are backed up and restored as links |
+| `backup-openmrs-data-directory` | Archives an OpenMRS data directory to `.tar.gz` or `.7z`, holding one directory named after the archive, usable as an `openmrs.*` entry of `initialize --from`. `--exclude-distribution-artifacts` leaves out what the image supplies on every start (the contents of `modules/`, `owa/`, `configuration/` and `frontend/`, and `.openmrs-lib-cache`). `--exclude=<path>` (repeatable) leaves out a path relative to the directory: a file, directory or link, e.g. a link the image recreates on every start. Refuses while a container uses the directory, unless `--allow-running`. Refuses a directory holding symbolic links that point outside it (absolute, or climbing above it with `..`), outside what `--exclude-distribution-artifacts` and `--exclude` leave out, listing each with its target: delete the ones not needed, leave them out with `--exclude`, or replace them with what they point to. Links within the directory are backed up and restored as links |
 | `extract-archive` | Extracts a `.7z`, `.zip`, `.tar.gz`, `.tgz` or `.tar`, and prints the path of its single top-level entry (or of the directory, for an archive with several) |
 | `convert-percona-backup` | Turns a prepared XtraBackup directory into a MySQL data directory (`--copy-back`), usable as an `openmrs-db.datadir` entry of `initialize --from` |
 | `strip-mysqldump-definers` | Copies a dump without its `DEFINER=` clauses, so its routines, triggers and views work on a server without the source's accounts |
-| `fingerprint` | Writes a sorted summary of a server's databases (and optionally a data directory) to `diff` before and after a restore: server settings, row counts, routines/triggers/views, the latest ids and dates, accounts, files per folder. No row contents or secrets. `--db-volume` reads a stopped server's data directory ([Checking a restore](restore.md#checking-a-restore)) |
+| `fingerprint` | Writes a sorted summary of a server's databases (and optionally a data directory) to `diff` before and after a restore: server settings, row counts, routines/triggers/views, the latest ids and dates, accounts, files per directory. No row contents or secrets. `--db-volume` reads a stopped server's data directory ([Checking a restore](restore.md#checking-a-restore)) |
 | `reset-mysql-accounts` | Sets a stopped data directory's root and application passwords (`MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`) without knowing the current ones; `initialize` runs it after a physical restore |
 | `purge-binlogs` | Has a server delete its binary logs except the current one; run it before turning binary logging off |
 | `runtime-properties` | Sets aside, or sets keys in, a data directory's `openmrs-runtime.properties` (values on stdin) |
 | `clear-configuration-checksums` | Removes openmrs-module-initializer's `configuration_checksums`, so the next start reprocesses all configuration |
 | `wait-for-healthy` | Waits until a container's healthcheck reports healthy, failing at once if it stops |
-| `hash-directory` | Prints a short content hash of a directory (12 hex digits), the same on every checkout: only file contents and paths count. Images built here are tagged with the hash of their folder |
+| `hash-directory` | Prints a short content hash of a directory (12 hex digits), the same on every checkout: only file contents and paths count. Images built here are tagged with the hash of their directory |
 
 ## Images
 
@@ -63,7 +63,7 @@ The utilities run their tools in containers, from the images named in `utils/lib
 The two `partnersinhealth` images are still built and published from `docker-openmrs`, not from
 this repo, and stay so until the `backup-tools` image is rebuilt here (TASKS-597): `build-images.yml`
 publishes only what is in `images/` and `services/<svc>/image/`; an image's tag is the hash of its
-folder (`utils/hash-directory.sh`; [Developing this tool](development.md#image-tags)). The ones this
+directory (`utils/hash-directory.sh`; [Developing this tool](development.md#image-tags)). The ones this
 repo does build, such as `pihx-runtime`, are referenced by that tag and never `latest`; `latest`
 follows the newest build of each, for people who `docker run` them and for tools that pull without a
 tag.

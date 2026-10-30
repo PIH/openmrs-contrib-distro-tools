@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# pihx initialize --from <folder> | --from-image <image>, black-box through bin/pihx: each service
-# restores its own entry of the folder, named after it, through its manifest's restore overlays.
-# The folders are under the test's directory, outside the paths the launcher always mounts.
+# pihx initialize --from <dir> | --from-image <image>, black-box through bin/pihx: each service
+# restores its own entry of the directory, named after it, through its manifest's restore overlays.
+# The directories are under the test's directory, outside the paths the launcher always mounts.
 
 load ../helpers
 
@@ -49,7 +49,7 @@ containers() { docker ps -aq --filter "label=com.docker.compose.project=$NAME"; 
 # The data fixture's tree, with openmrs-runtime.properties moved aside by initialize.
 RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.properties.restored}"
 
-@test "initialize --from a folder with a dump and a data archive" {
+@test "initialize --from a directory with a dump and a data archive" {
     create openmrs-db,openmrs
     write_tiny_dump run/openmrs-db.sql
     make_data_fixture data
@@ -152,7 +152,7 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     assert_output 7
     run tree_of_volume "${NAME}_openmrs-data"
     assert_output "$(printf '%s\n' ./complex_obs ./complex_obs/seed-only.txt ./openmrs-runtime.properties.restored)"
-    # The copy of the seed's folder is gone; a seed image that was here before is kept.
+    # The copy of the seed's directory is gone; a seed image that was here before is kept.
     assert_equal "$(find "$PIHX_HOME" "$PIHX_HOME/$NAME" -maxdepth 1 -name "*seed-*")" ""
     [ -n "$(image_id "$SEED_IMAGE")" ] || fail "the seed image, here before initialize, was removed"
 }

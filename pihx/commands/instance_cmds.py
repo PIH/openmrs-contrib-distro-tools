@@ -308,7 +308,7 @@ def cmd_remove_service(name, args):
 
 def cmd_use_tools(name, args):
     if len(args) != 1:
-        raise CliError("usage: pihx <instance> use-tools <path>", status=2)
+        raise CliError("usage: pihx <instance> use-tools <dir>", status=2)
     # Not opened: the instance may not be readable by the checkout it has now.
     home = instance_module.home()
     error = instance_module.instance_name_error(name)

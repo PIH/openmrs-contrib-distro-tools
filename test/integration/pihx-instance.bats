@@ -97,7 +97,7 @@ teardown() { common_teardown; }
     run "$BIN/pihx" kz config
     assert_failure
     assert_line --index -1 --partial "$PIHX_HOME/kz/tools"
-    assert_line --index -1 --partial "pihx kz use-tools <path>"
+    assert_line --index -1 --partial "pihx kz use-tools <dir>"
     # list still works, and shows the link as written.
     run "$BIN/pihx" list
     assert_success

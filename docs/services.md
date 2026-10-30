@@ -73,7 +73,7 @@ and `test/static/services.bats` check every service in the tree against the conv
 | `capture-env` | Name prefixes (e.g. `[OMRS_EXTRA_]`). At `create` and `add-service`, a variable in your environment with such a prefix goes into the service's `.env` even though no default or compose file names it |
 | `job` | `true` for a job: `start` doesn't bring it up and `run-service` runs it holding the instance lock |
 | `backup` | `none`. Backups come with TASKS-597; until then a service says it has nothing to back up |
-| `restore` | What `initialize` accepts, as a list of entries: `names` (the entries of the `--from` folder), `overlay` (a compose file under `restore/`) and optionally `after` (another, run after it, e.g. an account reset) |
+| `restore` | What `initialize` accepts, as a list of entries: `names` (the entries of the `--from` directory), `overlay` (a compose file under `restore/`) and optionally `after` (another, run after it, e.g. an account reset) |
 
 ```yaml
 description: The OpenMRS database (MySQL or MariaDB), and the setup that makes sure its accounts exist
@@ -128,7 +128,7 @@ changing PETL's account doesn't recreate the database container.
 
 ### Restore
 
-`pihx <instance> initialize --from <folder>` gives each service the entry of the folder its manifest's
+`pihx <instance> initialize --from <dir>` gives each service the entry of the directory its manifest's
 `restore` names. For each, the service's overlay (a compose file in `restore/`, added to the
 instance's files for that one run) does the work in containers, given these variables, `<SVC>` being
 the service's name in capitals with `-` as `_`:

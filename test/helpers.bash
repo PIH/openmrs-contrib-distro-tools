@@ -203,7 +203,7 @@ run_initialize() { # <name> <initialize args...>
     run timeout 300 "$BIN/openmrs-docker" "$name" initialize "$@"
 }
 
-# Makes a new folder for initialize --from, each entry a link to its source (relative to the
+# Makes a new directory for initialize --from, each entry a link to its source (relative to the
 # current directory), and prints its path.
 from_folder() { # <entry> <source> [<entry> <source>...]
     local folder source

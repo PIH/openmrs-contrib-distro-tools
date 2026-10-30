@@ -9,7 +9,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/images.sh"
 
 # Writes <output.7z> from <source> (a volume or absolute directory), owned by the caller. With a
-# <top>, the archive holds one folder of that name, with the source's contents in it; with <top>
+# <top>, the archive holds one directory of that name, with the source's contents in it; with <top>
 # empty, the contents are at its top level. Further arguments are 7z switches, e.g. -x!<path>.
 # Symbolic links are stored as links (-snl), as tar does: followed, one pointing outside <source>
 # can't be read in the container, and 7z then fails.

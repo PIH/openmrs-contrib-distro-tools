@@ -22,7 +22,7 @@ old command names or orders:
 | Instead of | Use |
 |---|---|
 | `openmrs-docker create <name>`, `SERVICES=...` | `openmrs-docker <name> create [--services=...]` |
-| `initialize` with `RESTORE_*` variables | `initialize --from <folder>`, the folder holding an entry per service (see [docs/restore.md](../docs/restore.md)) |
+| `initialize` with `RESTORE_*` variables | `initialize --from <dir>`, the directory holding an entry per service (see [docs/restore.md](../docs/restore.md)) |
 | `initialize` with `SEED_IMAGE_NAME` / `SEED_IMAGE_TAG` | `initialize --from-image <name>:<tag>` |
 | `INITIALIZE_DB_TIMEOUT` | `PIHX_INITIALIZE_TIMEOUT` |
 | `<name> fingerprint` | `<name> summary` (openmrs-db's, then openmrs-data's without the distribution artifacts; `--include-distribution-artifacts` adds them) |
@@ -54,7 +54,7 @@ Compose files the extension adds to the instance's for one command:
 ## Seed images: seed/
 
 [`seed/Dockerfile`](seed/Dockerfile) builds a distribution's seed image
-(`.github/workflows/build-seeded-image.yml`): a `/seed` folder with `openmrs-db.sql.gz` and
+(`.github/workflows/build-seeded-image.yml`): a `/seed` directory with `openmrs-db.sql.gz` and
 `openmrs.tar.gz`, as `initialize --from-image` restores them.
 
 ## Setting up a machine: setup.sh

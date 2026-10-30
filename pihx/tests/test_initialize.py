@@ -105,25 +105,25 @@ class ChooseTest(InitializeTest):
                          {"P7ZIP_IMAGE", "ARCHIVE_PASSWORD", "DB_RESTORE_NAME", "OWNER", "MAPPED"})
 
 
-class FromFolderTest(InitializeTest):
-    def test_the_launchers_resolved_folder_is_used(self):
+class FromDirectoryTest(InitializeTest):
+    def test_the_launchers_resolved_directory_is_used(self):
         folder = self.root / "elsewhere"
         folder.mkdir()
         self.set_env({"PIHX_FROM": str(folder)})
         self.assertEqual(initialize.from_folder("./typed"), folder)
 
-    def test_a_relative_folder_resolves_against_the_callers_directory(self):
+    def test_a_relative_directory_resolves_against_the_callers_directory(self):
         folder = self.home / "runs" / "one"
         folder.mkdir(parents=True)
         self.set_env({"PIHX_CWD": str(self.home / "runs")})
         self.assertEqual(initialize.from_folder("./one"), folder)
 
-    def test_a_folder_outside_the_mounted_paths_is_an_error(self):
+    def test_a_directory_outside_the_mounted_paths_is_an_error(self):
         with self.assertRaises(CliError) as raised:
             initialize.from_folder("/")
         self.assertIn("bin/pihx", str(raised.exception))
 
-    def test_a_missing_folder_is_an_error(self):
+    def test_a_missing_directory_is_an_error(self):
         with self.assertRaises(CliError) as raised:
             initialize.from_folder(str(self.home / "nosuch"))
         self.assertIn("isn't a directory", str(raised.exception))
@@ -251,7 +251,7 @@ class InitializeCommandTest(InitializeTest):
         self.assertIn("Couldn't remove kz_db-init (db-init holds a full copy", err)
         self.assertIn("'pihx kz destroy'", err)
 
-    def test_an_empty_folder_is_an_error(self):
+    def test_an_empty_directory_is_an_error(self):
         (self.home / "empty").mkdir()
         status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.home / "empty"))
         self.assertEqual(status, 1)

@@ -67,5 +67,5 @@ merges `OMRS_EXTRA_*` into it. For anything else in an existing file, see
 or `openmrs/`; its `restore/prepare` finds the owner to give the files (the image's runtime user,
 or `OPENMRS_DATA_OWNER`), and what else happens to a restored data directory is in
 [Initializing an instance](../../docs/restore.md#openmrs-data-after-a-restore).
-`pihx <name> summary` includes the data directory's files per folder, without what the distribution
+`pihx <name> summary` includes the data directory's files per directory, without what the distribution
 supplies (modules, owa, configuration, frontend) unless `--include-distribution-artifacts`.

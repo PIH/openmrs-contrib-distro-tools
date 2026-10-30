@@ -18,8 +18,8 @@ backup() { # <output> [args...]
     "$UTILS/backup-openmrs-data-directory.sh" --volume="$BATS_TEST_TMPDIR/data" --output="$@"
 }
 
-# Extracts <archive> with extract-archive and checks the single top-level folder's name and tree.
-assert_extracts_to() { # <archive> <expected folder name> <expected tree>
+# Extracts <archive> with extract-archive and checks the single top-level directory's name and tree.
+assert_extracts_to() { # <archive> <expected directory name> <expected tree>
     # stdout only: it's the extracted path; progress goes to stderr.
     run --separate-stderr "$UTILS/extract-archive.sh" --path="$1" --output-dir="$BATS_TEST_TMPDIR/extracted"
     assert_success
@@ -28,7 +28,7 @@ assert_extracts_to() { # <archive> <expected folder name> <expected tree>
     assert_output "$3"
 }
 
-# Runs initialize --from a folder with the dump and <source> as its <entry> (openmrs, or
+# Runs initialize --from a directory with the dump and <source> as its <entry> (openmrs, or
 # openmrs.<archive extension>) and checks the resulting volume's tree -- <expected tree> as backed
 # up, so with openmrs-runtime.properties moved aside by initialize.
 assert_initializes_to() { # <entry> <source> <expected tree>
@@ -43,17 +43,17 @@ assert_initializes_to() { # <entry> <source> <expected tree>
 
 # --- backup + extract-archive ----------------------------------------------------------------------
 
-@test ".tar.gz holds the whole directory under a folder named after the archive" {
+@test ".tar.gz holds the whole directory under a directory named after the archive" {
     backup malawi-data.tar.gz 2>/dev/null
     assert_extracts_to malawi-data.tar.gz malawi-data "$FIXTURE_TREE"
 }
 
-@test ".tgz holds the whole directory under a folder named after the archive" {
+@test ".tgz holds the whole directory under a directory named after the archive" {
     backup site.tgz 2>/dev/null
     assert_extracts_to site.tgz site "$FIXTURE_TREE"
 }
 
-@test ".7z holds the whole directory, password-protected, under a folder named after the archive" {
+@test ".7z holds the whole directory, password-protected, under a directory named after the archive" {
     ARCHIVE_PASSWORD=pw backup nightly.7z >/dev/null 2>&1
     ARCHIVE_PASSWORD=pw assert_extracts_to nightly.7z nightly "$FIXTURE_TREE"
 }
@@ -161,7 +161,7 @@ assert_initializes_to() { # <entry> <source> <expected tree>
 }
 
 # The fixture with links to an image's config, as in a Bahmni image's data directory (recreated on
-# every start), backed up leaving them out with --exclude, as well as a folder and a file.
+# every start), backed up leaving them out with --exclude, as well as a directory and a file.
 backup_excluding() { # <output>
     ln -s /var/www/config/calc "$BATS_TEST_TMPDIR/data/calc"
     mkdir -p "$BATS_TEST_TMPDIR/data/home/.OpenMRS"
@@ -186,12 +186,12 @@ FIXTURE_TREE_EXCLUDING="./.openmrs-lib-cache
 ./owa
 ./owa/app.zip"
 
-@test "--exclude leaves out files, folders and links, which the link check then ignores (.tar.gz)" {
+@test "--exclude leaves out files, directories and links, which the link check then ignores (.tar.gz)" {
     backup_excluding lean.tar.gz
     assert_extracts_to lean.tar.gz lean "$FIXTURE_TREE_EXCLUDING"
 }
 
-@test "--exclude leaves out files, folders and links, which the link check then ignores (.7z)" {
+@test "--exclude leaves out files, directories and links, which the link check then ignores (.7z)" {
     backup_excluding lean.7z
     ARCHIVE_PASSWORD=pw assert_extracts_to lean.7z lean "$FIXTURE_TREE_EXCLUDING"
 }
@@ -234,7 +234,7 @@ FIXTURE_TREE_EXCLUDING="./.openmrs-lib-cache
     assert_initializes_to openmrs "$BATS_TEST_TMPDIR/data" "$FIXTURE_TREE"
 }
 
-@test "initialize restores openmrs-data from a flat (seed-style) archive with no top-level folder" {
+@test "initialize restores openmrs-data from a flat (seed-style) archive with no top-level directory" {
     tar czf flat.tar.gz -C data .
     assert_initializes_to openmrs.tar.gz flat.tar.gz "$FIXTURE_TREE"
 }

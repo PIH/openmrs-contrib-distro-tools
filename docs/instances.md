@@ -121,7 +121,7 @@ itself: see [`reset-accounts`](../services/openmrs-db/README.md#changing-the-pas
 The tool is a git clone, so `git pull` in it updates it, and `git checkout <commit/branch/tag>` pins
 it. Each instance runs its own `tools` directory, so to keep some instances on a stable
 version while you work on the tool in another checkout (e.g. a `git worktree` on `main`), point them
-at it with `pihx <name> use-tools <path>`. The first run with a new version of
+at it with `pihx <name> use-tools <dir>`. The first run with a new version of
 `images/pihx-runtime` pulls that image (or builds it, when CI hasn't published it yet).
 
 ## Troubleshooting on Windows

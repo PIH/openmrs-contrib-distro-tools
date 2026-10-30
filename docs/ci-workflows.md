@@ -408,12 +408,12 @@ An ETL project calls it after building its image:
 `.github/workflows/build-images.yml` builds and publishes the images this repo defines: every
 `images/<name>/` and every `services/<svc>/image/`, as `partnersinhealth/<name>` (multi-arch: amd64
 and arm64). It is not reusable; it runs here, on pushes to `main` and on pull requests that touch
-those folders, `utils/hash-directory.sh` or the workflow itself.
+those directories, `utils/hash-directory.sh` or the workflow itself.
 
-- **Tags are content hashes.** An image's tag is the hash of its folder (`utils/hash-directory.sh`)
-  ([Developing this tool](development.md#image-tags)), so one commit changing the folder means one
+- **Tags are content hashes.** An image's tag is the hash of its directory (`utils/hash-directory.sh`)
+  ([Developing this tool](development.md#image-tags)), so one commit changing the directory means one
   new tag, and `pihx` computes the same tag from its checkout to find the image it needs.
-- **A tag is never overwritten.** For each folder, the workflow asks Docker Hub whether the tag
+- **A tag is never overwritten.** For each directory, the workflow asks Docker Hub whether the tag
   exists (`docker manifest inspect`). Only a definite "no such manifest" or "manifest unknown" means
   it doesn't; a repository that doesn't exist yet (the first publish) is told apart by Docker Hub's
   API answering 404. Any other failure (network, rate limit, an auth error, a 5xx) is retried

@@ -61,7 +61,7 @@ class ServiceError(Exception):
 
 @dataclasses.dataclass
 class Restore:
-    """A restore entry: the folder entries it accepts, the overlay that restores them, and an
+    """A restore entry: the directory entries it accepts, the overlay that restores them, and an
     overlay run after it (e.g. an account reset). Overlay paths are relative to the service dir."""
     names: list
     overlay: str
@@ -313,7 +313,7 @@ def _restore(entry):
                              "overlay)")
     names = _strings(entry, "names")
     if not names:
-        raise ValueError("a 'restore' entry needs 'names', the folder entries it accepts")
+        raise ValueError("a 'restore' entry needs 'names', the directory entries it accepts")
     if not isinstance(entry.get("overlay"), str):
         raise ValueError("a 'restore' entry needs 'overlay', the file that restores it")
     if not isinstance(entry.get("after", ""), str):

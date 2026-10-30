@@ -4,7 +4,7 @@ capture-env: [OPENMRS_DB_OPT_]
 # Runs on every start, once the database is healthy.
 setup: [openmrs-db-accounts]
 backup: none
-# initialize: one entry, named after the service, in the folder it restores from (restore/*.yaml).
+# initialize: one entry, named after the service, in the directory it restores from (restore/*.yaml).
 # A physical restore (Percona, a data directory) brings the source's accounts: reset after it.
 restore:
   - names: [openmrs-db.sql, openmrs-db.sql.gz]

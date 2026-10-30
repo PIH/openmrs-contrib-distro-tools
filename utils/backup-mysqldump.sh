@@ -1,6 +1,6 @@
 #!/bin/bash
 # Dumps a MySQL/MariaDB database, with its routines and triggers, to a file usable as the
-# openmrs-db.sql or openmrs-db.sql.gz entry of `pihx <name> initialize --from <folder>`. The dump has
+# openmrs-db.sql or openmrs-db.sql.gz entry of `pihx <name> initialize --from <dir>`. The dump has
 # no CREATE DATABASE or USE, so it restores into a database of any name.
 #
 # Usage: openmrs-utils backup-mysqldump (--container=<name> | --host=<host> [--port=3306]

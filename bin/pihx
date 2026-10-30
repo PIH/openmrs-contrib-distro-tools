@@ -54,7 +54,7 @@ if [ -z "${PIHX_HANDED_OFF-}" ]; then
                 list:* | help:* | version:* | *:use-tools | *:create) ;;
                 *)
                     if [ -d "$PIHX_HOME/$1" ] && [ ! -d "$PIHX_HOME/$1/tools" ]; then
-                        die "$PIHX_HOME/$1/tools is missing; point it at a tools directory with: pihx $1 use-tools <path>"
+                        die "$PIHX_HOME/$1/tools is missing; point it at a tools directory with: pihx $1 use-tools <dir>"
                     fi
                     ;;
             esac
@@ -113,7 +113,7 @@ if [ "${2-}" = use-tools ] && [ -n "${3-}" ] && [ -d "$3" ]; then
     if outside_mounts "$use_tools_dir"; then use_tools_mount=$use_tools_dir:$use_tools_dir:ro; fi
 fi
 
-# initialize --from <folder> reads the folder, so it is resolved here, as on the host (a relative
+# initialize --from <dir> reads the directory, so it is resolved here, as on the host (a relative
 # path against the caller's directory), and mounted read-only at that path when it's elsewhere; the
 # restore containers mount its entries by the same host paths. pihx gets it as PIHX_FROM.
 unset PIHX_FROM

@@ -1,13 +1,13 @@
-"""initialize: fills a new instance's volumes from a folder (or an image's /seed folder) before its
+"""initialize: fills a new instance's volumes from a directory (or an image's /seed directory) before its
 first start, each service from its own entry, through the restore overlays its manifest declares.
 
-The folder holds at most one entry per service, named as that service's manifest accepts
+The directory holds at most one entry per service, named as that service's manifest accepts
 (`restore: [{names, overlay, after?}]`); a service with no entry starts empty. Every chosen
 overlay (and its `after`) is added to the instance's compose files for one `up` of the containers
 they name: a container with a healthcheck must turn healthy (e.g. a database importing a dump),
 the others must exit 0. Then everything is brought down and the restore-only volumes go.
 
-Paths are the host's: the launcher mounts the folder at its own path, and the daemon resolves what
+Paths are the host's: the launcher mounts the directory at its own path, and the daemon resolves what
 the overlays mount."""
 
 import dataclasses
@@ -25,11 +25,11 @@ from pihx import services as services_module
 from pihx.commands import CliError
 from pihx.commands.instance_cmds import tools_dir
 
-USAGE = "usage: pihx <instance> initialize --from <folder> | --from-image <image>"
+USAGE = "usage: pihx <instance> initialize --from <dir> | --from-image <image>"
 # What an archive is mounted as, archive.<ext>, so the extractor knows it (utils/lib/in-container/
 # extract.sh); tgz is extracted as tar.gz.
 ARCHIVE_EXTENSIONS = ("7z", "zip", "tar.gz", "tgz", "tar")
-# The folder a seed image holds.
+# The directory a seed image holds.
 SEED_DIR = "/seed"
 VARIABLE = re.compile(r"(?<!\$)\$\{([A-Za-z_][A-Za-z0-9_]*)")
 DEFAULT_TIMEOUT = 3600
@@ -41,7 +41,7 @@ def note(message):
 
 @dataclasses.dataclass
 class Choice:
-    """A folder entry, and the service and restore entry that take it."""
+    """A directory entry, and the service and restore entry that take it."""
     service: object
     restore: object
     entry: str
@@ -65,13 +65,13 @@ def _variable_prefix(service_name):
 
 
 class EntryError(CliError):
-    """The folder's entries don't fit the instance's services."""
+    """The directory's entries don't fit the instance's services."""
 
 
 def choose(inst, folder, entries, label=None):
-    """The Choice for each of <entries> ((name, "dir" | "file" | None if unknown), in <folder>).
+    """The Choice for each of <entries> ((name, "dir" | "file" | None if unknown), in <dir>).
     An entry no service of the instance accepts, or a second entry for one service, is an
-    EntryError, naming the folder as <label> if given."""
+    EntryError, naming the directory as <label> if given."""
     where = label or str(folder)
     accepted = {}
     for svc in inst.services:
@@ -93,7 +93,7 @@ def choose(inst, folder, entries, label=None):
                                  f"{others[name]}', or leave the entry out)")
             raise EntryError(f"{where}/{name} matches no service of {inst.name}: each entry is "
                              "named as a service's manifest accepts (its `restore` names), and "
-                             "nothing else may be in the folder")
+                             "nothing else may be in the directory")
         svc, restore, is_dir = accepted[name]
         if kind == "file" and is_dir:
             raise EntryError(f"{where}/{name} must be a directory for {svc.name}")
@@ -136,7 +136,7 @@ def referenced_variables(path):
 
 
 def from_folder(arg):
-    """The folder --from names, as the host has it: the launcher resolves it (PIHX_FROM) and mounts
+    """The directory --from names, as the host has it: the launcher resolves it (PIHX_FROM) and mounts
     it at that path. Otherwise <arg> against the caller's directory, if it's under a path the
     launcher mounts anyway."""
     resolved = os.environ.get("PIHX_FROM")
@@ -147,7 +147,7 @@ def from_folder(arg):
         folder = Path(os.path.realpath(os.path.join(cwd, arg)))
         mounted = [instance_module.home(), tools_dir()]
         if not any(folder == m or m in folder.parents for m in mounted):
-            # The launcher mounts an existing folder outside them, and says so in PIHX_FROM.
+            # The launcher mounts an existing directory outside them, and says so in PIHX_FROM.
             raise CliError(f"--from {arg}: {folder} isn't a directory pihx can see (bin/pihx "
                            "mounts one outside its own paths)")
     if not folder.is_dir():
@@ -469,7 +469,7 @@ def _leftovers(volumes):
 
 
 def restore_folder(inst, folder, label=None):
-    """Restores <inst>'s services from the entries in <folder> (named <label> in messages). The
+    """Restores <inst>'s services from the entries in <dir> (named <label> in messages). The
     caller holds the instance lock."""
     choices = choose(inst, folder, _entries(folder), label)
     if not choices:
@@ -521,9 +521,9 @@ def restore_folder(inst, folder, label=None):
 # --- seed images ----------------------------------------------------------------------------------
 
 def _copy_seed(inst, image, env):
-    """Copies <image>'s /seed folder into a new temporary folder in the instance directory (under
+    """Copies <image>'s /seed directory into a new temporary directory in the instance directory (under
     PIHX_HOME, mounted at its host path, so the restore containers can mount what's in it; and the
-    instance's own, so writable where PIHX_HOME isn't, e.g. /home). Returns (folder, pulled)."""
+    instance's own, so writable where PIHX_HOME isn't, e.g. /home). Returns (directory, pulled)."""
     pulled = _docker(env, "image", "inspect", image).returncode != 0
     if pulled:
         note(f"Pulling {image}")
@@ -539,7 +539,7 @@ def _copy_seed(inst, image, env):
         try:
             copied = _docker(env, "cp", f"{cid}:{SEED_DIR}/.", f"{folder}/")
             if copied.returncode != 0:
-                raise CliError(f"{image} has no {SEED_DIR} folder to restore from: "
+                raise CliError(f"{image} has no {SEED_DIR} directory to restore from: "
                                f"{copied.stderr.strip()}")
         finally:
             _docker(env, "rm", cid)
@@ -550,12 +550,12 @@ def _copy_seed(inst, image, env):
 
 
 class SeedError(CliError):
-    """An image's /seed folder holds entries no service of the instance restores (an extension may
+    """An image's /seed directory holds entries no service of the instance restores (an extension may
     say what such a seed probably is)."""
 
 
 def restore_image(inst, image):
-    """Restores <inst>'s services from <image>'s /seed folder, copied into a temporary folder.
+    """Restores <inst>'s services from <image>'s /seed directory, copied into a temporary directory.
     The image is removed afterwards if this pulled it. The caller holds the instance lock."""
     env = compose_module.Compose(inst).environment()
     folder, pulled = _copy_seed(inst, image, env)

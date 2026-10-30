@@ -26,7 +26,7 @@ Commands:
   config [--show-secrets]    Print the merged values, secrets masked
   add-service <service>      Add a service to the instance
   remove-service <service>   Remove a service's containers (not its volumes) and env file
-  use-tools <path>           Run the instance from another tools directory
+  use-tools <dir>            Run the instance from another tools directory
   start                      Bring the instance up and check its setup containers
   stop                       Remove its containers (not its volumes)
   restart                    Restart its containers
@@ -44,9 +44,9 @@ Commands:
   <service>                  List a service's commands
   <service> <command> [args...]
                              Run one of a service's commands (e.g. openmrs-db reset-accounts)
-  initialize --from <folder> | --from-image <image>
-                             Fill a new instance's volumes from a folder with an entry per service
-                             (or an image's /seed folder), before its first start
+  initialize --from <dir> | --from-image <image>
+                             Fill a new instance's volumes from a directory with an entry per service
+                             (or an image's /seed directory), before its first start
   destroy [--force]          Remove its containers, volumes and directory (asks first)
   help                       Show this help
   version                    Show pihx's version and the tools directory it runs from

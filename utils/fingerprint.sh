@@ -28,7 +28,7 @@
 #   [recent]     the highest id and date_created in --database's encounter, obs, patient, person
 #                and users: a backup taken before the last writes shows here
 #   [accounts]   user@host
-#   [data-dir]   files and bytes per top-level folder (top-level files together)
+#   [data-dir]   files and bytes per top-level directory (top-level files together)
 #
 # Expected differences between a source and its restore: [accounts] (initialize resets them after
 # a physical restore), databases a physical restore brought along, [server] if the servers are
@@ -96,7 +96,7 @@ data_dir_section() {
     echo "[data-dir]"
     local leave_out=""
     $EXCLUDE_DISTRIBUTION_ARTIFACTS && leave_out="modules owa configuration frontend .openmrs-lib-cache"
-    # busybox: file count and bytes per top-level folder; files at the top level together.
+    # busybox: file count and bytes per top-level directory; files at the top level together.
     docker run --rm -e LEAVE_OUT="$leave_out" -v "$DATA_DIR:/d:ro" "$ALPINE_IMAGE" sh -c '
         summarize() { find "$1" -type f $2 -exec stat -c %s {} + 2>/dev/null | awk -v n="$3" "{ c++; b += \$1 } END { printf \"%s files=%d bytes=%.0f\n\", n, c, b }"; }
         for e in /d/* /d/.[!.]*; do

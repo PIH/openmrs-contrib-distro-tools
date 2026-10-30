@@ -1,5 +1,5 @@
 #!/bin/bash
-# `pihx <instance> summary`: the [data-dir] section, the files and bytes per top-level folder of
+# `pihx <instance> summary`: the [data-dir] section, the files and bytes per top-level directory of
 # openmrs-data. By default without what the image supplies (modules, owa, configuration, frontend),
 # as the backup leaves it out; PIHX_SUMMARY_INCLUDE_DISTRIBUTION_ARTIFACTS=true (summary
 # --include-distribution-artifacts) includes it.

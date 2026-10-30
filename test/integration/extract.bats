@@ -22,7 +22,7 @@ extract() { # <source in $W> [--print-root]; prints extract.sh's output, then wh
         "$P7ZIP_IMAGE" sh -c 'sh /extract.sh "/w/$1" /out "$2" && cd /out && find . -type f | LC_ALL=C sort' sh "$@"
 }
 
-@test "every archive format extracts, and --print-root finds its single top-level folder" {
+@test "every archive format extracts, and --print-root finds its single top-level directory" {
     local f
     for f in top.zip top.tar.gz top.tgz top.tar; do
         run extract "$f" --print-root

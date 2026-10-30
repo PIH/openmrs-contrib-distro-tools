@@ -1,5 +1,5 @@
 # initialize, openmrs.7z, .tar.gz, .tgz, .tar or .zip: extracts it into openmrs-data, through a
-# staging directory in the volume so the last step is a rename. A single top-level folder (as
+# staging directory in the volume so the last step is a rename. A single top-level directory (as
 # backup-openmrs-data-directory makes) is unwrapped. Then scripts/finish-data-restore.sh.
 
 services:

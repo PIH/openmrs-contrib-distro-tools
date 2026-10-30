@@ -198,5 +198,5 @@ copy_tools() { # <dir>
     ln -s "$BATS_TEST_TMPDIR/gone" "$PIHX_HOME/inst/tools"
     run "$BIN/pihx" inst version
     assert_failure
-    assert_output "error: $PIHX_HOME/inst/tools is missing; point it at a tools directory with: pihx inst use-tools <path>"
+    assert_output "error: $PIHX_HOME/inst/tools is missing; point it at a tools directory with: pihx inst use-tools <dir>"
 }
