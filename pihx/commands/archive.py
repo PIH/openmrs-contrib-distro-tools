@@ -203,8 +203,11 @@ def instance_files(inst):
             and (p.name.endswith(".env") or p.name.endswith(".override.yaml"))]
 
 
-def restore_text(inst, image, names, files, folder, taken, command):
+def restore_text(inst, image, names, files, folder, taken, command, declared=None):
+    """RESTORE.txt. <declared>: the volumes the instance's services declare; any other archived
+    volume belonged to a service removed earlier, whose env file is gone."""
     target = inst.dir.parent / inst.name
+    leftover = [v for v in names if declared is not None and v not in declared]
     tools = inst.dir / "tools"
     if tools.is_symlink():
         tools_step = f"  ln -s {os.readlink(tools)} {target}/tools"
@@ -217,6 +220,10 @@ def restore_text(inst, image, names, files, folder, taken, command):
         f"It was {inst.dir}, with the volumes:",
         *(f"  {v}  ({v}.tar.gz)" for v in names),
         "",
+        *([f"{', '.join(leftover)} belonged to a service removed before the archive, so its env file "
+           "isn't here:",
+           "restoring the volume doesn't add the service back; add-service it again to use it.", ""]
+          if leftover else []),
         f"To recreate {inst.name} from it, on a host with Docker, as its user ({target} and the "
         "volumes",
         "must not exist):",
@@ -247,7 +254,12 @@ def write(inst, compose, image, names, dest, taken, command):
             with dest.new_file(f.name) as out:
                 out.write(f.read_bytes())
         with dest.new_file(RESTORE_FILE) as out:
-            out.write(restore_text(inst, image, names, files, dest.path, taken, command).encode())
+            try:
+                declared = volumes.instance_volumes(volumes.model(compose), inst.name)
+            except compose_module.ComposeError:
+                declared = None
+            out.write(restore_text(inst, image, names, files, dest.path, taken, command,
+                                   declared).encode())
     except BaseException:
         dest.discard()
         raise

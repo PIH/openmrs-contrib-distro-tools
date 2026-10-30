@@ -2,8 +2,12 @@
 and RESTORE.txt, and nothing left behind that looks complete when it fails."""
 
 import stat
+import unittest
+from pathlib import Path
+from unittest import mock
 
 from pihx import lock
+from pihx.commands import archive
 from pihx.tests.test_destroy import DestroyTest
 
 
@@ -114,3 +118,23 @@ class ArchiveTest(DestroyTest):
 for _name in [n for n in vars(DestroyTest) if n.startswith("test_")]:
     if _name not in vars(ArchiveTest):
         setattr(ArchiveTest, _name, None)
+
+
+class RestoreTextTest(unittest.TestCase):
+    def text(self, declared):
+        inst = mock.Mock(dir=Path("/home/u/pihx/kz"), services=[])
+        inst.name = "kz"
+        with mock.patch.object(archive.os, "readlink", return_value="/tools"), \
+                mock.patch.object(Path, "is_symlink", return_value=True):
+            return archive.restore_text(inst, "alpine", ["kz_db-data", "kz_sqlserver-data"], [],
+                                        Path("/home/u/pihx/kz.archive-x"), "now", "archive",
+                                        declared)
+
+    def test_a_removed_service_s_volume_is_explained(self):
+        text = self.text(["kz_db-data"])
+        self.assertIn("kz_sqlserver-data belonged to a service removed before the archive", text)
+        self.assertIn("add-service it again", text)
+
+    def test_no_note_when_every_volume_is_declared_or_unknown(self):
+        self.assertNotIn("removed before", self.text(["kz_db-data", "kz_sqlserver-data"]))
+        self.assertNotIn("removed before", self.text(None))

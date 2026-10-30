@@ -158,7 +158,7 @@ def cmd_destroy(name, args):
             print(f"  volume    {v:<{width}}  {volumes.human(sizes[v])}")
         if not names:
             print("  (no volumes)")
-        answer = ask(f"Type the instance's name ({name}) to archive it and stop it: ")
+        answer = ask(f"Type the instance's name ({name}) to stop it and archive it: ")
         if answer != name:
             raise CliError("destroy stopped: nothing was changed")
         try:
