@@ -254,7 +254,14 @@ def cmd_logs(name, args):
     if len(args) > 1 or (args and args[0].startswith("-")):
         raise CliError(f"usage: pihx {name} logs [service]", status=2)
     inst = _open(name)
-    compose_module.Compose(inst).run("logs", "-f", *args)
+    # Ctrl-C is how following ends, not an error.
+    try:
+        result = compose_module.Compose(inst).run("logs", "-f", *args, check=False)
+    except KeyboardInterrupt:
+        return 0
+    status = exit_status(result.returncode)
+    if status not in (0, 130):
+        raise CliError(f"docker compose logs failed (exit {status})")
     return 0
 
 

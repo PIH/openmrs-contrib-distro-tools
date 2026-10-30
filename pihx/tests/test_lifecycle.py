@@ -43,6 +43,25 @@ class LifecycleTest(CommandTest):
         return instance.open(self.home, "kz", tools=self.tools)
 
 
+class LogsTest(LifecycleTest):
+    def logs(self, outcome):
+        def fake_run(compose_self, *args, **kwargs):
+            if isinstance(outcome, BaseException):
+                raise outcome
+            return done(returncode=outcome)
+        with mock.patch.object(compose.Compose, "run", fake_run):
+            return run(["kz", "logs"])
+
+    def test_ctrl_c_ends_following_quietly(self):
+        self.assertEqual(self.logs(KeyboardInterrupt()), (0, "", ""))
+        self.assertEqual(self.logs(130), (0, "", ""))
+
+    def test_a_compose_failure_is_still_an_error(self):
+        status, _, err = self.logs(1)
+        self.assertEqual(status, 1)
+        self.assertIn("docker compose logs failed (exit 1)", err)
+
+
 class CommandsTest(LifecycleTest):
     def test_setup_services_come_from_the_manifests(self):
         self.assertEqual(lifecycle.setup_services(self.inst()), ["db-accounts"])
