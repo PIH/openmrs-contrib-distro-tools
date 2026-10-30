@@ -32,7 +32,7 @@ def tools_dir():
     return Path(tools).absolute()
 
 
-def _option(args, name):
+def option(args, name):
     """The value of --<name>=<value> or --<name> <value> in <args>, and the arguments left."""
     rest, value, i = [], None, 0
     while i < len(args):
@@ -141,7 +141,7 @@ def _validate(instance):
 # --- commands -------------------------------------------------------------------------------------
 
 def cmd_create(name, args):
-    value, rest = _option(args, "services")
+    value, rest = option(args, "services")
     _no_arguments(rest, "create")
     if value is None:
         raise CliError("create needs --services=<service>[,<service>...]", status=2)

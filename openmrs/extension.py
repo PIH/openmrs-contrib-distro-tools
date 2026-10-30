@@ -49,7 +49,7 @@ def _options(command, args, allowed=()):
 # --- create ---------------------------------------------------------------------------------------
 
 def cmd_create(name, args):
-    services, _ = instance_cmds._option(args, "services")
+    services, _ = instance_cmds.option(args, "services")
     if services is None:
         services = DEFAULT_SERVICES
         args = [*args, f"--services={services}"]
