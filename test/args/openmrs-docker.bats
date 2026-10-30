@@ -9,6 +9,7 @@ setup() {
     create_instance "$NAME"
 }
 teardown() {
+    [ -z "${SHARED_PIHX_HOME-}" ] || export PIHX_HOME=$SHARED_PIHX_HOME
     destroy_instance "$NAME"
     common_teardown
 }
@@ -27,7 +28,15 @@ assert_same_as_pihx() { # <args...>
     assert_same_as_pihx "$NAME" config
     assert_same_as_pihx "$NAME" openmrs-db
     assert_same_as_pihx "$NAME" status
+    # list shows every instance in PIHX_HOME, which parallel tests share (one created between the two
+    # runs would differ), so it runs in a PIHX_HOME only this test uses.
+    SHARED_PIHX_HOME=$PIHX_HOME
+    export PIHX_HOME="$BATS_TEST_TMPDIR/list-home"
+    mkdir -p "$PIHX_HOME"
+    create_instance "$NAME-list"
     assert_same_as_pihx list
+    destroy_instance "$NAME-list"
+    export PIHX_HOME=$SHARED_PIHX_HOME
 }
 
 @test "create takes the instance first, as pihx's does" {
