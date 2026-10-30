@@ -11,7 +11,7 @@ teardown() { destroy_instance "$NAME"; common_teardown; }
 
 new_instance() { # [image name] [image tag]
     NAME="$(instance)"
-    OPENMRS_DB_IMAGE_NAME="${1:-mysql}" OPENMRS_DB_IMAGE_TAG="${2:-5.6}" SERVICES=openmrs-db create_instance "$NAME"
+    OPENMRS_DB_IMAGE_NAME="${1:-mysql}" OPENMRS_DB_IMAGE_TAG="${2:-5.6}" create_instance "$NAME" --services=openmrs-db
     ENV="$(env_file_of "$NAME" openmrs-db)"
 }
 
@@ -125,7 +125,7 @@ assert_account_created() {
     # container too (docs/services.md).
     NAME="$(instance)"
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD="$PW" \
-        SERVICES=openmrs-db,petl create_instance "$NAME" 2>/dev/null
+        create_instance "$NAME" --services=openmrs-db,petl 2>/dev/null
     run start_and_wait_for_accounts
     assert_output 0
     local before

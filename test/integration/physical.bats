@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
-# backup-percona -> convert-percona-backup -> initialize RESTORE_MYSQL_DATA_PATH round trips.
+# backup-percona -> convert-percona-backup -> initialize (an openmrs-db.datadir entry) round
+# trips.
 #
 # A physical backup carries the source's own accounts; initialize sets them to the instance's
 # passwords (utils/reset-mysql-accounts.sh). The source gets accounts like a legacy server's: an
@@ -38,7 +39,7 @@ restore_physical() { # [backup-percona args...]
     datadir=$("$UTILS/convert-percona-backup.sh" --backup-dir=backup --output-dir="$BATS_TEST_TMPDIR/datadir" 2>/dev/null)
     NAME="$(instance)"
     create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DATA_PATH="$datadir"
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.datadir "$datadir")"
 }
 
 @test "a full physical backup restores through initialize" {
@@ -60,8 +61,8 @@ restore_physical() { # [backup-percona args...]
     local datadir
     datadir=$("$UTILS/convert-percona-backup.sh" --backup-dir=backup --output-dir="$BATS_TEST_TMPDIR/datadir" 2>/dev/null)
     NAME="$(instance)"
-    OPENMRS_DB_PASSWORD=instance-pw OPENMRS_DB_ROOT_PASSWORD=instance-root SERVICES=openmrs-db create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DATA_PATH="$datadir"
+    OPENMRS_DB_PASSWORD=instance-pw OPENMRS_DB_ROOT_PASSWORD=instance-root create_instance "$NAME" --services=openmrs-db
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.datadir "$datadir")"
     assert_success
     assert_output --partial "Set the password of openmrs@localhost"
     assert_output --partial "Set the password of root@%"

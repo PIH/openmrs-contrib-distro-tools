@@ -6,7 +6,7 @@ load ../helpers
 
 setup() {
     NAME="$(instance)"
-    SERVICES=openmrs-db create_instance "$NAME"
+    create_instance "$NAME" --services=openmrs-db
     LOCK="$PIHX_HOME/$NAME/.lock"
 }
 teardown() {
@@ -24,9 +24,9 @@ hold_lock() {
 
 @test "a changing command refuses while another holds the lock, naming the holder" {
     hold_lock
-    for cmd in start stop restart update pull reset-openmrs-db-accounts destroy; do
-        if [ "$cmd" = destroy ]; then run "$BIN/openmrs-docker" "$NAME" destroy --force
-        else run "$BIN/openmrs-docker" "$NAME" "$cmd"; fi
+    for cmd in start stop restart update pull 'openmrs-db reset-accounts' 'destroy --force'; do
+        # shellcheck disable=SC2086 # a command and its arguments
+        run "$BIN/openmrs-docker" "$NAME" $cmd
         assert_failure
         assert_output --partial "$NAME is busy: initialize (pid"
     done
@@ -58,7 +58,7 @@ hold_lock() {
     run "$BIN/openmrs-docker" "$NAME" status
     refute_output --partial "Busy:"
     # a failed command releases it too
-    run_initialize "$NAME" SEED_IMAGE_NAME=
+    run_initialize "$NAME" --from "$(from_folder)"
     assert_failure
     run "$BIN/openmrs-docker" "$NAME" stop
     assert_success

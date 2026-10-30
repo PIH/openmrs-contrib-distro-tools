@@ -11,7 +11,7 @@ setup() {
     MODALITY_SIMULATOR_IMAGE_NAME=alpine MODALITY_SIMULATOR_IMAGE_TAG=3.21 \
         MODALITY_SIMULATOR_GATEWAY_AE=GW MODALITY_SIMULATOR_HOST_PORT=0 MODALITY_SIMULATOR_IMAGE_DIR=/tmp \
         BIOMETRICS_IMAGE_NAME=alpine BIOMETRICS_IMAGE_TAG=3.21 BIOMETRICS_LICENSE_BASE64=eA== \
-        SERVICES=modality-simulator,biometrics create_instance "$NAME" 2>/dev/null
+        create_instance "$NAME" --services=modality-simulator,biometrics 2>/dev/null
     local svc
     for svc in modality-simulator biometrics; do
         printf 'services:\n  %s:\n    init: true\n    command: ["sleep", "300"]\n' "$svc" > "$DIR/$svc.override.yaml"
@@ -49,7 +49,7 @@ running() { docker ps -q --filter "label=com.docker.compose.project=$NAME"; }
 @test "remove-service refuses when what's left would be broken, and keeps the service" {
     local other
     other="$(instance other)"
-    SERVICES=openmrs-db,openmrs create_instance "$other" 2>/dev/null
+    create_instance "$other" --services=openmrs-db,openmrs 2>/dev/null
     # openmrs requires openmrs-db
     run "$BIN/openmrs-docker" "$other" remove-service openmrs-db
     assert_failure

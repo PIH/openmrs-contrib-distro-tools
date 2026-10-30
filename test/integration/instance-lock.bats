@@ -11,9 +11,10 @@ teardown() {
 
 @test "start refuses while initialize runs, and works once it's done" {
     NAME="$(instance)"
-    SERVICES=openmrs-db create_instance "$NAME"
+    create_instance "$NAME" --services=openmrs-db
     write_tiny_dump dump.sql
-    RESTORE_MYSQL_DUMP_PATH=dump.sql timeout 300 "$BIN/openmrs-docker" "$NAME" initialize > init.log 2>&1 3>&- &
+    timeout 300 "$BIN/openmrs-docker" "$NAME" initialize --from "$(from_folder openmrs-db.sql dump.sql)" \
+        > init.log 2>&1 3>&- &
     local init=$!
     until grep -q 'Waiting for' init.log; do
         kill -0 "$init" 2>/dev/null || { cat init.log; fail "initialize ended early"; }
@@ -30,7 +31,7 @@ teardown() {
 @test "run-service holds the lock for a service that declares it (petl), so a deploy waits for it" {
     NAME="$(instance)"
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=Pw-1 PETL_SQLSERVER_PASSWORD=Pw-1 \
-        SERVICES=openmrs-db,petl create_instance "$NAME"
+        create_instance "$NAME" --services=openmrs-db,petl
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1   # a PETL run is against the running instance
     "$BIN/openmrs-docker" "$NAME" run-service petl sleep 8 > petl.log 2>&1 3>&- &
     local petl=$!

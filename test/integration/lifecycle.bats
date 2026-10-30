@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# start, wait, status, restart, stop, pull, update, and sync (no longer needed), against a stub
+# start, wait, status, restart, stop, pull and update, through openmrs-docker, against a stub
 # OpenMRS image (see build_stub_openmrs_image).
 
 load ../helpers
@@ -25,7 +25,7 @@ running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.p
     assert_success
     run "$BIN/openmrs-docker" "$NAME" wait
     assert_success
-    assert_output --partial 'OpenMRS is ready.'
+    assert_output --partial "$NAME is ready."
     assert_equal "$(running)" "$(printf '%s\n' "$NAME-openmrs" "$NAME-openmrs-db")"
     run "$BIN/openmrs-docker" "$NAME" status
     assert_success
@@ -97,7 +97,7 @@ container_id() { docker inspect -f '{{.Id}}' "$NAME-openmrs"; }
 @test "a restored instance starts without OpenMRS creating tables" {
     create_with_stub
     write_tiny_dump dump.sql
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql)"
     assert_success
     run "$BIN/openmrs-docker" "$NAME" start
     assert_success
@@ -115,26 +115,19 @@ container_id() { docker inspect -f '{{.Id}}' "$NAME-openmrs"; }
     assert_failure
     # Docker restarts it (restart: unless-stopped), so wait may see it exited or its healthcheck failed
     assert_output --regexp 'exited unexpectedly|reported unhealthy'
-    assert_output --partial 'OpenMRS did not become ready'
+    assert_output --partial "$NAME-openmrs did not become ready"
 }
 
-@test "sync says it's no longer needed and changes nothing (the instance uses its checkout's files), and update starts it" {
-    SERVICES=openmrs-db create_instance "$NAME"
-    local before
-    before=$(cd "$DIR" && ls -A && cat ./*.env)
-    run "$BIN/openmrs-docker" "$NAME" sync
-    assert_success
-    assert_output --partial 'sync is no longer needed'
-    assert_equal "$(cd "$DIR" && ls -A && cat ./*.env)" "$before"
+@test "update starts an instance" {
+    create_instance "$NAME" --services=openmrs-db
     run "$BIN/openmrs-docker" "$NAME" update
     assert_success
-    refute_output --partial 'newer service definitions'
     docker wait "$NAME-openmrs-db-accounts" >/dev/null   # the one-shot account setup, done once it exits
     assert_equal "$(running)" "$NAME-openmrs-db"
 }
 
 @test "pull fetches the instance's images without starting anything" {
-    SERVICES=openmrs-db create_instance "$NAME"
+    create_instance "$NAME" --services=openmrs-db
     run "$BIN/openmrs-docker" "$NAME" pull
     assert_success
     assert_equal "$(running)" ""
@@ -147,13 +140,13 @@ container_id() { docker inspect -f '{{.Id}}' "$NAME-openmrs"; }
     sleep 1
     run "$BIN/openmrs-docker" "$NAME" wait
     assert_success
-    assert_output --partial 'OpenMRS is ready.'
+    assert_output --partial "$NAME is ready."
     refute_output --partial 'OLD-LOG-LINE'
 }
 
 @test "run-service petl doesn't need OpenMRS: it runs, and leaves OpenMRS stopped, on an instance that has it" {
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=Pw-1 PETL_SQLSERVER_PASSWORD=Pw-1 \
-        OPENMRS_IMAGE_NAME="$STUB_OPENMRS_IMAGE" OPENMRS_IMAGE_TAG=latest SERVICES=openmrs-db,openmrs,petl create_instance "$NAME"
+        OPENMRS_IMAGE_NAME="$STUB_OPENMRS_IMAGE" OPENMRS_IMAGE_TAG=latest create_instance "$NAME" --services=openmrs-db,openmrs,petl
     # The database running, OpenMRS stopped (e.g. PETL against a restored database).
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
     docker stop "$NAME-openmrs" >/dev/null

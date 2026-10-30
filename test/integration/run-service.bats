@@ -17,7 +17,7 @@ DOCKERFILE
 setup() {
     NAME="$(instance)"
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=Pw-1 PETL_SQLSERVER_PASSWORD=Pw-1 \
-        SERVICES=openmrs-db,petl create_instance "$NAME"
+        create_instance "$NAME" --services=openmrs-db,petl
     DIR="$PIHX_HOME/$NAME"
 }
 teardown() { destroy_instance "$NAME"; remove_images "$NAME-"; common_teardown; }

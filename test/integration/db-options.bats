@@ -22,7 +22,7 @@ binlog_files() { # <instance>
 @test "the default options apply, and binary logging is left at the server's default (off on 5.6)" {
     local name
     name="$(instance)"
-    SERVICES=openmrs-db create_instance "$name"
+    create_instance "$name" --services=openmrs-db
     start_db "$name"
     run mysql_exec "$name-openmrs-db" openmrs 'SELECT @@character_set_server, @@max_allowed_packet, @@net_read_timeout, @@log_bin_trust_function_creators, @@log_bin'
     assert_output $'utf8\t1073741824\t3600\t1\t0'
@@ -31,7 +31,7 @@ binlog_files() { # <instance>
 @test "openmrs-db uses the host's time zone data, not the image's" {
     local name when=1782907200   # 2026-07-01 12:00 UTC
     name="$(instance)"
-    TZ=America/Mexico_City SERVICES=openmrs-db create_instance "$name"
+    TZ=America/Mexico_City create_instance "$name" --services=openmrs-db
     start_db "$name"
     # Mexico City dropped daylight saving time in 2022; mysql:5.6's own data (2021) still has it.
     run docker exec "$name-openmrs-db" date -d "@$when" +%z
@@ -43,7 +43,7 @@ binlog_files() { # <instance>
 @test "an OPENMRS_DB_OPT_* option with no default is passed, and an empty one as a bare flag" {
     local name
     name="$(instance)"
-    OPENMRS_DB_OPT_long_query_time=7 OPENMRS_DB_OPT_skip_name_resolve= SERVICES=openmrs-db create_instance "$name"
+    OPENMRS_DB_OPT_long_query_time=7 OPENMRS_DB_OPT_skip_name_resolve= create_instance "$name" --services=openmrs-db
     start_db "$name"
     run mysql_exec "$name-openmrs-db" openmrs 'SELECT @@long_query_time, @@skip_name_resolve'
     assert_output $'7.000000\t1'
@@ -53,7 +53,7 @@ binlog_files() { # <instance>
     local name env
     name="$(instance)"
     OPENMRS_DB_OPT_log_bin=mysql-bin OPENMRS_DB_OPT_server_id=5 OPENMRS_DB_OPT_expire_logs_days=3 \
-        SERVICES=openmrs-db create_instance "$name"
+        create_instance "$name" --services=openmrs-db
     start_db "$name"
     run mysql_exec "$name-openmrs-db" openmrs 'SELECT @@log_bin, @@server_id, @@expire_logs_days'
     assert_output $'1\t5\t3'
@@ -78,7 +78,7 @@ binlog_files() { # <instance>
 @test "purge-binlogs refuses when binary logging is off, since the server can't purge then" {
     local name
     name="$(instance)"
-    SERVICES=openmrs-db create_instance "$name"
+    create_instance "$name" --services=openmrs-db
     start_db "$name"
     MYSQL_PASSWORD=openmrs run "$UTILS/purge-binlogs.sh" --container="$name-openmrs-db"
     assert_failure
@@ -88,7 +88,7 @@ binlog_files() { # <instance>
 @test "the healthcheck logs in without the DB password on a command line" {
     local name
     name="$(instance)"
-    OPENMRS_DB_PASSWORD=s3cret-health-pw SERVICES=openmrs-db create_instance "$name"
+    OPENMRS_DB_PASSWORD=s3cret-health-pw create_instance "$name" --services=openmrs-db
     start_db "$name"
     run docker inspect -f '{{json .Config.Healthcheck}}' "$name-openmrs-db"
     refute_output --partial s3cret-health-pw
@@ -104,7 +104,7 @@ binlog_files() { # <instance>
     # password into a properties file unescaped.
     local name
     name="$(instance)"
-    OPENMRS_DB_PASSWORD='bs\x' SERVICES=openmrs-db create_instance "$name"
+    OPENMRS_DB_PASSWORD='bs\x' create_instance "$name" --services=openmrs-db
     "$BIN/openmrs-docker" "$name" start >/dev/null 2>&1 || true
     for i in $(seq 1 30); do
         [ "$(docker inspect -f '{{.State.Running}}' "$name-openmrs-db" 2>/dev/null)" = true ] || break
@@ -120,7 +120,7 @@ binlog_files() { # <instance>
 @test "an existing data directory starts regardless (its accounts were set by other means)" {
     local name
     name="$(instance)"
-    SERVICES=openmrs-db create_instance "$name"
+    create_instance "$name" --services=openmrs-db
     start_db "$name"
     set_env_value "$name" openmrs-db OPENMRS_DB_ROOT_PASSWORD 'bs\x'
     "$BIN/openmrs-docker" "$name" start >/dev/null 2>&1

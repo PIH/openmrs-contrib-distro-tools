@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# openmrs-docker start --build: Maven (a stub here) builds the distribution in DISTRO_SOURCE_DIR on
+# openmrs-docker start --build: Maven (a stub here) builds the distribution in OPENMRS_DISTRO_DIR on
 # the host, after the command is checked, and Compose builds the openmrs image from it (the
 # directory is mounted for that). openmrs-db is replaced by a sleeping alpine, so nothing heavy runs.
 
@@ -22,7 +22,7 @@ SH
     chmod +x bin/mvn
     export PATH="$BATS_TEST_TMPDIR/bin:$PATH" MVN_LOG="$BATS_TEST_TMPDIR/mvn.log"
     IMAGE="$(res openmrs)"
-    DISTRO_SOURCE_DIR="$DISTRO" OPENMRS_IMAGE_NAME="$IMAGE" create_instance "$NAME" 2>/dev/null
+    OPENMRS_DISTRO_DIR="$DISTRO" OPENMRS_IMAGE_NAME="$IMAGE" create_instance "$NAME" 2>/dev/null
     cat > "$PIHX_HOME/$NAME/openmrs-db.override.yaml" <<'YAML'
 services:
   openmrs-db:
@@ -43,7 +43,7 @@ teardown() {
     common_teardown
 }
 
-@test "start --build runs Maven in DISTRO_SOURCE_DIR, then builds the openmrs image from it" {
+@test "start --build runs Maven in OPENMRS_DISTRO_DIR, then builds the openmrs image from it" {
     run "$BIN/openmrs-docker" "$NAME" start --build
     assert_success
     run cat "$MVN_LOG"
@@ -69,12 +69,12 @@ teardown() {
     [ ! -e "$MVN_LOG" ] || fail "Maven ran: $(cat "$MVN_LOG")"
 }
 
-@test "DISTRO_SOURCE_DIR must be absolute" {
+@test "OPENMRS_DISTRO_DIR must be absolute" {
     local other
     other="$(instance other)"
-    run env DISTRO_SOURCE_DIR=distro "$BIN/openmrs-docker" create "$other"
+    run env OPENMRS_DISTRO_DIR=distro "$BIN/openmrs-docker" "$other" create
     assert_failure
-    assert_output --partial "DISTRO_SOURCE_DIR must be an absolute path"
+    assert_output --partial "OPENMRS_DISTRO_DIR must be an absolute path"
     [ ! -e "$PIHX_HOME/$other" ]
 }
 

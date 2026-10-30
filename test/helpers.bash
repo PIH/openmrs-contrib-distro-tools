@@ -37,7 +37,7 @@ export OPENMRS_DATA_OWNER
 # A name for a Docker resource owned by the current test, e.g. `res db` -> odt1234-t7-db.
 res() { echo "$RUN_PREFIX-t${BATS_SUITE_TEST_NUMBER}-$1"; }
 
-# A name for an openmrs-docker instance owned by the current test.
+# A name for an instance owned by the current test.
 instance() { echo "$RUN_PREFIX-t${BATS_SUITE_TEST_NUMBER}${1:+-$1}"; }
 
 # A name for a Docker resource or instance shared by the current file's tests (made in setup_file).
@@ -100,7 +100,7 @@ mysql_exec() { # <container> <root password> <sql>
 }
 
 # Starts a MySQL container with a named data volume (<name>-data) holding an `openmrs` database
-# (marker row 1) and a `malawi` database (marker row 2). Credentials match openmrs-docker's
+# (marker row 1) and a `malawi` database (marker row 2). Credentials match openmrs-db's
 # defaults, so a physical restore of it is usable by an instance created with those defaults.
 start_source_db() { # <name>
     docker run -d --name "$1" -v "$1-data:/var/lib/mysql" -v /usr/share/zoneinfo:/usr/share/zoneinfo:ro \
@@ -191,15 +191,30 @@ instance_compose_of() { # <instance> <compose args...>
     COMPOSE_PROJECT=$name instance_compose "$PIHX_HOME/$name" "$services" -- "$@"
 }
 
-create_instance() { # <name>
-    "$BIN/openmrs-docker" create "$1" >/dev/null
+create_instance() { # <name> [create options...]
+    local name=$1; shift
+    "$BIN/openmrs-docker" "$name" create "$@" >/dev/null
 }
 
-# Runs `openmrs-docker <name> initialize` via bats `run`, with extra env assignments, capped so a
-# hung restore fails the test instead of waiting out initialize's own hour-long wait.
-run_initialize() { # <name> [VAR=value...]
+# Runs `openmrs-docker <name> initialize <args>` via bats `run`, capped so a hung restore fails the
+# test instead of waiting out initialize's own hour-long wait.
+run_initialize() { # <name> <initialize args...>
     local name=$1; shift
-    run env "$@" timeout 300 "$BIN/openmrs-docker" "$name" initialize
+    run timeout 300 "$BIN/openmrs-docker" "$name" initialize "$@"
+}
+
+# Makes a new folder for initialize --from, each entry a link to its source (relative to the
+# current directory), and prints its path.
+from_folder() { # <entry> <source> [<entry> <source>...]
+    local folder source
+    folder=$(mktemp -d "$BATS_TEST_TMPDIR/from.XXXXXX")
+    while [ $# -gt 0 ]; do
+        source=${2%/}
+        case $source in /*) ;; *) source=$PWD/$source ;; esac
+        ln -s "$source" "$folder/$1"
+        shift 2
+    done
+    echo "$folder"
 }
 
 destroy_instance() { # <name>

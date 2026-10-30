@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# initialize from a seed image (each volume, or both), its timeout, and reset-openmrs-db-accounts on
-# an instance without openmrs-data.
+# openmrs-docker initialize --from-image (pihx's, and the extension's hint for an old seed), its
+# timeout, and openmrs-db reset-accounts on an instance without openmrs-data.
 
 load ../helpers
 
@@ -47,13 +47,11 @@ teardown() {
     common_teardown
 }
 
-# SEED_IMAGE_NAME at create: initialize reads it from the instance's instance.env, which wins over
-# the shell.
-create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs create_instance "$NAME"; }
+create_openmrs() { create_instance "$NAME" --services=openmrs-db,openmrs; }
 
 @test "initialize fills both volumes from a seed image" {
-    create_seeded
-    run_initialize "$NAME"
+    create_openmrs
+    run_initialize "$NAME" --from-image "$SEED_IMAGE"
     assert_success
     run db_marker_in_volume "${NAME}_db-data"
     assert_output 7
@@ -70,8 +68,8 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     start_registry "$NAME-registry"
     seed="$REGISTRY/$NAME-seed:t"
     docker tag "$SEED_IMAGE" "$seed" && docker push -q "$seed" >/dev/null && docker rmi "$seed" >/dev/null
-    SEED_IMAGE_NAME="${seed%:t}" SEED_IMAGE_TAG=t SERVICES=openmrs-db,openmrs create_instance "$NAME"
-    run_initialize "$NAME"
+    create_openmrs
+    run_initialize "$NAME" --from-image "$seed"
     assert_success
     assert_output --partial "Removed $seed, pulled for this command"
     [ -z "$(image_id "$seed")" ] || fail "$seed, pulled by initialize, is still there"
@@ -80,41 +78,34 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
 }
 
 @test "a seed image with a flat openmrs.tar.gz still fills openmrs-data" {
-    SEED_IMAGE_NAME="$FLAT_SEED_IMAGE" SERVICES=openmrs-db,openmrs create_instance "$NAME"
-    run_initialize "$NAME"
+    create_openmrs
+    run_initialize "$NAME" --from-image "$FLAT_SEED_IMAGE"
     assert_success
     run tree_of_volume "${NAME}_openmrs-data"
     assert_output "$SEED_DATA_TREE"
     assert_seeded_root_owner
 }
 
-@test "initialize takes db-data from the seed image and openmrs-data from a directory" {
-    create_seeded
-    mkdir -p data/complex_obs && echo restored > data/complex_obs/restored.txt
-    run_initialize "$NAME" RESTORE_OPENMRS_DATA_PATH=data
-    assert_success
-    run db_marker_in_volume "${NAME}_db-data"
-    assert_output 7
-    run tree_of_volume "${NAME}_openmrs-data"
-    assert_output "$(printf './complex_obs\n./complex_obs/restored.txt')"
+@test "a seed pihx can't restore is named as probably an old-format one" {
+    local ctx="$BATS_TEST_TMPDIR/old-seed" image
+    image="$(res old-seed)"
+    mkdir -p "$ctx"
+    write_tiny_dump "$ctx/dump.sql" && gzip "$ctx/dump.sql"
+    printf 'FROM alpine:3.21\nCOPY dump.sql.gz /seed/\n' > "$ctx/Dockerfile"
+    docker build -q -t "$image" "$ctx" >/dev/null
+    create_openmrs
+    run_initialize "$NAME" --from-image "$image"
+    docker rmi -f "$image" >/dev/null
+    assert_failure
+    assert_output --partial "isn't a seed this version restores"
+    assert_output --partial "It's probably an old-format seed"
 }
 
-@test "initialize takes openmrs-data from the seed image and db-data from a dump" {
-    create_seeded
-    write_tiny_dump dump.sql
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
-    assert_success
-    run db_marker_in_volume "${NAME}_db-data"
-    assert_output 1
-    run tree_of_volume "${NAME}_openmrs-data"
-    assert_output "$SEED_DATA_TREE"
-}
-
-@test "initialize gives up after INITIALIZE_DB_TIMEOUT, and leaves no containers or restore volumes" {
-    SERVICES=openmrs-db create_instance "$NAME"
+@test "initialize gives up after PIHX_INITIALIZE_TIMEOUT, and leaves no containers or restore volumes" {
+    create_instance "$NAME" --services=openmrs-db
     # Keeps MySQL's first-boot import, and so its healthcheck, busy past the timeout.
     printf 'SELECT SLEEP(120);\n' > dump.sql
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql INITIALIZE_DB_TIMEOUT=5
+    PIHX_INITIALIZE_TIMEOUT=5 run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql)"
     assert_failure
     assert_output --partial 'timed out after 5s'
     assert_output --partial "initialize failed"
@@ -125,13 +116,13 @@ create_seeded() { SEED_IMAGE_NAME="$SEED_IMAGE" SERVICES=openmrs-db,openmrs crea
     assert_equal "$(docker volume ls -q --filter "label=com.docker.compose.project=$NAME")" ""
 }
 
-@test "reset-openmrs-db-accounts works on an instance with no openmrs-data volume" {
-    SERVICES=openmrs-db create_instance "$NAME"
+@test "openmrs-db reset-accounts works on an instance with no openmrs-data volume" {
+    create_instance "$NAME" --services=openmrs-db
     write_tiny_dump dump.sql
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql)"
     assert_success
     set_env_value "$NAME" openmrs-db OPENMRS_DB_PASSWORD rotated-pw
-    run "$BIN/openmrs-docker" "$NAME" reset-openmrs-db-accounts
+    run "$BIN/openmrs-docker" "$NAME" openmrs-db reset-accounts
     assert_success
     assert_output --partial "Set the password of openmrs@%"
     refute_output --partial "openmrs-runtime.properties"

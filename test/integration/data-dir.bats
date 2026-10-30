@@ -28,13 +28,14 @@ assert_extracts_to() { # <archive> <expected folder name> <expected tree>
     assert_output "$3"
 }
 
-# Runs initialize with RESTORE_OPENMRS_DATA_PATH=<source> and checks the resulting volume's tree --
-# <expected tree> as backed up, so with openmrs-runtime.properties moved aside by initialize.
-assert_initializes_to() { # <source> <expected tree> [VAR=value...]
-    local src=$1 tree=$2; shift 2
+# Runs initialize --from a folder with the dump and <source> as its <entry> (openmrs, or
+# openmrs.<archive extension>) and checks the resulting volume's tree -- <expected tree> as backed
+# up, so with openmrs-runtime.properties moved aside by initialize.
+assert_initializes_to() { # <entry> <source> <expected tree>
+    local entry=$1 src=$2 tree=$3
     NAME="$(instance)"
     create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$src" "$@"
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql "$entry" "$src")"
     assert_success
     run tree_of_volume "${NAME}_openmrs-data"
     assert_output "${tree/.\/openmrs-runtime.properties/./openmrs-runtime.properties.restored}"
@@ -212,37 +213,37 @@ FIXTURE_TREE_EXCLUDING="./.openmrs-lib-cache
     assert_not_in_docker_argv s3cret-archive-pw
 }
 
-# --- initialize RESTORE_OPENMRS_DATA_PATH ----------------------------------------------------------
+# --- initialize --from: openmrs-data -------------------------------------------------------------
 
 @test "initialize restores openmrs-data from a .tar.gz backup" {
     backup data.tar.gz 2>/dev/null
-    assert_initializes_to data.tar.gz "$FIXTURE_TREE"
+    assert_initializes_to openmrs.tar.gz data.tar.gz "$FIXTURE_TREE"
 }
 
 @test "initialize restores openmrs-data from a .7z backup" {
     ARCHIVE_PASSWORD=pw backup data.7z >/dev/null 2>&1
-    assert_initializes_to data.7z "$FIXTURE_TREE" ARCHIVE_PASSWORD=pw
+    ARCHIVE_PASSWORD=pw assert_initializes_to openmrs.7z data.7z "$FIXTURE_TREE"
 }
 
 @test "initialize restores openmrs-data from an --exclude-distribution-artifacts backup" {
     backup lean.tgz --exclude-distribution-artifacts 2>/dev/null
-    assert_initializes_to lean.tgz "$FIXTURE_TREE_EXCLUDED"
+    assert_initializes_to openmrs.tgz lean.tgz "$FIXTURE_TREE_EXCLUDED"
 }
 
 @test "initialize restores openmrs-data from a plain directory" {
-    assert_initializes_to "$BATS_TEST_TMPDIR/data" "$FIXTURE_TREE"
+    assert_initializes_to openmrs "$BATS_TEST_TMPDIR/data" "$FIXTURE_TREE"
 }
 
 @test "initialize restores openmrs-data from a flat (seed-style) archive with no top-level folder" {
     tar czf flat.tar.gz -C data .
-    assert_initializes_to flat.tar.gz "$FIXTURE_TREE"
+    assert_initializes_to openmrs.tar.gz flat.tar.gz "$FIXTURE_TREE"
 }
 
 @test "initialize with a wrong .7z password fails, shows why, and leaves no containers" {
     ARCHIVE_PASSWORD=pw backup data.7z >/dev/null 2>&1
     NAME="$(instance)"
     create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH=data.7z ARCHIVE_PASSWORD=wrong
+    ARCHIVE_PASSWORD=wrong run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql openmrs.7z data.7z)"
     assert_failure
     assert_output --partial 'Wrong password'
     assert_equal "$(docker ps -aq --filter "name=^$NAME")" ""
@@ -251,14 +252,14 @@ FIXTURE_TREE_EXCLUDING="./.openmrs-lib-cache
 @test "initialize never puts ARCHIVE_PASSWORD in a docker command line" {
     ARCHIVE_PASSWORD=s3cret-restore-pw backup data.7z >/dev/null 2>&1
     record_docker_argv
-    assert_initializes_to data.7z "$FIXTURE_TREE" ARCHIVE_PASSWORD=s3cret-restore-pw
+    ARCHIVE_PASSWORD=s3cret-restore-pw assert_initializes_to openmrs.7z data.7z "$FIXTURE_TREE"
     assert_not_in_docker_argv s3cret-restore-pw
 }
 
 @test "initialize moves a restored openmrs-runtime.properties aside, contents intact" {
     NAME="$(instance)"
     create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data"
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql openmrs data)"
     assert_success
     assert_output --partial 'Moved openmrs-runtime.properties aside'
     run docker run --rm -v "${NAME}_openmrs-data:/v" alpine:3.21 cat /v/openmrs-runtime.properties.restored
@@ -273,7 +274,7 @@ create_tables_setting() { # what the openmrs container gets
 }
 
 @test "initialize records nothing about the tables, and a plain docker compose doesn't create them" {
-    assert_initializes_to "$BATS_TEST_TMPDIR/data" "$FIXTURE_TREE"
+    assert_initializes_to openmrs "$BATS_TEST_TMPDIR/data" "$FIXTURE_TREE"
     run grep 'CREATE_TABLES\|CREATED_EMPTY\|FOUND_EMPTY' "$PIHX_HOME/$NAME"/*.env
     assert_failure
     run create_tables_setting
@@ -284,7 +285,7 @@ create_tables_setting() { # what the openmrs container gets
     NAME="$(instance)"
     create_instance "$NAME"
     echo 'OPENMRS_CREATE_TABLES=true' >> "$(env_file_of "$NAME" openmrs)"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data"
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql openmrs data)"
     assert_success
     run grep '^OPENMRS_CREATE_TABLES=' "$(env_file_of "$NAME" openmrs)"
     assert_output 'OPENMRS_CREATE_TABLES=true'
@@ -303,7 +304,7 @@ not_owned_by() { # <volume> <uid> <gid>
     backup data.tar.gz 2>/dev/null
     NAME="$(instance)"
     create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH=data.tar.gz OPENMRS_DATA_OWNER=1234:5678
+    OPENMRS_DATA_OWNER=1234:5678 run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql openmrs.tar.gz data.tar.gz)"
     assert_success
     assert_output --partial 'Changed the owner of the restored openmrs-data to 1234:5678'
     run not_owned_by "${NAME}_openmrs-data" 1234 5678
@@ -314,7 +315,7 @@ not_owned_by() { # <volume> <uid> <gid>
 @test "initialize reads the restored openmrs-data's owner from the openmrs image when OPENMRS_DATA_OWNER is unset" {
     NAME="$(instance)"
     OPENMRS_IMAGE_NAME=alpine OPENMRS_IMAGE_TAG=3.21 create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data" OPENMRS_DATA_OWNER=
+    OPENMRS_DATA_OWNER= run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql openmrs data)"
     assert_success
     assert_output --partial 'Changed the owner of the restored openmrs-data to 0:0'
     run not_owned_by "${NAME}_openmrs-data" 0 0
@@ -324,7 +325,7 @@ not_owned_by() { # <volume> <uid> <gid>
 @test "initialize fails before creating any volume when the openmrs image can't be run to find the owner" {
     NAME="$(instance)"
     create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data" OPENMRS_DATA_OWNER=
+    OPENMRS_DATA_OWNER= run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql openmrs data)"
     assert_failure
     assert_output --partial 'set OPENMRS_DATA_OWNER'
     assert_equal "$(docker volume ls -q --filter "name=^${NAME}_")" ""
@@ -334,7 +335,7 @@ not_owned_by() { # <volume> <uid> <gid>
     chmod 000 "$BATS_TEST_TMPDIR/data"
     NAME="$(instance)"
     create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data"
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql openmrs data)"
     chmod 755 "$BATS_TEST_TMPDIR/data"
     assert_success
     run tree_of_volume "${NAME}_openmrs-data"
@@ -344,12 +345,12 @@ not_owned_by() { # <volume> <uid> <gid>
 @test "initialize failing after the restore removes what it made, so it can be retried without a destroy" {
     NAME="$(instance)"
     create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data" \
-        OPENMRS_DATA_OWNER=no-such-user:no-such-group
+    OPENMRS_DATA_OWNER=no-such-user:no-such-group \
+        run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql openmrs data)"
     assert_failure
     assert_output --partial "initialize failed"
     assert_equal "$(docker volume ls -q --filter "name=^${NAME}_")" ""
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH="$BATS_TEST_TMPDIR/data"
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql openmrs data)"
     assert_success
 }
 
@@ -361,8 +362,8 @@ not_owned_by() { # <volume> <uid> <gid>
         "$UTILS/extract-archive.sh" --path=nightly.7z --output-dir="$BATS_TEST_TMPDIR/x"
     NAME="$(instance)"
     create_instance "$NAME"
-    ARCHIVE_PASSWORD=s3cret-ps-archive RESTORE_MYSQL_DUMP_PATH=dump.sql RESTORE_OPENMRS_DATA_PATH=nightly.7z \
-        assert_not_in_ps_while s3cret-ps-archive "$BIN/openmrs-docker" "$NAME" initialize
+    ARCHIVE_PASSWORD=s3cret-ps-archive assert_not_in_ps_while s3cret-ps-archive "$BIN/openmrs-docker" \
+        "$NAME" initialize --from "$(from_folder openmrs-db.sql dump.sql openmrs.7z nightly.7z)"
     run docker run --rm -v "${NAME}_openmrs-data:/d:ro" alpine:3.21 stat -c %s /d/complex_obs/big.bin
     assert_output 30000000
 }

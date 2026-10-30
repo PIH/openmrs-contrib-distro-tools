@@ -170,7 +170,7 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     docker rmi -f "$image" >/dev/null
     assert_failure
     assert_output --partial "error: $image isn't a seed this version restores: its /seed holds data.tar.gz, dump.sql.gz"
-    # What an OpenMRS seed it can't restore probably is, openmrs-docker says (openmrs/front.py).
+    # What an OpenMRS seed it can't restore probably is, openmrs-docker says (openmrs/extension.py).
     refute_output --partial "openmrs/seed/Dockerfile"
     refute_output --partial "$PIHX_HOME/."
     refute_output --partial "/.seed-"

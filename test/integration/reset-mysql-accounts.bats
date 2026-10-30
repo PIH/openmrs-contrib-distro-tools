@@ -1,7 +1,6 @@
 #!/usr/bin/env bats
-# reset-mysql-accounts sets a stopped data directory's accounts to new passwords; openmrs-docker
-# reset-openmrs-db-accounts (openmrs-db reset-accounts) uses it, and also updates OpenMRS's connection
-# settings, to rotate passwords.
+# reset-mysql-accounts sets a stopped data directory's accounts to new passwords; openmrs-db
+# reset-accounts uses it, and also updates OpenMRS's connection settings, to rotate passwords.
 
 load ../helpers
 
@@ -15,13 +14,13 @@ in_volume() { # <volume> <sh command>
     docker run --rm -v "$1:/data" alpine:3.21 sh -c "$2"
 }
 
-@test "reset-openmrs-db-accounts sets the MySQL accounts and OpenMRS's connection settings to the passwords now in openmrs-db.env" {
+@test "openmrs-db reset-accounts sets the MySQL accounts and OpenMRS's connection settings to the passwords now in openmrs-db.env" {
     NAME="$(instance)"
     local env
-    SERVICES=openmrs-db create_instance "$NAME"
+    create_instance "$NAME" --services=openmrs-db
     env="$(env_file_of "$NAME" openmrs-db)"
     echo 'CREATE TABLE marker (id INT); INSERT INTO marker VALUES (1);' > dump.sql
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql)"
     assert_success
     # openmrs-data as OpenMRS leaves it after its first start
     docker volume create "${NAME}_openmrs-data" >/dev/null
@@ -34,7 +33,7 @@ in_volume() { # <volume> <sh command>
     set_env_value "$NAME" openmrs-db OPENMRS_DB_ROOT_PASSWORD n3w-root
     run grep '^OPENMRS_DB_PASSWORD=' "$env"
     assert_output "OPENMRS_DB_PASSWORD='n3w\\pw'"
-    run "$BIN/openmrs-docker" "$NAME" reset-openmrs-db-accounts
+    run "$BIN/openmrs-docker" "$NAME" openmrs-db reset-accounts
     assert_success
     assert_output --partial "Set the password of root@localhost"
     assert_output --partial "Set connection.username and connection.password"
