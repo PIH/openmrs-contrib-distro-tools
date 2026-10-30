@@ -154,7 +154,7 @@ class ServiceTreeTest(unittest.TestCase):
              "openhim": [], "openhim-advapacs-mediator": [],
              "advapacs-gateway": ["ADVAPACS_GATEWAY_ACCESS_KEY_ID", "ADVAPACS_GATEWAY_ACCESS_KEY_SECRET",
                                   "ADVAPACS_GATEWAY_REGION"],
-             "modality-simulator": ["MODALITY_SIMULATOR_GATEWAY_AE"],
+             "modality-simulator": [],
              "biometrics": ["BIOMETRICS_LICENSE_BASE64"],
              "sqlserver": ["SQLSERVER_SA_PASSWORD"], "petl": ["PETL_MYSQL_PASSWORD"], "x": []})
 

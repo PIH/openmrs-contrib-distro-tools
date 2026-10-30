@@ -19,7 +19,7 @@ teardown_file() {
 setup() {
     NAME="$(instance)"
     MODALITY_SIMULATOR_IMAGE_NAME=alpine MODALITY_SIMULATOR_IMAGE_TAG=3.21 \
-        MODALITY_SIMULATOR_GATEWAY_AE=GW MODALITY_SIMULATOR_HOST_PORT=0 MODALITY_SIMULATOR_IMAGE_DIR=/tmp \
+        MODALITY_SIMULATOR_HOST_PORT=0 MODALITY_SIMULATOR_IMAGE_DIR=/tmp \
         create_instance "$NAME" --services=modality-simulator 2>/dev/null
 }
 teardown() {

@@ -27,7 +27,7 @@ setup() {
     DIR="$PIHX_HOME/$NAME"
     unset OPENMRS_IMAGE_NAME
     export MODALITY_SIMULATOR_IMAGE_NAME=alpine MODALITY_SIMULATOR_IMAGE_TAG=3.21 \
-        MODALITY_SIMULATOR_GATEWAY_AE=GW MODALITY_SIMULATOR_HOST_PORT=0 \
+        MODALITY_SIMULATOR_HOST_PORT=0 \
         MODALITY_SIMULATOR_IMAGE_DIR=/tmp \
         BIOMETRICS_IMAGE_NAME=alpine BIOMETRICS_IMAGE_TAG=3.21 BIOMETRICS_LICENSE_BASE64=eA== \
         PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=Pw-1
@@ -88,19 +88,19 @@ running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.p
 @test "env values with special characters reach the container unchanged" {
     # One through the service's env_file (its defaults and <svc>.env), one through `environment:`
     # interpolation; written by create, read back from the started container.
-    local institution='A & B $HOME #x "q" `y` %z' ae='G$W #1 "q" `s`'
-    MODALITY_SIMULATOR_INSTITUTION=$institution MODALITY_SIMULATOR_GATEWAY_AE=$ae \
-        "$BIN/pihx" "$NAME" create --services=modality-simulator
-    printf 'services:\n  modality-simulator:\n    init: true\n    command: ["sleep", "3600"]\n' \
-        > "$DIR/modality-simulator.override.yaml"
+    local speed='A & B $HOME #x "q" `y` %z' license='G$W #1 "q" `s`'
+    BIOMETRICS_MATCHING_SPEED=$speed BIOMETRICS_LICENSE_BASE64=$license \
+        "$BIN/pihx" "$NAME" create --services=biometrics
+    printf 'services:\n  biometrics:\n    init: true\n    command: ["sleep", "3600"]\n' \
+        > "$DIR/biometrics.override.yaml"
     run "$BIN/pihx" "$NAME" start
     assert_success
-    run docker exec "$NAME-modality-simulator" printenv MODALITY_SIMULATOR_INSTITUTION
+    run docker exec "$NAME-biometrics" printenv BIOMETRICS_MATCHING_SPEED
     assert_success
-    assert_output "$institution"
-    run docker exec "$NAME-modality-simulator" printenv MODALITY_SIMULATOR_GATEWAY_AE
+    assert_output "$speed"
+    run docker exec "$NAME-biometrics" printenv PIH_BIOMETRICS_LICENSE_BASE64
     assert_success
-    assert_output "$ae"
+    assert_output "$license"
 }
 
 @test "start fails, naming the setup, when the database account setup fails" {

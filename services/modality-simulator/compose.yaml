@@ -1,5 +1,6 @@
-# A fake CR/US/CT modality for testing: it reads the AdvaPACS gateway's DICOM worklist and sends
-# images for the entries picked in its console (or all of them, with auto-acquire). Its code and
+# Fake CR/US/CT modalities for testing, one console tab per station: each reads the AdvaPACS
+# gateway's DICOM worklist and sends images for the entries picked in its tab (or all of them, with
+# auto-acquire). Its settings are in stations.yaml in $MODALITY_SIMULATOR_CONFIG_DIR. Its code and
 # README: https://github.com/PIH/modality-simulator.
 #
 # No depends_on advapacs-gateway: the gateway may be outside this instance, and it opens its DICOM
@@ -20,11 +21,10 @@ services:
         required: false
     environment:
       TZ: ${TZ}
-      # The only value with no default (it's the gateway's Local AE in AdvaPACS: Configuration >
-      # Local AEs); the others reach the container by the file above, under the same names.
-      MODALITY_SIMULATOR_GATEWAY_AE: "${MODALITY_SIMULATOR_GATEWAY_AE:?must be set: the gateway's AE title, its Local AE in AdvaPACS (Configuration > Local AEs)}"
     volumes:
       - modality-simulator-data:/data
+      # stations.yaml: the gateway and the stations. A directory holding that file.
+      - ${MODALITY_SIMULATOR_CONFIG_DIR}:/config:ro
       # De-identified DICOM files to send instead of generated images; with none, it generates them.
       - ${MODALITY_SIMULATOR_IMAGE_DIR}:/images:ro
 

@@ -24,7 +24,6 @@ OPENMRS_IMAGE_NAME=placeholder/openmrs
 ENV
     echo "PETL_MYSQL_PASSWORD=Placeholder-1" > "$dir/petl.env"
     echo "SQLSERVER_SA_PASSWORD=Placeholder-1" > "$dir/sqlserver.env"
-    echo "MODALITY_SIMULATOR_GATEWAY_AE=PLACEHOLDER_GW" > "$dir/modality-simulator.env"
     echo "BIOMETRICS_LICENSE_BASE64=cGxhY2Vob2xkZXI=" > "$dir/biometrics.env"
     printf '%s\n' ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret > "$dir/advapacs-gateway.env"
@@ -87,7 +86,7 @@ assert_valid() {
     EXTRA_ENV=()
     make_instance "$dir"
     for pair in openmrs:OPENMRS_IMAGE_NAME petl:PETL_MYSQL_PASSWORD sqlserver:SQLSERVER_SA_PASSWORD \
-            modality-simulator:MODALITY_SIMULATOR_GATEWAY_AE biometrics:BIOMETRICS_LICENSE_BASE64 \
+            biometrics:BIOMETRICS_LICENSE_BASE64 \
             advapacs-gateway:ADVAPACS_GATEWAY_REGION; do
         svc=${pair%%:*} var=${pair#*:}
         cp "$dir/$svc.env" "$dir/$svc.env.saved"
@@ -334,7 +333,7 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_output /opt/AdvaHealthSolutions/AdvaPACSGateway
 }
 
-@test "modality-simulator reaches the gateway through the host, keeps its log in a volume, and mounts its image library read-only" {
+@test "modality-simulator reaches the gateway through the host, keeps its log in a volume, and mounts its stations file and image library read-only" {
     local config
     EXTRA_ENV=()
     run make_and_run --format json
@@ -349,12 +348,14 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_output false
     run jq -r '.services["modality-simulator"].ports[] | "\(.published):\(.target)"' <<< "$config"
     assert_output '8095:8080'
-    # the instance's MODALITY_SIMULATOR_* settings, under the same names
-    run jq -r '.services["modality-simulator"].environment
-        | .MODALITY_SIMULATOR_GATEWAY_AE, .MODALITY_SIMULATOR_GATEWAY_HOST, .MODALITY_SIMULATOR_GATEWAY_PORT' <<< "$config"
-    assert_output $'PLACEHOLDER_GW\nhost.docker.internal\n11112'
+    # its settings are in the stations file, not the environment
+    run jq -r '.services["modality-simulator"].environment | has("MODALITY_SIMULATOR_GATEWAY_AE")' <<< "$config"
+    assert_output false
     run jq -r '.services["modality-simulator"].volumes[] | "\(.type) \(.target) \(.read_only // false)"' <<< "$config"
-    assert_output $'volume /data false\nbind /images true'
+    assert_output $'volume /data false\nbind /config true\nbind /images true'
+    # the stations file's directory defaults to one in the instance
+    run jq -r '.services["modality-simulator"].volumes[] | select(.target == "/config") | .source' <<< "$config"
+    assert_output "$BATS_TEST_TMPDIR/instance/modality-simulator-config"
     # the image library defaults to a directory in the instance
     run jq -r '.services["modality-simulator"].volumes[] | select(.target == "/images") | .source' <<< "$config"
     assert_output "$BATS_TEST_TMPDIR/instance/modality-simulator-images"

@@ -102,7 +102,7 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
 
 @test "a failed restore removes the volumes it created, and only those" {
     MODALITY_SIMULATOR_IMAGE_NAME=alpine MODALITY_SIMULATOR_IMAGE_TAG=3.21 \
-        MODALITY_SIMULATOR_GATEWAY_AE=GW MODALITY_SIMULATOR_HOST_PORT=0 \
+        MODALITY_SIMULATOR_HOST_PORT=0 \
         MODALITY_SIMULATOR_IMAGE_DIR=/tmp create openmrs-db,openmrs,modality-simulator
     # A service that restores nothing has its volume already (e.g. kept from before): not refused,
     # and it stays; its other volumes are created, and removed again.
