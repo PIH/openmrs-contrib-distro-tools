@@ -257,10 +257,33 @@ def cmd_logs(name, args):
     return 0
 
 
+# compose's subcommands for inspecting an instance; the rest change it, which the managed commands do
+# (under the lock, with the instance's start values).
+COMPOSE_INSPECT = ("config", "ps", "images", "top", "port", "logs", "events", "ls", "version", "exec")
+COMPOSE_INSTEAD = {
+    "down": "stop (or destroy)", "stop": "stop (or destroy)",
+    "up": "start (or update)", "start": "start (or update)", "create": "start (or update)",
+    "restart": "restart", "pull": "pull", "run": "run-service",
+    "rm": "remove-service or stop",
+}
+
+
 def cmd_compose(name, args):
-    """docker compose on the instance, as pihx runs it, with <args> after its options. No lock: a
-    passthrough for inspection. Start-env values aren't computed (that could start containers), so
-    their variables are empty, as when a script fails."""
+    """docker compose on the instance, as pihx runs it, with <args> after its options: only the
+    inspecting subcommands, the first argument. No lock. Start-env values aren't computed (that
+    could start containers), so their variables are empty, as when a script fails."""
+    usage = f"usage: pihx {name} compose <{'|'.join(COMPOSE_INSPECT)}> [args...]"
+    if not args:
+        raise CliError(usage, status=2)
+    subcommand = args[0]
+    if subcommand.startswith("-"):
+        raise CliError(f"compose takes the subcommand first, not '{subcommand}'; {usage}", status=2)
+    if subcommand not in COMPOSE_INSPECT:
+        if subcommand in COMPOSE_INSTEAD:
+            raise CliError(f"compose {subcommand} would change '{name}' outside pihx's lock: use "
+                           f"pihx {name} {COMPOSE_INSTEAD[subcommand]}", status=2)
+        raise CliError(f"compose only inspects: '{subcommand}' isn't one of "
+                       f"{', '.join(COMPOSE_INSPECT)}", status=2)
     inst = _open(name)
     declared = {n for svc in inst.services for entry in svc.manifest.start_env for n in entry.sets
                 if n not in compose_module.RESERVED_NAMES}

@@ -20,7 +20,7 @@ teardown() { destroy_instance "$NAME"; common_teardown; }
 }
 
 @test "compose returns docker compose's exit status" {
-    run "$BIN/pihx" "$NAME" compose no-such-subcommand
+    run "$BIN/pihx" "$NAME" compose exec no-such-service true
     assert_failure
     run "$BIN/pihx" "$NAME" compose version --short
     assert_success
@@ -28,7 +28,7 @@ teardown() { destroy_instance "$NAME"; common_teardown; }
 
 @test "compose is in pihx's help, and works the same through openmrs-docker" {
     run "$BIN/pihx" help
-    assert_line --partial "compose <args...>"
+    assert_line --partial "compose <subcommand>"
     run "$BIN/openmrs-docker" "$NAME" compose config --services
     assert_success
     assert_line openmrs-db
@@ -46,4 +46,22 @@ teardown() { destroy_instance "$NAME"; common_teardown; }
     run --separate-stderr "$BIN/pihx" "$NAME" compose config --services
     assert_success
     assert_equal "${#stderr_lines[@]}" 0
+}
+
+@test "compose refuses what changes the instance, naming the managed command, and runs no docker" {
+    local sub
+    for sub in up down run rm restart pull; do
+        PIHX_DEBUG=1 run --separate-stderr "$BIN/pihx" "$NAME" compose "$sub"
+        assert_failure 2
+        [[ $stderr == "error: "*"pihx $NAME "* ]]
+        # No docker compose was run (the echo would show it), so nothing was created.
+        [[ $stderr != *"+ docker"* ]]
+    done
+    assert_equal "$(docker ps -aq --filter "label=com.docker.compose.project=$NAME")" ""
+}
+
+@test "compose takes the subcommand first" {
+    run "$BIN/pihx" "$NAME" compose -f x.yaml config
+    assert_failure 2
+    assert_output --partial "subcommand first"
 }

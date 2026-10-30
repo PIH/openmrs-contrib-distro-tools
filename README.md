@@ -78,7 +78,7 @@ in each):
 ```bash
 pihx lesotho logs        # follow the logs
 pihx lesotho status      # the containers, and what holds the instance's lock
-pihx lesotho compose config   # what Compose runs: the resolved model (any docker compose command works)
+pihx lesotho compose config   # inspect with docker compose (config, ps, logs, exec, ...)
 pihx lesotho update      # pull the images, and recreate what changed
 pihx lesotho stop        # the data stays in the instance's volumes
 pihx lesotho destroy     # removes the instance and its data

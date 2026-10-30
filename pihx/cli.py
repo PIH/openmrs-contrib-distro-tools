@@ -32,9 +32,10 @@ Commands:
   restart                    Restart its containers
   status                     Show its containers, and what holds its lock
   logs [service]             Follow the logs
-  compose <args...>          Run docker compose on the instance as pihx does (e.g. config, ps,
-                             exec <service> sh); doesn't take the instance lock, so use the commands
-                             above to change it. Values a service's start script decides are empty
+  compose <subcommand> [args...]
+                             Inspect the instance with docker compose (config, ps, logs, exec, ...);
+                             doesn't take the instance lock. Values a service's start script
+                             decides are empty
   pull                       Pull its images
   update                     Pull, bring up (removing containers of removed services), and remove
                              the images replaced

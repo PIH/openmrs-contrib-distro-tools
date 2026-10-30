@@ -415,3 +415,32 @@ class ComposeCommandTest(LifecycleTest):
         _, calls = self.run_compose("config")
         env = calls[0][1]["env"]
         self.assertEqual((env["APP_FOUND"], env["APP_OTHER"]), ("", ""))
+
+    def test_inspecting_subcommands_run(self):
+        for sub in lifecycle.COMPOSE_INSPECT:
+            with self.subTest(sub=sub):
+                (status, _, err), calls = self.run_compose(sub, "--x", "y")
+                self.assertEqual(status, 0, err)
+                self.assertEqual(calls[0][0][-3:], [sub, "--x", "y"])
+
+    def test_changing_subcommands_are_refused_with_the_managed_command_and_docker_not_run(self):
+        pointers = {"down": "pihx kz stop", "stop": "pihx kz stop", "up": "pihx kz start",
+                    "start": "pihx kz start", "restart": "pihx kz restart", "pull": "pihx kz pull",
+                    "run": "pihx kz run-service", "rm": "pihx kz remove-service",
+                    "create": "pihx kz start", "kill": "only inspects", "build": "only inspects",
+                    "cp": "only inspects", "nonsense": "only inspects"}
+        for sub, pointer in pointers.items():
+            with self.subTest(sub=sub):
+                (status, _, err), calls = self.run_compose(sub, "x")
+                self.assertEqual(status, 2)
+                self.assertTrue(err.startswith("error: "), err)
+                self.assertIn(pointer, err)
+                self.assertEqual(calls, [])
+
+    def test_a_leading_option_or_no_subcommand_is_refused(self):
+        for args in (["-f", "x.yaml", "config"], ["--dry-run", "ps"], []):
+            with self.subTest(args=args):
+                (status, _, err), calls = self.run_compose(*args)
+                self.assertEqual(status, 2)
+                self.assertIn("usage: pihx kz compose", err)
+                self.assertEqual(calls, [])
