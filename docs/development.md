@@ -73,6 +73,15 @@ runs them one at a time). Tests create everything under a unique name prefix (a 
 random host ports, a placeholder OpenMRS image -- `initialize` only ever starts the database) and
 remove it all afterwards, so they don't touch existing instances.
 
+Every Docker container, volume and network a run creates is named `pihxtest<pid of test/run>-...`. If a run
+is killed, `test/run` removes its own resources on the way out (Ctrl-C, `kill`, a closed terminal), and the
+next run removes those of any earlier run whose process no longer exists (also the old `odt<pid>-` ones).
+To clean up by hand without running the tests (it also removes the resources of runs still in progress):
+
+```
+for r in 'ps -aq:rm -f' 'volume ls -q:volume rm -f' 'network ls -q:network rm'; do docker ${r%%:*} -f name='^pihxtest[0-9]+-' | xargs -r docker ${r#*:}; done
+```
+
 `.github/workflows/test.yml` runs `unit`, `static`, `args` and `integration` on pushes to `main` and on pull
 requests that touch `bin/`, `utils/`, `pihx/`, `services/`, `openmrs/`, `images/`,
 `instance.env.defaults`, `test/`, `docs/` or the README.

@@ -7,12 +7,54 @@
 # all runs it first. The other layers need docker, git, jq, curl and perl: bats and GNU parallel are
 # fetched at pinned versions into test/.deps on first run. Tests run TEST_JOBS at a time (default:
 # the number of CPUs, up to 8; TEST_JOBS=1 runs them one at a time). Every test names its Docker
-# resources after its own suite-wide number, so they don't collide.
+# resources after its own suite-wide number, so they don't collide. All of them start with this run's
+# prefix, pihxtest<pid of test/run>: if the run is killed, a trap removes them, and the next run removes
+# those of any run that died without it (kill -9, a lost machine).
 set -euo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$TEST_DIR/.." && pwd)"
 DEPS_DIR="$TEST_DIR/.deps"
+
+# Lowercase letters and digits only: it's also a Compose project name. test/helpers.bash uses it as is.
+export RUN_PREFIX="pihxtest$$"
+
+# Removes the containers, then volumes, then networks whose names match <regex>.
+remove_matching() { # <regex>
+    local ids
+    ids=$(docker ps -aq --filter "name=$1") && [ -n "$ids" ] && docker rm -f $ids >/dev/null 2>&1
+    ids=$(docker volume ls -q --filter "name=$1") && [ -n "$ids" ] && docker volume rm -f $ids >/dev/null 2>&1
+    ids=$(docker network ls -q --filter "name=$1") && [ -n "$ids" ] && docker network rm $ids >/dev/null 2>&1
+    return 0
+}
+
+# Removes the Docker resources of earlier runs (pihxtest<pid>-..., or odt<pid>-... from before the
+# rename) whose test/run process is gone. A prefix whose pid is alive, or anything else, is left alone.
+sweep_stale() {
+    local names name token pid stale=()
+    names=$( { docker ps -a --format '{{.Names}}'; docker volume ls -q; docker network ls --format '{{.Name}}'; } \
+        2>/dev/null | grep -E '^(pihxtest|odt)[0-9]+-' || true)
+    while read -r token; do
+        [ -n "$token" ] || continue
+        pid="${token#pihxtest}"; pid="${pid#odt}"
+        kill -0 "$pid" 2>/dev/null || [ -d "/proc/$pid" ] || stale+=("$token")
+    done < <(sed -E 's/^((pihxtest|odt)[0-9]+)-.*/\1/' <<<"$names" | sort -u)
+    [ "${#stale[@]}" -gt 0 ] || return 0
+    for name in "${stale[@]}"; do
+        remove_matching "^${name}-"
+    done
+    echo "removed leftover Docker resources of ${#stale[@]} killed test run(s): ${stale[*]}"
+}
+
+# Kills <pid> and everything it started.
+kill_tree() {
+    local child
+    for child in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$child"; done
+    kill -TERM "$1" 2>/dev/null || true
+}
+
+# Only runs when executed, so the functions above can be sourced to try them by hand.
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 
 # Runs the Python unit tests (pihx's, and the openmrs-docker extension's) in pihx-runtime, the image pihx
 # itself runs in, building it if missing.
@@ -93,4 +135,24 @@ fi
 JOBS_ARGS=()
 [ "$TEST_JOBS" -gt 1 ] && JOBS_ARGS=(--jobs "$TEST_JOBS")
 
-exec "$DEPS_DIR/bats-core/bin/bats" --timing "${JOBS_ARGS[@]}" "$@" "${TARGETS[@]}"
+sweep_stale
+
+# Every test cleans up after itself; this covers a run that is killed (Ctrl-C, a closed terminal, a
+# cancelled build). bats runs in the background so a signal reaches the traps at once, not after it ends.
+FINISHED=false
+cleanup() {
+    FINISHED=true
+    if [ -n "${BATS_PID:-}" ]; then kill_tree "$BATS_PID"; wait "$BATS_PID" 2>/dev/null || true; fi
+    remove_matching "^${RUN_PREFIX}[-_]"
+}
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+trap 'cleanup; exit 129' HUP
+trap '$FINISHED || cleanup' EXIT
+
+"$DEPS_DIR/bats-core/bin/bats" --timing "${JOBS_ARGS[@]}" "$@" "${TARGETS[@]}" &
+BATS_PID=$!
+status=0
+wait "$BATS_PID" || status=$?
+FINISHED=true
+exit "$status"

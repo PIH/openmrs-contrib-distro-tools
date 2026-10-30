@@ -18,8 +18,8 @@ load "$TEST_DIR/.deps/bats-assert/load"
 
 # Every Docker container/volume a test creates is named under RUN_PREFIX, so teardown can find and
 # remove exactly this run's resources (and assert_no_leftovers can check for them) without touching
-# anything else on the machine. Lowercase + digits only: valid as a Compose project name.
-export RUN_PREFIX="${RUN_PREFIX:-odt${BATS_ROOT_PID}}"
+# anything else on the machine. test/run sets it (and removes the resources if the run is killed). Lowercase + digits only: valid as a Compose project name.
+export RUN_PREFIX="${RUN_PREFIX:-pihxtest${BATS_ROOT_PID}}"
 
 # pihx's and openmrs-docker's instances live in a throwaway home (never the caller's ~/pihx), use a
 # placeholder OpenMRS image (initialize only ever starts openmrs-db) and random host ports, so tests
@@ -34,7 +34,7 @@ export OPENMRS_DB_OPT_innodb_buffer_pool_size=256M
 OPENMRS_DATA_OWNER="$(id -u):$(id -g)"
 export OPENMRS_DATA_OWNER
 
-# A name for a Docker resource owned by the current test, e.g. `res db` -> odt1234-t7-db.
+# A name for a Docker resource owned by the current test, e.g. `res db` -> pihxtest1234-t7-db.
 res() { echo "$RUN_PREFIX-t${BATS_SUITE_TEST_NUMBER}-$1"; }
 
 # A name for an instance owned by the current test.
