@@ -45,7 +45,7 @@ Compose files the extension adds to the instance's for one command:
 - [`modes/build.yaml`](modes/build.yaml), for `build` and `--build`: builds the openmrs image from
   that distribution. `bin/openmrs-docker` first runs `mvn clean package -U` in `OPENMRS_DISTRO_DIR`
   on the host (Maven and Java are needed there), and passes the directory to
-  `bin/pihx` to mount read-only (`PIHX_EXTRA_MOUNTS`), for Compose to send as the build context.
+  `bin/pihx` to mount read-only (`PIHX_EXTENSION_MOUNTS`), for Compose to send as the build context.
   Before Maven runs, the command is checked (its options, the openmrs service, and that nothing
   holds the instance's lock), so one that would be refused doesn't wait for the build. The lock
   itself is only taken after the build: a command that takes it meanwhile makes this one refuse

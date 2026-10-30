@@ -7,10 +7,10 @@
 # (its tools link), whichever bin/pihx was typed.
 #
 # An extension (bin/openmrs-docker) runs its own Python module through this launcher instead:
-#   PIHX_EXTENSION       the module (e.g. openmrs.extension), a .py file in the checkout
-#   PIHX_EXTRA_MOUNTS    host paths it needs in the container, one per line, mounted read-only at
-#                        their own paths (those outside the paths every run mounts)
-# Without PIHX_EXTENSION, PIHX_EXTRA_MOUNTS isn't taken from the caller.
+#   PIHX_EXTENSION         the module (e.g. openmrs.extension), a .py file in the checkout
+#   PIHX_EXTENSION_MOUNTS  host paths it needs in the container, one per line, mounted read-only at
+#                          their own paths (those outside the paths every run mounts)
+# Without PIHX_EXTENSION, PIHX_EXTENSION_MOUNTS isn't taken from the caller.
 set -eu
 # A relative cd would otherwise follow CDPATH and print the directory it picked.
 unset CDPATH
@@ -73,7 +73,7 @@ if [ -n "${PIHX_EXTENSION-}" ]; then
         || die "PIHX_EXTENSION '$PIHX_EXTENSION' isn't a module of $PIHX_TOOLS"
     module=$PIHX_EXTENSION
 else
-    unset PIHX_EXTRA_MOUNTS
+    unset PIHX_EXTENSION_MOUNTS
 fi
 
 # Whether <path> is outside the paths every run mounts, so needs mounting itself.
@@ -177,17 +177,17 @@ set -- "$image" python3 -m "$module" "$@"
 [ -z "$use_tools_mount" ] || set -- -v "$use_tools_mount" "$@"
 [ -z "$from_mount" ] || set -- -v "$from_mount" "$@"
 # An extension's extra mounts, one host path per line.
-if [ -n "${PIHX_EXTRA_MOUNTS-}" ]; then
+if [ -n "${PIHX_EXTENSION_MOUNTS-}" ]; then
     saved_ifs=$IFS
     IFS='
 '
     set -f
-    for path in $PIHX_EXTRA_MOUNTS; do
+    for path in $PIHX_EXTENSION_MOUNTS; do
         case $path in
             /*) ;;
-            *) die "PIHX_EXTRA_MOUNTS: $path isn't an absolute path" ;;
+            *) die "PIHX_EXTENSION_MOUNTS: $path isn't an absolute path" ;;
         esac
-        case $path in *'"'*) die "PIHX_EXTRA_MOUNTS: $path can't be mounted (it has a double quote)" ;; esac
+        case $path in *'"'*) die "PIHX_EXTENSION_MOUNTS: $path can't be mounted (it has a double quote)" ;; esac
         # --mount, quoted, so a comma or colon in the path is part of it.
         if outside_mounts "$path"; then
             set -- --mount "type=bind,\"source=$path\",\"target=$path\",readonly" "$@"

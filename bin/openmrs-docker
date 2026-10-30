@@ -5,7 +5,7 @@
 # development commands. It runs through bin/pihx's launcher, so it runs like pihx: in pihx-runtime,
 # on instances under PIHX_HOME (default ~/pihx), each from its own checkout. What needs the host
 # happens here first: build and --build run Maven on the distribution in the instance's
-# OPENMRS_DISTRO_DIR, which goes to the launcher as a read-only mount (PIHX_EXTRA_MOUNTS).
+# OPENMRS_DISTRO_DIR, which goes to the launcher as a read-only mount (PIHX_EXTENSION_MOUNTS).
 set -eu
 unset CDPATH
 
@@ -23,8 +23,8 @@ done
 pihx=$(cd -P "$(dirname "$self")/.." && pwd)/bin/pihx
 
 PIHX_EXTENSION=openmrs.extension
-PIHX_EXTRA_MOUNTS=
-export PIHX_EXTENSION PIHX_EXTRA_MOUNTS
+PIHX_EXTENSION_MOUNTS=
+export PIHX_EXTENSION PIHX_EXTENSION_MOUNTS
 
 # build and --build: the command is checked first (its options, the openmrs service, the instance
 # lock, an absolute OPENMRS_DISTRO_DIR), so one that would be refused doesn't wait for a long build;
@@ -50,7 +50,7 @@ if $build; then
         *'
 '*) die "can't mount a path with a newline in it" ;;
     esac
-    PIHX_EXTRA_MOUNTS=$dir
+    PIHX_EXTENSION_MOUNTS=$dir
 fi
 
 exec "$pihx" "$@"
