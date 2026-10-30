@@ -107,6 +107,12 @@ openmrs-docker <name> initialize
 openmrs-docker <name> start
 ```
 
+To send each order's AdvaPACS Site, set `ADVAPACS_SITE_MAP` to
+`<visit-location-uuid>=<site-identifier>,...` (OpenMRS Visit Locations to the identifiers of AdvaPACS
+Sites) and, optionally, `ADVAPACS_ORGANIZATION` to the identifier of the AdvaPACS Organisation those
+Sites must belong to. Both are empty by default, and then no Site is sent. Once the map is set, an
+order whose Site can't be determined fails in OpenHIM rather than being sent without one.
+
 ## AdvaPACS gateway
 
 `advapacs-gateway` is AdvaPACS's on-premises gateway, from its

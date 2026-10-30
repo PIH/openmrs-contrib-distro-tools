@@ -258,6 +258,22 @@ assert_valid() {
     assert_output /opt/AdvaHealthSolutions/AdvaPACSGateway
 }
 
+@test "openhim-advapacs-mediator gets the AdvaPACS Site settings, which are optional" {
+    local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f
+    for f in "$dir"/*.yaml; do args+=(-f "$f"); done
+    run docker compose --env-file "$dir/env" "${args[@]}" config --format json
+    assert_success
+    run jq -c '.services["openhim-advapacs-mediator"].environment
+        | [.ADVAPACS_SITE_MAP, .ADVAPACS_ORGANIZATION]' <<< "$output"
+    assert_output '["",""]'
+    run env ADVAPACS_SITE_MAP=vl-bots=LS-DM-BOTS ADVAPACS_ORGANIZATION=LS-DM \
+        docker compose --env-file "$dir/env" "${args[@]}" config --format json
+    assert_success
+    run jq -c '.services["openhim-advapacs-mediator"].environment
+        | [.ADVAPACS_SITE_MAP, .ADVAPACS_ORGANIZATION]' <<< "$output"
+    assert_output '["vl-bots=LS-DM-BOTS","LS-DM"]'
+}
+
 @test "modality-simulator reaches the gateway through the host, keeps its log in a volume, and mounts its stations file and image library read-only" {
     local dir="$OPENMRS_DOCKER_HOME/$CONFIG_INSTANCE" args=() f config
     for f in "$dir"/*.yaml; do args+=(-f "$f"); done
