@@ -1,7 +1,7 @@
 #!/bin/bash
 # Sets up Ubuntu (e.g. under WSL) for this tool: installs git and Docker, clones the tool into
 # DISTRO_TOOLS_HOME (default: ~/openmrs-contrib-distro-tools), and puts its bin/ on PATH.
-# Usage: curl -fsSL https://raw.githubusercontent.com/PIH/openmrs-contrib-distro-tools/main/openmrs/setup.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/PIH/openmrs-contrib-distro-tools/main/setup.sh | bash
 set -euo pipefail
 DISTRO_TOOLS_HOME="${DISTRO_TOOLS_HOME:-$HOME/openmrs-contrib-distro-tools}"
 echo -e "Setting up environment...\n"
@@ -30,7 +30,7 @@ sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo usermod -aG docker "$USER"
 
-# bin/ holds openmrs-docker, openmrs-utils and openmrs-sdk.
+# bin/ holds pihx, openmrs-docker, openmrs-utils and openmrs-sdk.
 line="export PATH=\"$DISTRO_TOOLS_HOME/bin:\$PATH\""
 grep -qxF "$line" ~/.bashrc 2>/dev/null || echo "$line" >> ~/.bashrc
 

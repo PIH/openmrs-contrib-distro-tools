@@ -12,7 +12,7 @@ run_shellcheck() {
 }
 
 scripts() {
-    (cd "$REPO_ROOT" && ls bin/* utils/*.sh utils/lib/in-container/*.sh openmrs/*.sh test/run \
+    (cd "$REPO_ROOT" && ls bin/* utils/*.sh utils/lib/in-container/*.sh setup.sh test/run \
         services/*/scripts/*.sh services/*/restore/prepare services/*/start/* \
         services/*/summary.sh services/*/commands/*)
 }

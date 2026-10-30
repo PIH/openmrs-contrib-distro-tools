@@ -56,8 +56,3 @@ Compose files the extension adds to the instance's for one command:
 [`seed/Dockerfile`](seed/Dockerfile) builds a distribution's seed image
 (`.github/workflows/build-seeded-image.yml`): a `/seed` directory with `openmrs-db.sql.gz` and
 `openmrs.tar.gz`, as `initialize --from-image` restores them.
-
-## Setting up a machine: setup.sh
-
-[`setup.sh`](setup.sh) sets up Ubuntu (e.g. under WSL) with git and Docker, clones the tools and
-puts `bin/` on the `PATH` (see the [README](../README.md)).

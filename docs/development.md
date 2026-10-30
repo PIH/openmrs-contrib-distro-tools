@@ -20,7 +20,9 @@
   `openmrs/extension.py` runs through `bin/pihx` (`PIHX_EXTENSION`): its `COMMANDS` are the ones it
   adds or takes the place of, and `pihx/cli.py` dispatches every other command to `pihx`'s own, so
   `openmrs-docker` has `pihx`'s command line. `openmrs/` also holds the compose overlays for `--dev`
-  and `build` (`modes/`), the seed image's Dockerfile and `setup.sh`.
+  and `build` (`modes/`) and the seed image's Dockerfile.
+- `setup.sh` installs the tools on a Windows laptop's Ubuntu (WSL) or another Ubuntu machine, for
+  people new to the terminal ([README](../README.md)). The tools never run it.
 - `bin/openmrs-utils` and `utils/` are the standalone Bash utilities, which run on the host and also
   work against legacy servers; `utils/lib/` holds their shared helpers and `utils/lib/in-container/`
   the scripts that run inside a container. `bin/openmrs-sdk` wraps the OpenMRS SDK.
