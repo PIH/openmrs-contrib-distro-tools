@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from openmrs import extension
-from pihx import cli, compose
+from pihx import cli, compose, instance as instance_module, lock
 from pihx.commands import initialize, lifecycle
 from pihx.tests.fixtures import write
 from pihx.tests.test_instance_cmds import CommandTest
@@ -154,6 +154,26 @@ class AddServiceTest(ExtensionTest):
         self.assertEqual(self.read("kz", "openmrs.env"),
                          "OPENMRS_IMAGE_NAME='pih/emr'\nOPENMRS_DISTRO_DIR='/src/distro'\n")
         self.assertEqual((self.home / "kz" / "openmrs.env").stat().st_mode & 0o777, 0o600)
+
+    def test_a_failed_distro_dir_write_leaves_nothing_added(self):
+        self.make(services=("openmrs-db",))
+        self.set_env({"OPENMRS_IMAGE_NAME": "pih/emr", "OPENMRS_DISTRO_DIR": "/src/distro"})
+        with mock.patch.object(extension.envfile, "set_value", side_effect=OSError("disk full")):
+            status, _, err = self.openmrs_docker("kz", "add-service", "openmrs")
+        self.assertEqual(status, 1)
+        self.assertIn("disk full", err)
+        self.assertFalse((self.home / "kz" / "openmrs.env").exists())
+
+    def test_a_held_lock_leaves_nothing_added(self):
+        self.make(services=("openmrs-db",))
+        self.set_env({"OPENMRS_IMAGE_NAME": "pih/emr", "OPENMRS_DISTRO_DIR": "/src/distro"})
+        inst = instance_module.open(self.home, "kz", tools=TOOLS)
+        with lock.hold(inst, 0, command="test"):
+            status, _, err = self.openmrs_docker("kz", "add-service", "openmrs")
+        self.assertEqual(status, 1)
+        self.assertIn("kz is busy", err)
+        self.assertFalse((self.home / "kz" / "openmrs.env").exists())
+        self.assertEqual(self.compose_calls, [])
 
     def test_openmrs_is_checked_as_create_checks_it(self):
         self.make(services=("openmrs-db",))

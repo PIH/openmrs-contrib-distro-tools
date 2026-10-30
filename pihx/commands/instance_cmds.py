@@ -247,20 +247,28 @@ def check_add_service(name, args):
     return inst, svc
 
 
-def cmd_add_service(name, args):
-    inst, svc = check_add_service(name, args)
+def add_service(inst, svc):
+    """Adds <svc> to <inst> (from check_add_service): writes its env file from the caller's values
+    and checks that Compose accepts the instance, removing the file if not. Returns the file. The
+    caller holds the instance lock."""
     selected = inst.services + [svc]
     _, values = captured_values(inst.tools, selected, dict(os.environ))
     text = _text(values[svc.name])
     path = inst.dir / f"{svc.name}.env"
+    _write_new(path, text)
+    try:
+        _validate(Instance(name=inst.name, dir=inst.dir, tools=inst.tools,
+                           services=sorted(selected, key=lambda s: s.name)))
+    except BaseException:
+        path.unlink()
+        raise
+    return path
+
+
+def cmd_add_service(name, args):
+    inst, svc = check_add_service(name, args)
     with lock.hold(inst, lock.wait_seconds(), command="add-service"):
-        _write_new(path, text)
-        try:
-            _validate(Instance(name=name, dir=inst.dir, tools=inst.tools,
-                               services=sorted(selected, key=lambda s: s.name)))
-        except BaseException:
-            path.unlink()
-            raise
+        add_service(inst, svc)
     print(f"Added {svc.name} to {name}", file=sys.stderr)
     return 0
 

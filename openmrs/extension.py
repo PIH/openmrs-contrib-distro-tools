@@ -88,15 +88,16 @@ def cmd_add_service(name, args):
     """pihx's add-service, with OpenMRS's values when the service is openmrs."""
     inst, svc = instance_cmds.check_add_service(name, args)
     distro_dir = _openmrs_values() if svc.name == "openmrs" else None
-    instance_cmds.cmd_add_service(name, args)
-    if distro_dir:
-        path = inst.dir / "openmrs.env"
-        with lock.hold(inst, lock.wait_seconds(), command="add-service"):
+    # One hold: the service is added with its value, or not at all.
+    with lock.hold(inst, lock.wait_seconds(), command="add-service"):
+        path = instance_cmds.add_service(inst, svc)
+        if distro_dir:
             try:
                 envfile.set_value(path, DISTRO_DIR, distro_dir)
             except BaseException:
                 path.unlink()
                 raise
+    print(f"Added {svc.name} to {name}", file=sys.stderr)
     return 0
 
 
