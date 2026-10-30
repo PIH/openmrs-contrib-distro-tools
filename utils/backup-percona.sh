@@ -1,8 +1,8 @@
 #!/bin/bash
 # Takes a physical (XtraBackup) backup of a running MySQL server's data directory and prepares it
 # (--apply-log): as a directory, for convert-percona-backup, or as an encrypted .7z in the legacy
-# nightly percona.7z layout (the backup's files at the top level), which initialize's
-# RESTORE_MYSQL_PERCONA_PATH and the legacy DW refresh take.
+# nightly percona.7z layout (the backup's files at the top level), which initialize (as an
+# openmrs-db.percona entry) and the legacy DW refresh take.
 #
 # Usage: openmrs-utils backup-percona (--container=<name> | --host=<host> [--port=3306])
 #            --volume=<volume or dir> --output=<new dir | file.7z> [--databases=<list>] [--user=root]
@@ -105,9 +105,9 @@ docker run --rm -v "$BACKUP:/backup" "$PERCONA_IMAGE" innobackupex --apply-log /
 if $ARCHIVE; then
     note "Archiving to $OUTPUT..."
     archive_7z_create "$OUTPUT" "$BACKUP" ''
-    note "Backed up $MYSQL_SOURCE to $OUTPUT (for initialize's RESTORE_MYSQL_PERCONA_PATH)."
+    note "Backed up $MYSQL_SOURCE to $OUTPUT (for initialize's openmrs-db.percona.7z entry)."
 else
     # --apply-log leaves the directory root-owned and closed to others, like a real data directory.
     docker run --rm -v "$OUTPUT:/target" "$ALPINE_IMAGE" chown -R "$(id -u):$(id -g)" /target >&2
-    note "Backed up $MYSQL_SOURCE to $OUTPUT (ready for convert-percona-backup, or initialize's RESTORE_MYSQL_PERCONA_PATH)."
+    note "Backed up $MYSQL_SOURCE to $OUTPUT (ready for convert-percona-backup, or initialize's openmrs-db.percona entry)."
 fi

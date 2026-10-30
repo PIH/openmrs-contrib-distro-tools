@@ -1,1 +1,1 @@
-"""The OpenMRS front end on pihx (bin/openmrs-docker)."""
+"""openmrs-docker, the OpenMRS pihx extension (bin/openmrs-docker)."""

@@ -1,4 +1,4 @@
-# --dev: mounts the distro built in DISTRO_SOURCE_DIR over the openmrs image's, and publishes the
+# --dev: mounts the distro built in OPENMRS_DISTRO_DIR over the openmrs image's, and publishes the
 # Java debug port. See openmrs/README.md.
 
 services:
@@ -8,4 +8,4 @@ services:
     ports:
       - ${OPENMRS_DEBUG_PORT?}:1044
     volumes:
-      - ${DISTRO_SOURCE_DIR:?DISTRO_SOURCE_DIR must be set for --dev}/distro/target/distro/web:/openmrs/distribution
+      - ${OPENMRS_DISTRO_DIR:?OPENMRS_DISTRO_DIR must be set for --dev}/distro/target/distro/web:/openmrs/distribution

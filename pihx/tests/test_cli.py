@@ -16,13 +16,12 @@ def run(argv):
 
 
 def run_raising(error, environ=None):
-    """cli.main with a dispatcher that raises <error>: (status, stderr)."""
-    def dispatcher(argv):
-        raise error
+    """cli.main with a dispatch that raises <error>: (status, stderr)."""
     err = io.StringIO()
-    with mock.patch.dict(os.environ, environ or {}), contextlib.redirect_stderr(err):
+    with mock.patch.dict(os.environ, environ or {}), contextlib.redirect_stderr(err), \
+            mock.patch.object(cli, "dispatch", side_effect=error):
         os.environ.pop("PIHX_DOCKER_CONFIG", None)
-        status = cli.main([], dispatcher=dispatcher)
+        status = cli.main([])
     return status, err.getvalue()
 
 

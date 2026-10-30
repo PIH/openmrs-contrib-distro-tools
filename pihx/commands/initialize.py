@@ -550,19 +550,16 @@ def _copy_seed(inst, image, env):
 
 
 class SeedError(CliError):
-    """An image's /seed folder holds entries no service of the instance restores (a front end may
+    """An image's /seed folder holds entries no service of the instance restores (an extension may
     say what such a seed probably is)."""
 
 
-def restore_image(inst, image, adjust=None):
-    """Restores <inst>'s services from <image>'s /seed folder, copied into a temporary folder;
-    <adjust>(folder), if given, may change that copy first (a front end adding its own entries).
+def restore_image(inst, image):
+    """Restores <inst>'s services from <image>'s /seed folder, copied into a temporary folder.
     The image is removed afterwards if this pulled it. The caller holds the instance lock."""
     env = compose_module.Compose(inst).environment()
     folder, pulled = _copy_seed(inst, image, env)
     try:
-        if adjust:
-            adjust(folder)
         restore_folder(inst, folder, label=f"{image}:{SEED_DIR}")
     except EntryError as e:
         held = ", ".join(sorted(os.listdir(folder))) or "nothing"

@@ -1,4 +1,4 @@
-# The images the utils/ scripts run their tools in (also openmrs-docker's restore overlays, which
+# The images the utils/ scripts run their tools in (also the services' restore overlays, which
 # initialize passes them to). Sourced, not run.
 # shellcheck disable=SC2034
 

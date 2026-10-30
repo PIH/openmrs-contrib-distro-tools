@@ -53,8 +53,10 @@ Commands:
 """
 
 
-def cmd_help(args):
+def cmd_help(args, extension=None):
     print(USAGE, end="")
+    if extension:
+        print(extension.USAGE, end="")
     return 0
 
 
@@ -68,12 +70,12 @@ def cmd_version(args):
     return 0
 
 
-GLOBAL_COMMANDS = {"help": cmd_help, "version": cmd_version, "list": instance_cmds.cmd_list}
+# help, there or after an instance, is dispatch's: an extension adds to it.
+GLOBAL_COMMANDS = {"version": cmd_version, "list": instance_cmds.cmd_list}
 
 # Commands on an instance; each takes (instance, args). version reports the checkout the instance
 # runs (the launcher has already handed off to it).
 INSTANCE_COMMANDS = {
-    "help": lambda instance, args: cmd_help(args),
     "version": lambda instance, args: cmd_version(args),
     "create": instance_cmds.cmd_create,
     "config": instance_cmds.cmd_config,
@@ -96,11 +98,16 @@ INSTANCE_COMMANDS = {
 }
 
 
-def dispatch(argv):
+def dispatch(argv, extension=None):
+    """Runs a command line. <extension>: an extension's module (e.g. openmrs.extension), whose
+    COMMANDS add instance commands or take the place of pihx's, and whose USAGE help adds."""
+    commands = {**INSTANCE_COMMANDS, **(extension.COMMANDS if extension else {})}
     if not argv:
-        sys.stderr.write(USAGE)
+        sys.stderr.write(USAGE + (extension.USAGE if extension else ""))
         raise CliError("no command given", status=2)
     first, rest = argv[0], argv[1:]
+    if first == "help":
+        return cmd_help(rest, extension)
     if first in GLOBAL_COMMANDS:
         return GLOBAL_COMMANDS[first](rest)
     error = instance_name_error(first)
@@ -109,23 +116,25 @@ def dispatch(argv):
     if not rest:
         raise CliError(f"no command given for instance '{first}' (see 'pihx help')", status=2)
     command = rest[0]
-    if command not in INSTANCE_COMMANDS:
+    if command == "help":
+        return cmd_help(rest[1:], extension)
+    if command not in commands:
         if service_cmds.is_service(command):
             return service_cmds.cmd_service(first, command, rest[1:])
         raise CliError(f"unknown command '{command}' (see 'pihx help')", status=2)
-    return INSTANCE_COMMANDS[command](first, rest[1:])
+    return commands[command](first, rest[1:])
 
 
-def main(argv, dispatcher=None):
-    """Runs a command line (through <dispatcher>, default pihx's own dispatch: a front end such as
-    openmrs-docker passes its own), reporting an error as an `error:` line and an exit status. Ctrl-C
-    exits 130; anything unexpected is one `error:` line too, with its traceback under PIHX_DEBUG=1."""
+def main(argv, extension=None):
+    """Runs a command line (dispatch, with <extension> if given), reporting an error as an `error:`
+    line and an exit status. Ctrl-C exits 130; anything unexpected is one `error:` line too, with
+    its traceback under PIHX_DEBUG=1."""
     try:
         # The launcher mounts the caller's Docker config here; set up before any docker command.
         docker_config = os.environ.get("PIHX_DOCKER_CONFIG")
         if docker_config:
             runtime.install_docker_config(docker_config, os.environ["HOME"])
-        return (dispatcher or dispatch)(argv)
+        return dispatch(argv, extension)
     except (CliError, runtime.SetupError, InstanceError, ServiceError, ComposeError, LockError,
             OSError) as e:
         print(f"error: {e}", file=sys.stderr)

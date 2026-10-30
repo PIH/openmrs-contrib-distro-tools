@@ -6,13 +6,11 @@
 # pihx hands to Compose resolve on the host. pihx <instance> ... runs the instance's own checkout
 # (its tools link), whichever bin/pihx was typed.
 #
-# A front end (bin/openmrs-docker) runs its own Python module through this launcher instead:
-#   PIHX_FRONT_END       the module (e.g. openmrs.front), a .py file in the checkout
+# An extension (bin/openmrs-docker) runs its own Python module through this launcher instead:
+#   PIHX_EXTENSION       the module (e.g. openmrs.extension), a .py file in the checkout
 #   PIHX_EXTRA_MOUNTS    host paths it needs in the container, one per line, mounted read-only at
 #                        their own paths (those outside the paths every run mounts)
-#   PIHX_OUTPUT_COMMANDS its commands, besides summary, whose --output this launcher writes
-#   PIHX_RESOLVED_*      host paths it resolved, for its module
-# Without PIHX_FRONT_END, none of these is taken from the caller.
+# Without PIHX_EXTENSION, PIHX_EXTRA_MOUNTS isn't taken from the caller.
 set -eu
 # A relative cd would otherwise follow CDPATH and print the directory it picked.
 unset CDPATH
@@ -65,20 +63,17 @@ if [ -z "${PIHX_HANDED_OFF-}" ]; then
     esac
 fi
 
-# The Python module to run: pihx, or a front end's, which must be a module of this checkout.
+# The Python module to run: pihx, or an extension's, which must be a module of this checkout.
 module=pihx
-if [ -n "${PIHX_FRONT_END-}" ]; then
-    case $PIHX_FRONT_END in
-        [!a-z_]* | *[!a-z0-9_.]* | *..* | *.) die "invalid PIHX_FRONT_END '$PIHX_FRONT_END'" ;;
+if [ -n "${PIHX_EXTENSION-}" ]; then
+    case $PIHX_EXTENSION in
+        [!a-z_]* | *[!a-z0-9_.]* | *..* | *.) die "invalid PIHX_EXTENSION '$PIHX_EXTENSION'" ;;
     esac
-    [ -f "$PIHX_TOOLS/$(printf '%s' "$PIHX_FRONT_END" | tr . /).py" ] \
-        || die "PIHX_FRONT_END '$PIHX_FRONT_END' isn't a module of $PIHX_TOOLS"
-    module=$PIHX_FRONT_END
+    [ -f "$PIHX_TOOLS/$(printf '%s' "$PIHX_EXTENSION" | tr . /).py" ] \
+        || die "PIHX_EXTENSION '$PIHX_EXTENSION' isn't a module of $PIHX_TOOLS"
+    module=$PIHX_EXTENSION
 else
-    unset PIHX_EXTRA_MOUNTS PIHX_OUTPUT_COMMANDS
-    for variable in $(env | sed -n 's/^\(PIHX_RESOLVED_[A-Za-z0-9_]*\)=.*/\1/p'); do
-        unset "$variable"
-    done
+    unset PIHX_EXTRA_MOUNTS
 fi
 
 # Whether <path> is outside the paths every run mounts, so needs mounting itself.
@@ -145,16 +140,11 @@ fi
 # from the caller (see lifecycle.cmd_start_locked).
 unset PIHX_LOCK_HELD
 
-# summary --output <file> (and a front end's PIHX_OUTPUT_COMMANDS): the launcher writes the file, on
-# the host, as the caller, from the module's standard output (the option is taken out of its
-# arguments), so nothing needs mounting. It is written whole or not at all.
+# summary --output <file>: the launcher writes the file, on the host, as the caller, from the
+# module's standard output (the option is taken out of its arguments), so nothing needs mounting.
+# It is written whole or not at all.
 output=
-take_output=false
-for command in summary ${PIHX_OUTPUT_COMMANDS-}; do
-    [ "${2-}" != "$command" ] || take_output=true
-done
-if $take_output; then
-    command=$2
+if [ "${2-}" = summary ]; then
     inst=$1
     shift 2
     n=$#
@@ -171,7 +161,7 @@ if $take_output; then
         esac
     done
     $take && die "--output needs a file"
-    set -- "$inst" "$command" "$@"
+    set -- "$inst" summary "$@"
     if [ -n "$output" ]; then
         [ ! -d "$output" ] || die "$output is a directory"
         output_tmp=$(mktemp "$output.XXXXXX" 2>/dev/null) || die "can't write $output"
@@ -186,7 +176,7 @@ fi
 set -- "$image" python3 -m "$module" "$@"
 [ -z "$use_tools_mount" ] || set -- -v "$use_tools_mount" "$@"
 [ -z "$from_mount" ] || set -- -v "$from_mount" "$@"
-# A front end's extra mounts, one host path per line.
+# An extension's extra mounts, one host path per line.
 if [ -n "${PIHX_EXTRA_MOUNTS-}" ]; then
     saved_ifs=$IFS
     IFS='

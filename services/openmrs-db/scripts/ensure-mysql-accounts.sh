@@ -10,7 +10,7 @@
 # grants. A declaration missing a value changes nothing; anything else wrong fails with MySQL's own
 # error. Accounts not declared, and other hosts' accounts for the same user, are left alone.
 # root and the OpenMRS account (OPENMRS_DB_USER) can't be declared: their passwords are the instance's
-# own (OPENMRS_DB_*), set by the image and reset-openmrs-db-accounts.
+# own (OPENMRS_DB_*), set by the image and openmrs-db reset-accounts.
 #   MYSQL_ROOT_PASSWORD  root's password (required); OPENMRS_DB_USER (default openmrs);
 #   DB_HOST default openmrs-db
 set -euo pipefail

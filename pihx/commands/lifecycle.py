@@ -284,15 +284,14 @@ def _run_job(inst, compose, svc, command):
                                text=False).returncode)
 
 
-def cmd_run_service(name, args, extra_env=None):
-    """<extra_env>: values for this run only (see compose.Compose), e.g. from a front end."""
+def cmd_run_service(name, args):
     pull = bool(args) and args[0] == "--pull"
     rest = args[1:] if pull else args
     if not rest:
         raise CliError(f"usage: pihx {name} run-service [--pull] <service> [command...]", status=2)
     svc, command = rest[0], rest[1:]
     inst = _open(name)
-    compose = compose_module.Compose(inst, extra_env=extra_env)
+    compose = compose_module.Compose(inst)
     # All profiles, and the instance's override files too: any container Compose knows.
     defined = compose.run("--profile", "*", "config", "--services", stdout=subprocess.PIPE,
                           text=True).stdout.split()

@@ -1,12 +1,11 @@
 #!/bin/sh
-# Usage: openmrs-docker create <name> | list | help
-#        openmrs-docker <name> <command> [options]   (see 'openmrs-docker help')
+# Usage: openmrs-docker <instance> <command> [args...] | openmrs-docker list | help | version
 #
-# The OpenMRS front end on pihx (openmrs/front.py), run through bin/pihx's launcher, so it runs
-# like pihx: in pihx-runtime, on instances under PIHX_HOME (default ~/pihx), each from its own
-# checkout. What needs the host happens here first: initialize's RESTORE_* paths are resolved, and
-# build and --build run Maven on the distribution in the instance's DISTRO_SOURCE_DIR; those paths
-# go to the launcher as read-only mounts (PIHX_EXTRA_MOUNTS).
+# openmrs-docker is a pihx extension (openmrs/extension.py): pihx's command line, with OpenMRS
+# development commands. It runs through bin/pihx's launcher, so it runs like pihx: in pihx-runtime,
+# on instances under PIHX_HOME (default ~/pihx), each from its own checkout. What needs the host
+# happens here first: build and --build run Maven on the distribution in the instance's
+# OPENMRS_DISTRO_DIR, which goes to the launcher as a read-only mount (PIHX_EXTRA_MOUNTS).
 set -eu
 unset CDPATH
 
@@ -23,52 +22,12 @@ while [ -L "$self" ]; do
 done
 pihx=$(cd -P "$(dirname "$self")/.." && pwd)/bin/pihx
 
-# Today's `create <name>`, in pihx's order (the instance first).
-if [ "${1-}" = create ]; then
-    [ $# -eq 2 ] || die "usage: openmrs-docker create <name>"
-    set -- "$2" create
-fi
-
-PIHX_FRONT_END=openmrs.front
-# fingerprint --output is written by the launcher, as summary's is.
-PIHX_OUTPUT_COMMANDS=fingerprint
+PIHX_EXTENSION=openmrs.extension
 PIHX_EXTRA_MOUNTS=
-export PIHX_FRONT_END PIHX_OUTPUT_COMMANDS PIHX_EXTRA_MOUNTS
-
-# Adds <path> to the read-only mounts.
-mount_path() { # <path>
-    case $1 in
-        *'
-'*) die "can't mount a path with a newline in it" ;;
-    esac
-    PIHX_EXTRA_MOUNTS="$PIHX_EXTRA_MOUNTS${PIHX_EXTRA_MOUNTS:+
-}$1"
-}
-
-# initialize: each RESTORE_* path that exists is resolved as on the host (a relative one against
-# this directory; its parent followed through links, so a directory the caller can't enter still
-# resolves) and mounted. The front end gets it as PIHX_RESOLVED_<variable>, and reports a path that
-# isn't there as typed.
-for variable in RESTORE_MYSQL_DUMP_PATH RESTORE_MYSQL_DATA_PATH RESTORE_MYSQL_PERCONA_PATH \
-        RESTORE_OPENMRS_DATA_PATH; do
-    unset "PIHX_RESOLVED_$variable"
-    [ "${2-}" = initialize ] || continue
-    eval "path=\${$variable-}"
-    [ -n "$path" ] && [ -e "$path" ] || continue
-    case $(basename "$path") in
-        . | ..) resolved=$(cd -P "$path" && pwd) || die "can't resolve $variable ($path)" ;;
-        *)
-            parent=$(cd -P "$(dirname "$path")" && pwd) || die "can't resolve $variable ($path)"
-            resolved=${parent%/}/$(basename "$path")
-            ;;
-    esac
-    eval "PIHX_RESOLVED_$variable=\$resolved"
-    export "PIHX_RESOLVED_$variable"
-    mount_path "$resolved"
-done
+export PIHX_EXTENSION PIHX_EXTRA_MOUNTS
 
 # build and --build: the command is checked first (its options, the openmrs service, the instance
-# lock, an absolute DISTRO_SOURCE_DIR), so one that would be refused doesn't wait for a long build;
+# lock, an absolute OPENMRS_DISTRO_DIR), so one that would be refused doesn't wait for a long build;
 # then Maven builds the distribution here, and its directory is mounted for Compose to send as the
 # image's build context.
 build=false
@@ -83,11 +42,15 @@ esac
 if $build; then
     name=$1
     shift
-    dir=$("$pihx" "$name" _distro-source-dir "$@") || exit
+    dir=$("$pihx" "$name" _distro-dir "$@") || exit
     set -- "$name" "$@"
     echo "Building the distribution in $dir (mvn clean package -U)" >&2
     (cd "$dir" && mvn clean package -U) || die "the Maven build in $dir failed"
-    mount_path "$dir"
+    case $dir in
+        *'
+'*) die "can't mount a path with a newline in it" ;;
+    esac
+    PIHX_EXTRA_MOUNTS=$dir
 fi
 
 exec "$pihx" "$@"

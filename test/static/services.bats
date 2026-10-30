@@ -130,13 +130,13 @@ ENV
     assert_output '13306:3306'
 }
 
-# The OpenMRS front end's dev and build overlays (openmrs/modes/), and the services' restore overlays
-# (services/<svc>/restore/), checked with the values the front end and initialize set.
+# The openmrs-docker extension's dev and build overlays (openmrs/modes/), and the services' restore
+# overlays (services/<svc>/restore/), checked with the values the extension and initialize set.
 overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     EXTRA_ENV=(OPENMRS_DB_RESTORE_PATH=/tmp/openmrs-db.sql OPENMRS_DB_RESTORE_NAME=openmrs-db.sql
         OPENMRS_DB_RESTORE_ARCHIVE=archive.7z OPENMRS_RESTORE_PATH=/tmp/openmrs.7z
         OPENMRS_RESTORE_NAME=openmrs.7z OPENMRS_RESTORE_ARCHIVE=archive.7z OPENMRS_DATA_OWNER=1:1
-        DISTRO_SOURCE_DIR=/tmp/distro ALPINE_IMAGE=placeholder/alpine P7ZIP_IMAGE=placeholder/p7zip
+        OPENMRS_DISTRO_DIR=/tmp/distro ALPINE_IMAGE=placeholder/alpine P7ZIP_IMAGE=placeholder/p7zip
         PERCONA_IMAGE=placeholder/percona)
     local dir="$BATS_TEST_TMPDIR/instance"
     make_instance "$dir"

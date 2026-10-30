@@ -14,7 +14,7 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$TEST_DIR/.." && pwd)"
 DEPS_DIR="$TEST_DIR/.deps"
 
-# Runs the Python unit tests (pihx's, and the OpenMRS front end's) in pihx-runtime, the image pihx
+# Runs the Python unit tests (pihx's, and the openmrs-docker extension's) in pihx-runtime, the image pihx
 # itself runs in, building it if missing.
 run_unit() {
     local image dir status=0

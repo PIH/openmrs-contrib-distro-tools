@@ -1,7 +1,7 @@
 #!/bin/bash
-# Archives an OpenMRS data directory into a file usable as `openmrs-docker <name> initialize`'s
-# RESTORE_OPENMRS_DATA_PATH. The archive holds one folder named after itself (data.tar.gz and
-# data.7z both hold data/), which extract-archive prints the path of.
+# Archives an OpenMRS data directory into a file usable as the openmrs.<ext> entry of
+# `pihx <name> initialize --from <folder>`. The archive holds one folder named after itself
+# (data.tar.gz and data.7z both hold data/), which extract-archive prints the path of.
 #
 # Usage: openmrs-utils backup-openmrs-data-directory --volume=<volume or dir> --output=<file>
 #            [--exclude-distribution-artifacts] [--exclude=<path>...] [--allow-running]

@@ -11,7 +11,7 @@
 #            [--exclude-distribution-artifacts] [--output=<file>]
 #   --db-volume   a stopped server's data directory, read by starting --image on it with grants
 #                 and networking off. Give the instance's image and server options, or [server]
-#                 shows the image's defaults: `openmrs-docker <name> fingerprint` does both.
+#                 shows the image's defaults: `pihx <name> summary` does both.
 #   --database    the OpenMRS database, for [recent]
 #   --data-dir    also summarizes this OpenMRS data directory; --exclude-distribution-artifacts
 #                 leaves out what the image supplies, as backup-openmrs-data-directory does

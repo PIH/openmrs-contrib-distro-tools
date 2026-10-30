@@ -1,6 +1,6 @@
-# Free-space checks for the utils/ scripts and openmrs-docker initialize: estimate what a restore or
-# backup will write, and refuse before writing anything if there's clearly not enough room, rather
-# than failing part way with half-filled volumes or files. Sourced, not run.
+# Free-space checks for the utils/ scripts (pihx initialize applies the same rule): estimate what a
+# restore or backup will write, and refuse before writing anything if there's clearly not enough
+# room, rather than failing part way with half-filled volumes or files. Sourced, not run.
 #
 # SKIP_DISK_SPACE_CHECK=true skips the check (e.g. when an estimate is known to be too high).
 # DISK_SPACE_FREE_KB, for tests only, replaces the measured free space.
