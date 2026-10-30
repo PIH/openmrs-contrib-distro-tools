@@ -11,7 +11,9 @@ docker volume inspect "$volume" >/dev/null 2>&1 || {
     echo "error: $volume doesn't exist -- nothing to reset" >&2
     exit 1
 }
-docker compose --project-directory "$PIHX_INSTANCE_DIR" down --remove-orphans
+# All profiles, as pihx's stop: a job's kept container (PETL) would otherwise outlive the network
+# it's attached to, and its next run fail.
+docker compose --project-directory "$PIHX_INSTANCE_DIR" --profile '*' down --remove-orphans
 MYSQL_ROOT_PASSWORD="$OPENMRS_DB_ROOT_PASSWORD" MYSQL_PASSWORD="$OPENMRS_DB_PASSWORD" \
     "$PIHX_TOOLS/utils/reset-mysql-accounts.sh" --volume="$volume" \
     --image="$OPENMRS_DB_IMAGE_NAME:$OPENMRS_DB_IMAGE_TAG" --user="$OPENMRS_DB_USER"
