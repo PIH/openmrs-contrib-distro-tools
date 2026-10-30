@@ -32,6 +32,9 @@ Commands:
   restart                    Restart its containers
   status                     Show its containers, and what holds its lock
   logs [service]             Follow the logs
+  compose <args...>          Run docker compose on the instance as pihx does (e.g. config, ps,
+                             exec <service> sh); doesn't take the instance lock, so use the commands
+                             above to change it. Values a service's start script decides are empty
   pull                       Pull its images
   update                     Pull, bring up (removing containers of removed services), and remove
                              the images replaced
@@ -88,6 +91,7 @@ INSTANCE_COMMANDS = {
     "restart": lifecycle.cmd_restart,
     "status": lifecycle.cmd_status,
     "logs": lifecycle.cmd_logs,
+    "compose": lifecycle.cmd_compose,
     "pull": lifecycle.cmd_pull,
     "update": lifecycle.cmd_update,
     "run-service": lifecycle.cmd_run_service,

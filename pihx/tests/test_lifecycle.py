@@ -374,3 +374,44 @@ class StartEnvTest(LifecycleTest):
         self.assertIn("printed a malformed line", err)
         self.assertNotIn("secret-ish", err)
         self.assertEqual(self.declared(), {"APP_FOUND": "", "APP_OTHER": ""})
+
+
+class ComposeCommandTest(LifecycleTest):
+    """`compose` runs docker compose with pihx's own options, the arguments untouched, and no lock."""
+
+    def run_compose(self, *args, returncode=0):
+        calls = []
+
+        def fake_run(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return done("", returncode)
+        with mock.patch.object(compose.subprocess, "run", fake_run), \
+                mock.patch.object(lifecycle.lock, "hold") as hold:
+            result = run(["kz", "compose", *args])
+        hold.assert_not_called()
+        return result, calls
+
+    def test_argv_is_docker_compose_pihx_options_then_the_arguments(self):
+        (status, _, err), calls = self.run_compose("exec", "-T", "app", "sh", "-c", "echo $X")
+        self.assertEqual(status, 0, err)
+        self.assertEqual(len(calls), 1)
+        argv, kwargs = calls[0]
+        self.assertEqual(argv, ["docker", "compose", *compose.Compose(self.inst()).args(),
+                                "exec", "-T", "app", "sh", "-c", "echo $X"])
+        # Output and input are the caller's.
+        self.assertNotIn("stdout", kwargs)
+        self.assertNotIn("stdin", kwargs)
+        self.assertEqual(kwargs["env"]["COMPOSE_PROJECT_NAME"], "kz")
+
+    def test_exit_status_is_composes(self):
+        (status, _, _), _ = self.run_compose("config", returncode=3)
+        self.assertEqual(status, 3)
+
+    def test_start_env_variables_are_passed_empty(self):
+        write(self.tools / "services" / "app" / "start" / "values", "")
+        manifest = self.tools / "services" / "app" / "service.yaml"
+        manifest.write_text(manifest.read_text() + "start-env:\n  - script: start/values\n"
+                            "    sets: [APP_FOUND, APP_OTHER]\n")
+        _, calls = self.run_compose("config")
+        env = calls[0][1]["env"]
+        self.assertEqual((env["APP_FOUND"], env["APP_OTHER"]), ("", ""))

@@ -257,6 +257,17 @@ def cmd_logs(name, args):
     return 0
 
 
+def cmd_compose(name, args):
+    """docker compose on the instance, as pihx runs it, with <args> after its options. No lock: a
+    passthrough for inspection. Start-env values aren't computed (that could start containers), so
+    their variables are empty, as when a script fails."""
+    inst = _open(name)
+    declared = {n for svc in inst.services for entry in svc.manifest.start_env for n in entry.sets
+                if n not in compose_module.RESERVED_NAMES}
+    compose = compose_module.Compose(inst, extra_env=dict.fromkeys(sorted(declared), ""))
+    return exit_status(compose.run(*args, check=False).returncode)
+
+
 def _run_job(inst, compose, svc, command):
     """A job (a manifest with `job: true`, e.g. PETL) runs against the running instance: its setups
     run first as one-off containers with the current env, so it never runs on a failed one, and

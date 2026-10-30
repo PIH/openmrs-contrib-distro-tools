@@ -48,6 +48,7 @@ When `wait` finishes, go to `http://localhost:8080/openmrs` (or the instance's `
 pihx <name> logs [service]   # follow the logs, of every service by default
 pihx <name> status           # the containers, and the command holding the lock, if any
 pihx <name> stop             # removes the containers; the data stays in the volumes
+pihx <name> compose <args>   # docker compose on the instance, e.g. `config`, `ps`, `exec openmrs-db sh`
 pihx <name> destroy          # removes the containers, the volumes and the instance directory (asks first; refuses a directory without instance.env)
 pihx list                    # the instances, with their services and the tools directory each runs
 pihx <name> config           # the merged values, secrets masked
@@ -89,6 +90,24 @@ Maven project (an absolute path), then:
 - `start --dev` or `update --dev` runs the image with what you last built mounted over its distro,
   and with Java debugging on `OPENMRS_DEBUG_PORT`.
 
+## Compose on the instance
+
+`pihx <name> compose <args...>` runs `docker compose` with what pihx's own commands use: the
+instance's project name, project directory, env files and compose files. Everything after `compose`
+goes to Compose untouched, and its exit status is the command's.
+
+```bash
+pihx <name> compose config            # the resolved model: what runs for each service
+pihx <name> compose config openmrs    # one service's
+pihx <name> compose ps
+pihx <name> compose exec openmrs-db sh
+```
+
+It's a raw passthrough for inspection and one-off work: it doesn't take the instance lock, so use
+the managed commands to change the instance. Values a service's start script decides (e.g.
+`create-tables`) aren't computed, since that could start containers: those variables are passed
+empty, as when the script fails, so `config` shows the fail-closed default.
+
 ## One command at a time
 
 Every command that changes an instance (`initialize`, `start`, `stop`, `restart`, `update`, `pull`,
@@ -107,7 +126,7 @@ deploy can't restart MySQL under a PETL run. Such a run is against the running i
 setup services first (account and login setup), and starts, stops or recreates none of the
 instance's containers, so `openmrs-db` (and `sqlserver`, if it has one) must be running. It doesn't
 need OpenMRS: PETL also runs against restored databases with no OpenMRS. For other services (the
-smoke tests) it refuses while the instance is busy but doesn't hold the lock. `status`, `logs` and
+smoke tests) it refuses while the instance is busy but doesn't hold the lock. `status`, `logs`, `compose` and
 `wait` never wait for it. The lock is released however its holder exits, so there's nothing to
 clean up after a crash. It uses `flock`.
 
