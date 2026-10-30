@@ -1,68 +1,49 @@
-# The OpenMRS front end (`openmrs-docker`)
+# openmrs-docker: the OpenMRS pihx extension
 
-`bin/openmrs-docker` keeps today's `openmrs-docker` command line on top of `pihx`. It is a launcher
-like `bin/pihx` (it runs [`front.py`](front.py) through `bin/pihx`, in `pihx-runtime`, as
-`PIHX_FRONT_END=openmrs.front`), and its
-instances are `pihx` instances: they live under `PIHX_HOME` (default `~/pihx`), and
-`pihx <name> <command>` works on them too.
+`openmrs-docker` can be used in place of `pihx`. It does everything `pihx` does, with the same command
+line, plus OpenMRS development commands. `bin/openmrs-docker` runs
+[`extension.py`](extension.py) through `bin/pihx`, in `pihx-runtime`, as
+`PIHX_EXTENSION=openmrs.extension`; its instances are `pihx` instances, under `PIHX_HOME` (default
+`~/pihx`), and `pihx <name> <command>` works on them too.
 
-What it adds to `pihx`:
+What it adds or changes (`openmrs-docker help` lists them after `pihx`'s commands):
 
-| `openmrs-docker` | `pihx` |
+| Command | What the extension does |
 |---|---|
-| `create <name>`, with `SERVICES` (default `openmrs-db,openmrs`); `OPENMRS_IMAGE_NAME` required with `openmrs` | `<name> create --services=...` |
-| `<name> start` / `update [--build] [--dev]`, `<name> build` | `start` / `update`, with the overlays below |
-| `<name> initialize` with `RESTORE_*` / `SEED_IMAGE_NAME` | `initialize --from <folder>` / `--from-image <image>` |
-| `<name> fingerprint [--data-dir] [--exclude-distribution-artifacts] [--output=<file>]` | `summary` (only openmrs-db's, and openmrs's with `--data-dir`) |
+| `<name> create [--services=a,b]` | `--services` defaults to `openmrs-db,openmrs`; with `openmrs`, `OPENMRS_IMAGE_NAME` must be set, and `OPENMRS_DISTRO_DIR` (if set) is written to `openmrs.env` |
+| `<name> start` / `update [--build] [--dev]` | `--build` and `--dev` add the overlays below; without them it's `pihx`'s |
+| `<name> build` | Builds the distribution and its OpenMRS image from `OPENMRS_DISTRO_DIR` |
+| `<name> initialize --from-image <image>` | `pihx`'s, and says when the image is probably an old-format seed |
+
+Every other command is `pihx`'s own, unchanged: a command `pihx` gains works here too. There are no
+old command names or orders:
+
+| Instead of | Use |
+|---|---|
+| `openmrs-docker create <name>`, `SERVICES=...` | `openmrs-docker <name> create [--services=...]` |
+| `initialize` with `RESTORE_*` variables | `initialize --from <folder>`, the folder holding an entry per service (see [docs/restore.md](../docs/restore.md)) |
+| `initialize` with `SEED_IMAGE_NAME` / `SEED_IMAGE_TAG` | `initialize --from-image <name>:<tag>` |
+| `INITIALIZE_DB_TIMEOUT` | `PIHX_INITIALIZE_TIMEOUT` |
+| `<name> fingerprint` | `<name> summary` (openmrs-db's, then openmrs-data's without the distribution artifacts; `--include-distribution-artifacts` adds them) |
 | `<name> reset-openmrs-db-accounts` | `<name> openmrs-db reset-accounts` |
-| `<name> wait` | `wait`, saying whether OpenMRS is ready |
 | `<name> sync` | nothing: instances use their checkout's service files directly |
+| `SMOKE_TESTS_*` set for one `run-service` | set them when adding the service (`add-service openmrs-smoke-tests`), or in `openmrs-smoke-tests.env` |
 
-Everything else (`list`, `stop`, `restart`, `status`, `logs`, `pull`, `add-service`,
-`remove-service`, `run-service`, `destroy`) is `pihx`'s command. `run-service` also passes, for that
-run, the values you set for the service's own variables that the instance doesn't set (e.g. the
-smoke tests' `SMOKE_TESTS_*`), as `openmrs-docker` always took them from the shell.
+## OPENMRS_DISTRO_DIR
 
-## Values only the front end uses
-
-`create` writes these to the instance's `instance.env` when they're set in your environment; their
-defaults are here, not in a service's:
-
-| Variable | Default | Used by |
-|---|---|---|
-| `DISTRO_SOURCE_DIR` | none | `build`, `--build`, `--dev`: the distribution's source checkout |
-| `SEED_IMAGE_NAME` | none | `initialize`: a seed image, for what no `RESTORE_*` variable restores |
-| `SEED_IMAGE_TAG` | `latest` | `initialize` |
-
-`initialize` takes the instance's `SEED_IMAGE_*`, or else yours. `INITIALIZE_DB_TIMEOUT` sets
-`pihx`'s `PIHX_INITIALIZE_TIMEOUT`.
-
-## initialize's RESTORE_* variables
-
-Each one becomes an entry of a temporary `--from` folder under `PIHX_HOME`, named as the service's
-manifest accepts it: a link to the path (Docker resolves it on the host), or a copy where a link
-can't be made. A volume with no `RESTORE_*` source comes from the seed image, if there is one.
-
-| Variable | Entry |
-|---|---|
-| `RESTORE_MYSQL_DUMP_PATH` | `openmrs-db.sql`, `.sql.gz`, `.sql.7z` or `.sql.zip` |
-| `RESTORE_MYSQL_DATA_PATH` | `openmrs-db.datadir/` |
-| `RESTORE_MYSQL_PERCONA_PATH` | `openmrs-db.percona/`, or `.percona.7z`/`.zip`/`.tar.gz`/`.tgz`/`.tar` |
-| `RESTORE_OPENMRS_DATA_PATH` | `openmrs/`, or `openmrs.7z`/`.zip`/`.tar.gz`/`.tgz`/`.tar` |
-
-Exactly one database source is needed (a `RESTORE_MYSQL_*` variable or the seed image).
-`bin/openmrs-docker` resolves each path on the host, and `bin/pihx` mounts it read-only when it's
-outside the paths it always mounts.
+The path to the OpenMRS distribution's Maven project (an absolute path), which `build`, `--build`
+and `--dev` use. `create` writes it to the instance's `openmrs.env` when it's set in your
+environment; edit it there afterwards. Only the extension reads it.
 
 ## Overlays: modes/
 
-Compose files the front end adds to the instance's for one command:
+Compose files the extension adds to the instance's for one command:
 
 - [`modes/dev.yaml`](modes/dev.yaml), for `--dev`: mounts the distribution built in
-  `DISTRO_SOURCE_DIR` over the image's, and publishes the Java debug port (`OPENMRS_DEBUG_PORT`).
+  `OPENMRS_DISTRO_DIR` over the image's, and publishes the Java debug port (`OPENMRS_DEBUG_PORT`).
 - [`modes/build.yaml`](modes/build.yaml), for `build` and `--build`: builds the openmrs image from
-  that distribution. `bin/openmrs-docker` first runs `mvn clean package -U` in `DISTRO_SOURCE_DIR`
-  (an absolute path), on the host (Maven and Java are needed there), and passes the directory to
+  that distribution. `bin/openmrs-docker` first runs `mvn clean package -U` in `OPENMRS_DISTRO_DIR`
+  on the host (Maven and Java are needed there), and passes the directory to
   `bin/pihx` to mount read-only (`PIHX_EXTRA_MOUNTS`), for Compose to send as the build context.
   Before Maven runs, the command is checked (its options, the openmrs service, and that nothing
   holds the instance's lock), so one that would be refused doesn't wait for the build. The lock

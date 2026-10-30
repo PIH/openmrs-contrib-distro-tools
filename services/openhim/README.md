@@ -62,7 +62,6 @@ password. An instance for Lesotho, with OpenHIM and the mediator, is created lik
 ```bash
 export OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr
 export OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci
-export SEED_IMAGE_NAME="partnersinhealth/lesotho-emr-seed-lesotho"
 export OPENHIM_PASSWORD=<pick-a-password>
 export ADVAPACS_MEDIATOR_INBOUND_SECRET=<pick-a-secret>
 export ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD=<pick-a-password>
@@ -71,9 +70,8 @@ export ADVAPACS_CLIENT_SECRET=<advapacs-client-secret>
 export OPENMRS_USERNAME=<username-for-mediator-access-to-openmrs>
 export OPENMRS_PASSWORD=<password-for-mediator-access-to-openmrs>
 export ADVAPACS_PATIENT_IDENTIFIER_SYSTEM="http://www.pih.org/identifiers/lesotho/emr-id"
-export SERVICES=openmrs-db,openmrs,openhim,openhim-advapacs-mediator
-openmrs-docker create <name>
-openmrs-docker <name> initialize
+openmrs-docker <name> create --services=openmrs-db,openmrs,openhim,openhim-advapacs-mediator
+openmrs-docker <name> initialize --from-image partnersinhealth/lesotho-emr-seed-lesotho
 openmrs-docker <name> start
 ```
 

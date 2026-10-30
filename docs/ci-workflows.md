@@ -338,11 +338,10 @@ an instance creates with, so attach it explicitly:
 ```bash
 OPENMRS_IMAGE_NAME=partnersinhealth/pihliberia-emr \
 OPENMRS_PIH_CONFIG=liberia \
-SEED_IMAGE_NAME=partnersinhealth/pihliberia-emr-seed-liberia \
-openmrs-docker create myinstance
+openmrs-docker myinstance create
 
 openmrs-docker myinstance add-service openmrs-smoke-tests
-openmrs-docker myinstance initialize
+openmrs-docker myinstance initialize --from-image partnersinhealth/pihliberia-emr-seed-liberia
 openmrs-docker myinstance start
 openmrs-docker myinstance wait
 openmrs-docker myinstance run-service openmrs-smoke-tests ./execute-smoke-tests.sh liberia
@@ -351,9 +350,12 @@ openmrs-docker myinstance run-service openmrs-smoke-tests ./execute-smoke-tests.
 Run `wait` before `run-service`: it streams the logs and returns once OpenMRS's healthcheck
 (`/openmrs/health/started`) passes, so the smoke tests don't start against a half-started OpenMRS.
 
+The smoke tests' settings are the service's own: set them when you `add-service` it (they go in the
+instance's `openmrs-smoke-tests.env`), or edit that file afterwards.
+
 | Variable | Default | Purpose |
 |---|---|---|
-| `SMOKE_TESTS_OUTPUT_DIR` | `./smoke-test-output` | Host directory bind-mounted onto the container's Maven `target/` (build output, failsafe/surefire reports) |
+| `SMOKE_TESTS_OUTPUT_DIR` | `./smoke-test-output` (in the instance directory) | Host directory bind-mounted onto the container's Maven `target/` (build output, failsafe/surefire reports) |
 | `SMOKE_TESTS_SCREENSHOTS_DIR` | `./smoke-test-screenshots` | Host directory bind-mounted onto the container's Selenium screenshot directory |
 | `SMOKE_TESTS_ADMIN_PASSWORD` | image default (`Admin123`) | Admin password baked into this site's seed data |
 | `SMOKE_TESTS_IMAGE_NAME`, `SMOKE_TESTS_IMAGE_TAG` | `partnersinhealth/pihemr-smoke-tests`, `latest` | Smoke-tests image to run |

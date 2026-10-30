@@ -24,8 +24,7 @@ export PETL_MYSQL_PASSWORD=<pick-a-password>
 export PETL_SQLSERVER_PASSWORD=<pick-a-password>
 export SQLSERVER_SA_PASSWORD=<pick-a-password>
 export PETL_SQLSERVER_DATABASE=openmrs_ces_ci
-export SERVICES=openmrs-db,openmrs,petl,sqlserver
-openmrs-docker create <name>
+openmrs-docker <name> create --services=openmrs-db,openmrs,petl,sqlserver
 openmrs-docker <name> start
 openmrs-docker <name> run-service --pull petl
 ```

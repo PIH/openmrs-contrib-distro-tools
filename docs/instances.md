@@ -2,10 +2,10 @@
 
 An instance is a directory under `PIHX_HOME` (default `~/pihx`) with an env file for each of its
 services ([An instance's files](env.md)), run as one Docker Compose project named after the
-instance. `pihx` is the general tool; `openmrs-docker` is its front end for OpenMRS instances and
-takes the same commands, plus building a distribution and initializing from a seed image or
-legacy backups ([The OpenMRS front end](../openmrs/README.md)). Run either with no arguments for
-every command and option. (`~/openmrs` is the OpenMRS SDK's directory, which is why instances
+instance. `pihx` is the general tool. `openmrs-docker` is a `pihx` extension that can be used in
+place of `pihx`: it does everything `pihx` does, with the same command line, plus OpenMRS development
+commands (OpenMRS's default services, building a distribution from source; [The openmrs-docker
+extension](../openmrs/README.md)). Run either with no arguments for every command and option. (`~/openmrs` is the OpenMRS SDK's directory, which is why instances
 aren't kept there.)
 
 ## Creating an instance
@@ -21,7 +21,7 @@ letters, digits, `-` and `_`, starting with a letter or digit, and not `list`, `
 OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr \
 OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci \
 OPENMRS_HTTP_PORT=9090 \
-openmrs-docker create <name>
+openmrs-docker <name> create
 
 # the same with pihx, which needs the services named:
 OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr \
@@ -29,8 +29,8 @@ pihx <name> create --services=openmrs-db,openmrs
 ```
 
 A settings file you `export` from and `source` first works too ([An instance's
-files](env.md#where-values-come-from)). Services other than the default are chosen with
-`SERVICES=<comma-separated>` (`openmrs-docker`) or `--services` (`pihx`), and added later with
+files](env.md#where-values-come-from)). `--services=<comma-separated>` chooses the services
+(`openmrs-docker`'s default is `openmrs-db,openmrs`), and others are added later with
 `add-service` ([Services](services.md)). Before the first start, [`initialize`](restore.md) can fill the
 instance's volumes from a seed image or a backup, which is much faster than OpenMRS building them up
 itself.
@@ -43,7 +43,6 @@ pihx <name> wait      # until OpenMRS has started (its /health/started endpoint)
 ```
 
 When `wait` finishes, go to `http://localhost:8080/openmrs` (or the instance's `OPENMRS_HTTP_PORT`).
-`openmrs-docker <name> wait` also prints **OpenMRS is ready**.
 
 ```bash
 pihx <name> logs [service]   # follow the logs, of every service by default
@@ -82,8 +81,8 @@ instances, once the containers are recreated.
 
 ## Building a distro from source (developers)
 
-`openmrs-docker`: set `DISTRO_SOURCE_DIR` (at `create`, or later in `instance.env`) to a checkout of
-the distro, then:
+`openmrs-docker`: set `OPENMRS_DISTRO_DIR` (at `create`, or later in `openmrs.env`) to the distro's
+Maven project (an absolute path), then:
 
 - `start --build` or `update --build` builds the distro (`mvn clean package`, on the host) and its
   image first; `build` does only that.

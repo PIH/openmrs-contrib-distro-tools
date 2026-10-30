@@ -27,8 +27,8 @@ pihx <name> add-service <svc>
 pihx <name> remove-service <svc>
 ```
 
-(`openmrs-docker create <name>` takes `SERVICES=<comma-separated>` instead, default
-`openmrs-db,openmrs`.) `add-service` writes `<svc>.env` from the values in your environment that
+(`openmrs-docker <name> create` takes the same option, with `openmrs-db,openmrs` by default.)
+`add-service` writes `<svc>.env` from the values in your environment that
 the service knows, and refuses a service whose `requires` the instance lacks (e.g. a mediator
 without `openhim`), changing nothing. `remove-service` removes that service's containers, keeps its
 volumes (naming them) and deletes its env file. Deleting the file by hand and running

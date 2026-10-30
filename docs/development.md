@@ -15,11 +15,12 @@
 - `services/<svc>/` holds everything of one service: manifest, compose file, env defaults,
   restore overlays, summary and commands ([Writing a service](services.md#writing-a-service)). Its
   README is its docs.
-- `bin/openmrs-docker` and `openmrs/` are the OpenMRS front end ([README](../openmrs/README.md)): the
-  launcher does what needs the host (resolving `RESTORE_*` paths, running Maven), and
-  `openmrs/front.py` runs through the same launcher as a module of `pihx`'s runtime. `openmrs/` also
-  holds the compose overlays for `--dev` and `build` (`modes/`), the seed image's Dockerfile and
-  `setup.sh`.
+- `bin/openmrs-docker` and `openmrs/` are the OpenMRS extension of `pihx`
+  ([README](../openmrs/README.md)). The launcher does what needs the host (running Maven), and
+  `openmrs/extension.py` runs through `bin/pihx` (`PIHX_EXTENSION`): its `COMMANDS` are the ones it
+  adds or takes the place of, and `pihx/cli.py` dispatches every other command to `pihx`'s own, so
+  `openmrs-docker` has `pihx`'s command line. `openmrs/` also holds the compose overlays for `--dev`
+  and `build` (`modes/`), the seed image's Dockerfile and `setup.sh`.
 - `bin/openmrs-utils` and `utils/` are the standalone Bash utilities, which run on the host and also
   work against legacy servers; `utils/lib/` holds their shared helpers and `utils/lib/in-container/`
   the scripts that run inside a container. `bin/openmrs-sdk` wraps the OpenMRS SDK.

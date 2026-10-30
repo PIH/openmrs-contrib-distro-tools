@@ -60,29 +60,11 @@ fails, it removes the containers and every
 volume it made, and undoes what a `finish` wrote to the instance's env files. Archives are extracted by
 `utils/lib/in-container/extract.sh`, into a volume, never onto the host.
 
-## `openmrs-docker initialize`
+`openmrs-docker <name> initialize` is the same command (it also says when an image given to
+`--from-image` is probably an old-format seed, holding `dump.sql.gz` and `data.tar.gz`).
 
-The OpenMRS front end keeps today's variables: it assembles a temporary `--from` folder from the
-`RESTORE_*` paths (links to them, named as the services accept them), with the seed image's
-entries for what they don't restore ([openmrs/README.md](../openmrs/README.md)).
-
-Each volume's source is chosen separately, so e.g. the database can come from a backup while
-`openmrs-data` comes from the nightly seed image. By default (only `SEED_IMAGE_NAME` set) both come
-from the seed image. A `RESTORE_*` variable replaces one volume's source for that run; set it on the
-command line (it is never written to the instance).
-
-| Variable | Fills | Source |
-|---|---|---|
-| `SEED_IMAGE_NAME` / `SEED_IMAGE_TAG` (the instance's `instance.env`, else yours) | either, if not given below | the distro's nightly seed image |
-| `RESTORE_MYSQL_DUMP_PATH` | `db-data` | a `.sql`/`.sql.gz` dump, imported by MySQL on first start; or a `.7z`/`.zip` holding one (e.g. from `backup-mysqldump`) |
-| `RESTORE_MYSQL_DATA_PATH` | `db-data` | a ready MySQL data directory, copied in before MySQL starts (much faster for a large database) |
-| `RESTORE_MYSQL_PERCONA_PATH` | `db-data` | a Percona/xtrabackup backup: a `.7z`/`.zip`/`.tar.gz`/`.tgz`/`.tar` (e.g. a legacy nightly `percona.7z`, or `backup-percona --output=<name>.7z`) or a directory ([below](#percona-backups)) |
-| `RESTORE_OPENMRS_DATA_PATH` | `openmrs-data` | a directory, or a `.tar.gz`/`.tgz`/`.tar`/`.7z`/`.zip` of one (e.g. from `backup-openmrs-data-directory`) |
-| `ARCHIVE_PASSWORD` | | the password for a protected `.7z`/`.zip` |
-| `INITIALIZE_DB_TIMEOUT` | | `PIHX_INITIALIZE_TIMEOUT`: seconds to wait for the restored database to become healthy (default 3600: a large import, or crash recovery of a large data directory, can take long) |
-
-`db-data` needs exactly one source. `openmrs-data` needs none: without `RESTORE_OPENMRS_DATA_PATH`
-or `SEED_IMAGE_NAME`, OpenMRS builds it up on its first start, as on a fresh install (e.g. for a
+`db-data` needs no entry: without one the database starts empty. Nor does `openmrs-data`: without
+an `openmrs` entry, OpenMRS builds it up on its first start, as on a fresh install (e.g. for a
 database backup with no matching data directory backup).
 
 A seed image is used once, and carries a whole database: `initialize` removes it once the volumes
@@ -94,23 +76,21 @@ Archives are extracted into a volume, never onto the host. A dump archive must h
 is used as is.
 
 ```bash
-# the database from a dump, openmrs-data from the seed image
-RESTORE_MYSQL_DUMP_PATH=/path/to/backup.sql.gz openmrs-docker <name> initialize
-
-# both volumes from backups, no seed image
-RESTORE_MYSQL_DATA_PATH=/path/to/datadir RESTORE_OPENMRS_DATA_PATH=/path/to/data-dir openmrs-docker <name> initialize
+mkdir run
 
 # only the database; openmrs-data built up on the first start
-RESTORE_MYSQL_DATA_PATH=/path/to/datadir openmrs-docker <name> initialize
+ln -s /path/to/datadir run/openmrs-db.datadir
+pihx <name> initialize --from run
 
 # both volumes from backup-mysqldump / backup-openmrs-data-directory archives
-ARCHIVE_PASSWORD=<password> RESTORE_MYSQL_DUMP_PATH=/path/to/backup.sql.7z \
-    RESTORE_OPENMRS_DATA_PATH=/path/to/openmrs-data.7z openmrs-docker <name> initialize
+ln -s /path/to/backup.sql.7z run/openmrs-db.sql.7z
+ln -s /path/to/openmrs-data.7z run/openmrs.7z
+ARCHIVE_PASSWORD=<password> pihx <name> initialize --from run
 ```
 
 ## Percona backups
 
-`RESTORE_MYSQL_PERCONA_PATH` takes a Percona/xtrabackup backup as it is. In a temporary
+An `openmrs-db.percona` entry is a Percona/xtrabackup backup as it is. In a temporary
 `percona-staging` volume, `initialize` extracts the archive (or copies the directory), unwrapping a
 single top-level folder, so both a flat legacy `percona.7z` and an archive holding one
 `<name>-percona/` folder work. It then runs `innobackupex --apply-log` if the backup isn't prepared
@@ -119,7 +99,8 @@ staging volume. Nothing unencrypted is written to the host, and it needs about t
 size on Docker's volumes. Anything without an `xtrabackup_checkpoints` file is refused.
 
 ```bash
-ARCHIVE_PASSWORD=<password> RESTORE_MYSQL_PERCONA_PATH=/path/to/percona.7z openmrs-docker <name> initialize
+mkdir run && ln -s /path/to/percona.7z run/openmrs-db.percona.7z
+ARCHIVE_PASSWORD=<password> pihx <name> initialize --from run
 ```
 
 To turn a Percona backup into a plain data directory by hand instead (e.g. to inspect it first), use
@@ -128,12 +109,13 @@ the [utilities](utilities.md):
 ```bash
 BACKUP_DIR=$(openmrs-utils extract-archive --path=/path/to/backup.7z --output-dir=./backup)
 DATADIR=$(openmrs-utils convert-percona-backup --backup-dir="$BACKUP_DIR" --output-dir=./datadir)
-RESTORE_MYSQL_DATA_PATH="$DATADIR" openmrs-docker <name> initialize
+mkdir run && ln -s "$DATADIR" run/openmrs-db.datadir
+pihx <name> initialize --from run
 ```
 
 ## Database accounts after a physical restore
 
-A physical backup (`RESTORE_MYSQL_DATA_PATH`, `RESTORE_MYSQL_PERCONA_PATH`) is a copy of the source
+A physical backup (an `openmrs-db.datadir` or `openmrs-db.percona` entry) is a copy of the source
 server's whole data directory, *including its `mysql` system tables*, so it arrives with the source's
 accounts and passwords (the image only creates its own on an empty data directory). `initialize`
 sets them to this instance's before the database first starts, with `reset-mysql-accounts`: every
@@ -141,7 +123,7 @@ sets them to this instance's before the database first starts, with `reset-mysql
 openmrs container connects) and `root@'%'` are created if missing, and anonymous accounts are
 removed. The source's other accounts (e.g. PETL or backup users) are kept, and `initialize` lists
 them so you can remove the ones you don't need. `OPENMRS_DB_IMAGE_TAG` should still match the MySQL
-version the backup was taken from. A dump doesn't carry accounts, so `RESTORE_MYSQL_DUMP_PATH` isn't
+version the backup was taken from. A dump doesn't carry accounts, so an `openmrs-db.sql` entry isn't
 affected.
 
 ## openmrs-data after a restore
@@ -223,11 +205,9 @@ holds the source's secrets).
 ## Checking a restore
 
 Fingerprint the source before the backup with `openmrs-utils fingerprint`, and the new instance
-after `initialize` and before its first start with `pihx <name> summary` (or
-`openmrs-docker <name> fingerprint --data-dir --exclude-distribution-artifacts`, the same summary),
-then `diff`. With the instance stopped, `summary` reads its volumes with the instance's own
-database image and `OPENMRS_DB_OPT_*` options, so `[server]` shows what the running instance will
-have; once it runs, it reads the running database instead. Summarize before the first start, so
+after `initialize` and before its first start with `pihx <name> summary`, then `diff`. With the
+instance stopped, `summary` reads its volumes with the instance's own database image and
+`OPENMRS_DB_OPT_*` options, so `[server]` shows what the running instance will have; once it runs, it reads the running database instead. Summarize before the first start, so
 the database is as restored (OpenMRS's first start changes it). Expect `[accounts]` to differ, a
 physical restore to bring along other databases the source had, and `[server]` to differ only where
 the two servers are configured differently:

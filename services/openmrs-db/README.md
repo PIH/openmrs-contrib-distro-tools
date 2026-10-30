@@ -93,7 +93,7 @@ it sets up an empty data directory, and OpenMRS (core 2.6+) keeps the connection
 runtime properties file got on its first start. After editing the file, run:
 
 ```bash
-pihx <name> openmrs-db reset-accounts     # or: openmrs-docker <name> reset-openmrs-db-accounts
+pihx <name> openmrs-db reset-accounts
 ```
 
 It stops the instance, sets the MySQL accounts to the passwords in the instance's files (with

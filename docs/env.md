@@ -6,9 +6,10 @@ An instance is a directory under `PIHX_HOME` (default `~/pihx`) holding one env 
 
 ```
 ~/pihx/lesotho/
-  instance.env         TZ, and, from openmrs-docker, DISTRO_SOURCE_DIR and SEED_IMAGE_*
+  instance.env         TZ
   openmrs-db.env       OPENMRS_DB_PASSWORD, OPENMRS_DB_ROOT_PASSWORD, ports...
-  openmrs.env          OPENMRS_IMAGE_NAME, OPENMRS_PIH_CONFIG, OMRS_EXTRA_*...
+  openmrs.env          OPENMRS_IMAGE_NAME, OPENMRS_PIH_CONFIG, OMRS_EXTRA_*, and, from
+                       openmrs-docker, OPENMRS_DISTRO_DIR...
   petl.env             (one file per service of the instance)
   openmrs.override.yaml   optional: see below
   .lock                the instance lock
@@ -66,7 +67,7 @@ checkout.
   (`--show-secrets` shows them). Any `pihx` command picks up the change, but a running container only
   does when `start` or `update` recreates it (`restart` doesn't).
 - **For one command**, a few values come from your environment instead and are never written
-  (`RESTORE_*` for `openmrs-docker initialize`, `ARCHIVE_PASSWORD`, `PIHX_LOCK_WAIT`...).
+  (`ARCHIVE_PASSWORD`, `PIHX_LOCK_WAIT`...).
   Docker Compose runs with only what `pihx` sets, so your environment never changes an instance's
   values.
 
@@ -103,8 +104,9 @@ Each service's variables are in its README ([Services](services.md)). Those of t
 | Variable | Default | Purpose |
 |---|---|---|
 | `TZ` | `UTC` | Containers' time zone |
-| `DISTRO_SOURCE_DIR` | none | `openmrs-docker`: the distro repo checkout for `build`, `--dev` and `--build` |
-| `SEED_IMAGE_NAME`, `SEED_IMAGE_TAG` | none, `latest` | `openmrs-docker initialize`: the seed image ([The OpenMRS front end](../openmrs/README.md)) |
+
+`openmrs-docker` keeps `OPENMRS_DISTRO_DIR`, the distribution's Maven project for `build`, `--build`
+and `--dev`, in `openmrs.env` ([The openmrs-docker extension](../openmrs/README.md)).
 
 And these, for one command, from your shell, never in the files:
 
