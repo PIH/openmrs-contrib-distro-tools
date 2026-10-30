@@ -196,6 +196,15 @@ def _docker(env, *args, **kwargs):
     return compose_module.docker(["docker", *args], env=env, **kwargs)
 
 
+def list_volumes(env, *filters):
+    """The names of the volumes `docker volume ls` lists with <filters>. A failed listing is an
+    error, never an empty list: what is removed is decided from it."""
+    result = _docker(env, "volume", "ls", "-q", *(a for f in filters for a in ("--filter", f)))
+    if result.returncode != 0:
+        raise CliError(f"couldn't list Docker's volumes: {(result.stderr or '').strip()}")
+    return set(result.stdout.split())
+
+
 def tool_images(inst):
     """The images utils/lib/images.sh names (ALPINE_IMAGE, P7ZIP_IMAGE, PERCONA_IMAGE, ...), which
     the overlays run their tools in."""
@@ -333,9 +342,7 @@ class Restore:
         return _docker(self.env(), "volume", "inspect", volume).returncode == 0
 
     def project_volumes(self):
-        result = _docker(self.env(), "volume", "ls", "-q", "--filter",
-                         f"label=com.docker.compose.project={self.inst.name}")
-        return set(result.stdout.split())
+        return list_volumes(self.env(), f"label=com.docker.compose.project={self.inst.name}")
 
     def volumes_to_be_new(self):
         """The volumes of every service of the instance that declares a restore: those its own
@@ -367,8 +374,10 @@ class Restore:
         return sorted(n for n in names if n)
 
     def refuse_existing_volumes(self):
+        # From one checked listing: a volume a failed `inspect` can't show is never taken as absent.
+        existing = list_volumes(self.env())
         for volume in self.volumes_to_be_new():
-            if self._exists(volume):
+            if volume in existing:
                 raise CliError(f"{volume} already exists -- initialize only runs against a "
                                "brand-new instance with no existing data. Run "
                                f"'pihx {self.inst.name} destroy' first if you really want to "
@@ -481,6 +490,8 @@ def restore_folder(inst, folder, label=None):
     check_entries(restore.env(), restore.images, choices)
     check_space(restore.env(), restore.images, choices)
     restore.prepare()
+    # Before anything is created: a failed listing stops here, so cleanup never takes another
+    # service's volumes (e.g. petl-data) for new ones.
     before = restore.project_volumes()
     env_files = {p: p.read_bytes() for p in inst.dir.glob("*.env")}
     try:
@@ -500,8 +511,15 @@ def restore_folder(inst, folder, label=None):
             sys.stderr.write(logs.stdout or "")
         restore.compose.run("down", check=False, stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL)
-        made = sorted(set(restore.restore_volumes()) | (restore.project_volumes() - before))
-        left = restore.remove_volumes(made)
+        # Only volumes shown to be new: the restore's own (refused above if they existed) and those
+        # a successful listing finds that the one before didn't.
+        made = set(restore.restore_volumes())
+        try:
+            made |= restore.project_volumes() - before
+        except CliError as listing:
+            note(f"warning: {listing}; removing only the restore's staging volumes, so "
+                 f"others it made may be left ('pihx {inst.name} destroy' removes them).")
+        left = restore.remove_volumes(sorted(made))
         # A finish hook may have written to an env file before a later one failed.
         for path in inst.dir.glob("*.env"):
             if path not in env_files:

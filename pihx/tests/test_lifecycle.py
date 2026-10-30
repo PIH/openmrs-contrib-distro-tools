@@ -244,6 +244,22 @@ class DestroyTest(LifecycleTest):
         self.assertIn(["volume", "rm", "v1"], self.docker_calls)
         self.assertFalse((self.home / "kz").exists())
 
+    def test_a_failed_listing_in_the_fallback_removes_nothing(self):
+        def fake_run(compose_self, *args, **kwargs):
+            return done(returncode=1)
+        for failing in (("ps",), ("volume", "ls")):
+            with self.subTest(failing=failing):
+                self.docker_calls.clear()
+                self.docker_results = {("ps",): done("c1\n"), ("volume", "ls"): done("v1\n"),
+                                       failing: done(returncode=1)}
+                with mock.patch.object(compose.Compose, "run", fake_run), \
+                        mock.patch.object(lifecycle.subprocess, "run", self.fake_docker):
+                    status, _, err = run(["kz", "destroy", "--force"])
+                self.assertEqual(status, 1)
+                self.assertIn("nothing was removed", err)
+                self.assertEqual([c for c in self.docker_calls if "rm" in c], [])
+                self.assertTrue((self.home / "kz" / "instance.env").is_file())
+
     def test_an_unknown_instance_is_an_error(self):
         status, _, err = self.run_pihx("nope", "destroy", "--force")
         self.assertEqual(status, 2)

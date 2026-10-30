@@ -134,6 +134,7 @@ class InitializeCommandTest(InitializeTest):
         super().setUp()
         self.docker_calls = []
         self.existing_volumes = set()
+        self.failing_listings = 0
         self.hooks, self.hook_envs, self.compose_envs = {}, {}, []
         # db's own container mounts db-data; a shared, external volume isn't the instance's.
         self.config = {"services": {"db": {"volumes": [
@@ -153,6 +154,14 @@ class InitializeCommandTest(InitializeTest):
             return self.hooks.get(hook, lambda: done())()
         if argv[1:3] == ["volume", "inspect"]:
             return done(returncode=0 if argv[3] in self.existing_volumes else 1)
+        if argv[1:3] == ["volume", "ls"]:
+            if self.failing_listings:
+                self.failing_listings -= 1
+                return done(returncode=1)
+            names = self.existing_volumes
+            if "label=com.docker.compose.project=kz" in argv:
+                names = {n for n in names if n.startswith("kz_")}
+            return done("".join(f"{n}\n" for n in sorted(names)))
         return done()
 
     def run_pihx(self, *argv):
@@ -250,6 +259,62 @@ class InitializeCommandTest(InitializeTest):
         self.assertEqual(status, 1)
         self.assertIn("Couldn't remove kz_db-init (db-init holds a full copy", err)
         self.assertIn("'pihx kz destroy'", err)
+
+    def removed_volumes(self):
+        return [c[2:] for c in self.docker_calls if c[:2] == ["volume", "rm"]]
+
+    def test_a_failure_removes_only_volumes_shown_to_be_new(self):
+        write(self.tools / "services" / "db" / "restore" / "finish", "")
+        self.existing_volumes = {"kz_petl-data"}
+
+        def finish():
+            self.existing_volumes = {"kz_petl-data", "kz_db-data"}
+            return done(returncode=1)
+        self.hooks["finish"] = finish
+        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+        self.assertEqual(status, 1, err)
+        self.assertEqual(self.removed_volumes(), [["kz_db-data"]])
+
+    def test_a_failed_listing_before_the_restore_removes_nothing(self):
+        self.existing_volumes = {"kz_petl-data", "kz_sqlserver-data"}
+        # The first listing (the existence check) works; the snapshot's fails.
+        self.failing_listings = 1
+        real = initialize.Restore.refuse_existing_volumes
+
+        def refuse(restore):
+            self.failing_listings = 0
+            real(restore)
+            self.failing_listings = 1
+        with mock.patch.object(initialize.Restore, "refuse_existing_volumes", refuse):
+            status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+        self.assertEqual(status, 1)
+        self.assertIn("couldn't list Docker's volumes", err)
+        self.assertEqual(self.removed_volumes(), [])
+        self.assertEqual(self.up_calls(), [])
+
+    def test_a_failed_listing_after_a_failure_removes_only_the_staging_volumes(self):
+        write(self.tools / "services" / "db" / "restore" / "finish", "")
+        (self.tools / "services" / "db" / "restore" / "dump.yaml").write_text(
+            "services:\n  unpack:\n    volumes: [db-init:/t]\nvolumes:\n  db-init:\n")
+        self.existing_volumes = {"kz_petl-data"}
+
+        def finish():
+            self.existing_volumes = {"kz_petl-data", "kz_db-init"}
+            self.failing_listings = 1
+            return done(returncode=1)
+        self.hooks["finish"] = finish
+        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+        self.assertEqual(status, 1)
+        self.assertIn("removing only the restore's staging volumes", err)
+        self.assertEqual(self.removed_volumes(), [["kz_db-init"]])
+
+    def test_a_failed_listing_refuses_before_anything_is_made(self):
+        self.failing_listings = 1
+        status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
+        self.assertEqual(status, 1)
+        self.assertIn("couldn't list Docker's volumes", err)
+        self.assertEqual(self.removed_volumes(), [])
+        self.assertEqual(self.up_calls(), [])
 
     def test_an_empty_directory_is_an_error(self):
         (self.home / "empty").mkdir()

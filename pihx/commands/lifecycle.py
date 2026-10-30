@@ -443,10 +443,16 @@ def cmd_destroy(name, args):
             note("warning: 'docker compose down' failed -- removing this instance's containers and "
                  "volumes by their Compose project label instead.")
             label = _project_label(inst)
-            ids = _docker(compose, "ps", "-aq", "--filter", label).stdout.split()
+            # Both listings first, checked: a failed one stops destroy before anything goes.
+            listings = [_docker(compose, *what, "-q", "--filter", label)
+                        for what in (("ps", "-a"), ("volume", "ls"))]
+            for listing in listings:
+                if listing.returncode != 0:
+                    raise InstanceError(f"couldn't list {name}'s containers and volumes, so "
+                                        f"nothing was removed: {listing.stderr.strip()}")
+            ids, volumes = (listing.stdout.split() for listing in listings)
             if ids:
                 _docker(compose, "rm", "-f", *ids)
-            volumes = _docker(compose, "volume", "ls", "-q", "--filter", label).stdout.split()
             if volumes:
                 _docker(compose, "volume", "rm", *volumes)
         # Volumes only restore overlays declare (initialize's staging): `down -v` doesn't know them.
