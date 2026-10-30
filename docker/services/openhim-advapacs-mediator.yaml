@@ -45,6 +45,10 @@ services:
       # integration -- no namespacing needed.
       ADVAPACS_PATIENT_IDENTIFIER_SYSTEM: ${ADVAPACS_PATIENT_IDENTIFIER_SYSTEM?}
       ADVAPACS_PRACTITIONER_IDENTIFIER_SYSTEM: ${ADVAPACS_PRACTITIONER_IDENTIFIER_SYSTEM?}
+      # Optional: OpenMRS Visit Location uuid -> AdvaPACS Site identifier, and the AdvaPACS
+      # Organisation those Sites must belong to (see the mediator's .env.example).
+      ADVAPACS_SITE_MAP: ${ADVAPACS_SITE_MAP?}
+      ADVAPACS_ORGANIZATION: ${ADVAPACS_ORGANIZATION?}
       ADVAPACS_BASE_URL: ${ADVAPACS_BASE_URL?}
       ADVAPACS_CLIENT_ID: ${ADVAPACS_CLIENT_ID?}
       ADVAPACS_CLIENT_SECRET: ${ADVAPACS_CLIENT_SECRET?}
