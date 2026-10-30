@@ -112,7 +112,7 @@ teardown() { common_teardown; }
 @test "use-tools moves the instance to another checkout" {
     "$BIN/pihx" kz create --services=openmrs-db
     mkdir other
-    cp -R "$REPO_ROOT/bin" "$REPO_ROOT/lib" "$REPO_ROOT/images" "$REPO_ROOT/pihx" \
+    cp -R "$REPO_ROOT/bin" "$REPO_ROOT/utils" "$REPO_ROOT/images" "$REPO_ROOT/pihx" \
         "$REPO_ROOT/services" "$REPO_ROOT/instance.env.defaults" other
     other=$(cd -P other && pwd)
     # A relative path, to a checkout outside the mounted paths.
@@ -131,7 +131,7 @@ teardown() { common_teardown; }
 @test "use-tools resolves a path through a link or .. outside the mounted paths" {
     "$BIN/pihx" kz create --services=openmrs-db
     mkdir -p real other/sub
-    cp -R "$REPO_ROOT/bin" "$REPO_ROOT/lib" "$REPO_ROOT/images" "$REPO_ROOT/pihx" \
+    cp -R "$REPO_ROOT/bin" "$REPO_ROOT/utils" "$REPO_ROOT/images" "$REPO_ROOT/pihx" \
         "$REPO_ROOT/services" "$REPO_ROOT/instance.env.defaults" real
     real=$(cd -P real && pwd)
     ln -s "$real" alias
@@ -145,7 +145,7 @@ teardown() { common_teardown; }
     # As on a Puppet host: the checkout itself.
     rm "$PIHX_HOME/kz/tools"
     mkdir "$PIHX_HOME/kz/tools"
-    cp -R "$REPO_ROOT/bin" "$REPO_ROOT/lib" "$REPO_ROOT/images" "$REPO_ROOT/pihx" \
+    cp -R "$REPO_ROOT/bin" "$REPO_ROOT/utils" "$REPO_ROOT/images" "$REPO_ROOT/pihx" \
         "$REPO_ROOT/services" "$REPO_ROOT/instance.env.defaults" "$PIHX_HOME/kz/tools"
     run "$BIN/pihx" kz use-tools "$REPO_ROOT"
     assert_failure
