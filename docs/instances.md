@@ -53,7 +53,7 @@ pihx <name> logs [service]   # follow the logs, of every service by default
 pihx <name> status           # the containers, and the command holding the lock, if any
 pihx <name> stop             # removes the containers; the data stays in the volumes
 pihx <name> compose <args>   # inspect with docker compose: `config`, `ps`, `exec openmrs-db sh`, ...
-pihx <name> destroy          # removes the containers, the volumes and the instance directory (asks first; refuses a directory without instance.env)
+pihx <name> destroy          # removes the containers, the volumes and the instance directory (asks first; refuses a directory without instance.env; keeps a real `tools` directory, and the instance directory with it)
 pihx list                    # the instances, with their services and the tools directory each runs
 pihx <name> config           # the merged values, secrets masked
 ```

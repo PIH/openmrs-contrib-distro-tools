@@ -115,5 +115,5 @@ And these, for one command, from your shell, never in the files:
 | `PIHX_HOME` | The directory of instances (default `~/pihx`; `~/openmrs` is the OpenMRS SDK's) |
 | `PIHX_LOCK_WAIT` | Seconds a command waits for another one holding the instance's lock, instead of refusing at once ([One command at a time](instances.md#one-command-at-a-time)) |
 | `PIHX_WAIT_TIMEOUT` | Seconds `wait` waits (default 3600) |
-| `PIHX_DEBUG` | `1` prints the traceback of an unexpected error, which is otherwise one `error:` line, and echoes each `docker` and `docker compose` command line pihx runs to stderr, before it runs, prefixed `+ ` (values aren't on them) |
+| `PIHX_DEBUG` | `1` prints the traceback of an unexpected error, which is otherwise one `error:` line, and echoes each `docker` and `docker compose` command line pihx runs to stderr, before it runs, prefixed `+ ` (values aren't on them, except what you type yourself: `run-service` and `compose exec` arguments) |
 | `PIHX_INITIALIZE_TIMEOUT`, `ARCHIVE_PASSWORD`, `OPENMRS_DATA_OWNER`, `SKIP_DISK_SPACE_CHECK` | `initialize` ([Initializing an instance](restore.md)) |
