@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from unittest import mock
 
@@ -116,6 +117,43 @@ class CommandsTest(LifecycleTest):
                 first = next(i for i, c in enumerate(self.events)
                              if c[:2] in (["compose", "up"], ["compose", "run"]))
                 self.assertLess(create, first)
+
+    def test_start_makes_missing_bind_sources_in_the_instance_directory_as_the_caller(self):
+        d = self.home / "kz"
+        outside = self.root / "outside"
+        (d / "kept").mkdir()
+        (d / "link").symlink_to(self.root)
+        def bind(source, create=True):
+            m = {"type": "bind", "source": str(source), "target": "/t"}
+            if create:
+                m["bind"] = {"create_host_path": True}
+            return m
+        self.model = {"services": {"app": {"volumes": [
+            bind(d / "config"), bind(d / "nested" / "images"), bind(d / "kept"),
+            # Not pihx's to make: outside the instance directory (also through a link), the
+            # directory itself, or long syntax (Docker won't make it either).
+            bind(outside), bind(d / "link" / "escaped"), bind(d), bind(d / "long", create=False),
+            {"type": "volume", "source": "data", "target": "/data"}]}}}
+        status, _, err = self.run_pihx("kz", "start")
+        self.assertEqual(status, 0, err)
+        for made in ("config", "nested/images"):
+            self.assertTrue((d / made).is_dir())
+            self.assertEqual((d / made).stat().st_uid, os.getuid())
+            self.assertIn(f"Created directory {d / made}", err)
+        self.assertNotIn("kept", err)
+        for absent in (outside, self.root / "escaped", d / "long"):
+            self.assertFalse(absent.exists())
+
+    def test_a_bind_source_that_cannot_be_made_stops_the_start(self):
+        d = self.home / "kz"
+        (d / "file").write_text("")
+        self.model = {"services": {"app": {"volumes": [
+            {"type": "bind", "source": str(d / "file" / "config"), "target": "/t",
+             "bind": {"create_host_path": True}}]}}}
+        status, _, err = self.run_pihx("kz", "start")
+        self.assertEqual(status, 1)
+        self.assertIn(f"couldn't make {d / 'file' / 'config'} for a bind mount", err)
+        self.assertFalse([c for c in self.compose_calls if c[:1] == ("up",)])
 
     def test_a_volume_that_cannot_be_created_stops_the_start(self):
         self.model = {"volumes": {"data": {"external": True, "name": "kz_data"}}}

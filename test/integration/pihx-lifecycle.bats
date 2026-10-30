@@ -59,6 +59,10 @@ running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.p
     run "$BIN/pihx" "$NAME" start
     assert_success
     assert_equal "$(running)" "$NAME-modality-simulator"
+    # Its default config directory, a bind source in the instance directory, is made by pihx as the
+    # caller, not by Docker as root.
+    assert [ -d "$DIR/modality-simulator-config" ]
+    assert_equal "$(find "$DIR" ! -user "$(id -u)")" ""
     run "$BIN/pihx" "$NAME" status
     assert_success
     assert_output --partial "$NAME-modality-simulator"
