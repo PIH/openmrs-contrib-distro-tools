@@ -165,8 +165,10 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     assert_success
     run tree_of_volume "${NAME}_openmrs-data"
     assert_output "$RESTORED_TREE"
-    # Only openmrs had an entry: the database starts empty.
-    assert_equal "$(volumes)" "${NAME}_openmrs-data"
+    # Only openmrs had an entry: db-data is created (as start would), empty.
+    assert_equal "$(volumes)" "$(printf '%s\n' "${NAME}_db-data" "${NAME}_openmrs-data")"
+    run tree_of_volume "${NAME}_db-data"
+    assert_output ''
 }
 
 @test "--from-image restores a seed" {
