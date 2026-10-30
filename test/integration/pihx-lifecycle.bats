@@ -511,6 +511,10 @@ destroyed() { ls -d "$PIHX_HOME/$NAME".destroyed-* 2>/dev/null; }
 }
 
 @test "destroy with PIHX_HOME not writable changes nothing" {
+    # Its own PIHX_HOME: the run's is shared by the tests running alongside this one.
+    export PIHX_HOME="$BATS_TEST_TMPDIR/home"
+    DIR="$PIHX_HOME/$NAME"
+    mkdir "$PIHX_HOME"
     create modality-simulator
     "$BIN/pihx" "$NAME" start >/dev/null 2>&1
     export NAME
