@@ -33,3 +33,17 @@ teardown() { destroy_instance "$NAME"; common_teardown; }
     assert_success
     assert_line openmrs-db
 }
+
+@test "PIHX_DEBUG=1 echoes the docker compose command line to stderr, without values" {
+    PIHX_DEBUG=1 PETL_MYSQL_PASSWORD=sekrit-value run --separate-stderr "$BIN/pihx" "$NAME" compose config openmrs-db
+    assert_success
+    local echoed
+    echoed=$(printf '%s\n' "${stderr_lines[@]}" | grep '^+ docker compose ')
+    [[ $echoed == *" -p $NAME "* ]]
+    [[ $echoed == *" -f $REPO_ROOT/services/openmrs-db/compose.yaml "* ]]
+    [[ $echoed == *" config openmrs-db" ]]
+    [[ $echoed != *sekrit-value* ]]
+    run --separate-stderr "$BIN/pihx" "$NAME" compose config --services
+    assert_success
+    assert_equal "${#stderr_lines[@]}" 0
+}

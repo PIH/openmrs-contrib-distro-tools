@@ -1,7 +1,9 @@
 """Docker Compose on an instance: its project, env files and compose files."""
 
 import os
+import shlex
 import subprocess
+import sys
 
 
 # All Compose (and later, service scripts) get from the caller's environment: anything else would
@@ -12,6 +14,19 @@ OWN_NAMES = frozenset({"COMPOSE_PROJECT_NAME", "COMPOSE_FILE", "COMPOSE_ENV_FILE
                        "PIHX_TOOLS", "PIHX_INSTANCE_DIR", "PIHX_INSTANCE"})
 # Names no service value may take.
 RESERVED_NAMES = OWN_NAMES | frozenset(PASSED_THROUGH)
+
+
+def echo(argv):
+    """With PIHX_DEBUG=1, prints the command line <argv> to stderr, as `sh -x` would. Only names and
+    paths are ever on a docker command line (values go by environment, or by name with -e)."""
+    if os.environ.get("PIHX_DEBUG") == "1":
+        print("+ " + shlex.join(str(a) for a in argv), file=sys.stderr, flush=True)
+
+
+def docker(argv, **kwargs):
+    """subprocess.run of the docker command line <argv>, echoed first under PIHX_DEBUG=1."""
+    echo(argv)
+    return subprocess.run(argv, **kwargs)
 
 
 class ComposeError(Exception):
@@ -75,8 +90,8 @@ class Compose:
     def run(self, *args, check=True, **kwargs):
         """Runs `docker compose <options> <args>` in environment(); kwargs go to subprocess.run.
         With check, a failure raises ComposeError."""
-        result = subprocess.run(["docker", "compose", *self.args(), *args],
-                                env=self.environment(), **kwargs)
+        result = docker(["docker", "compose", *self.args(), *args], env=self.environment(),
+                        **kwargs)
         if check and result.returncode != 0:
             raise ComposeError(f"docker compose {' '.join(args)} failed (exit {result.returncode})")
         return result

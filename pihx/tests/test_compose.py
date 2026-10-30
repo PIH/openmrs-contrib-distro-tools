@@ -1,3 +1,5 @@
+import io
+import shlex
 import os
 import stat
 from unittest import mock
@@ -96,3 +98,22 @@ class ComposeTest(TempDirTest):
             c.run("up", "-d")
         self.assertIn("up -d", str(raised.exception))
         self.assertEqual(c.run("up", check=False).returncode, 3)
+
+    def test_pihx_debug_echoes_each_docker_command_to_stderr(self):
+        self.fake_docker()
+        c = compose.Compose(self.kz)
+        for debug, echoed in (("1", True), (None, False), ("0", False)):
+            with self.subTest(debug=debug), mock.patch.dict(os.environ), \
+                    mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+                os.environ.pop("PIHX_DEBUG", None)
+                if debug:
+                    os.environ["PIHX_DEBUG"] = debug
+                c.run("exec", "app", "sh", "-c", "echo a b")
+                compose.docker(["docker", "ps", "-q"])
+                if echoed:
+                    self.assertEqual(err.getvalue().splitlines(), [
+                        "+ " + shlex.join(["docker", "compose", *c.args(), "exec", "app", "sh", "-c",
+                                           "echo a b"]),
+                        "+ docker ps -q"])
+                else:
+                    self.assertEqual(err.getvalue(), "")

@@ -26,8 +26,8 @@ def timeout_seconds():
 
 
 def _docker(compose, *args):
-    return subprocess.run(["docker", *args], env=compose.environment(), stdout=subprocess.PIPE,
-                          text=True)
+    return compose_module.docker(["docker", *args], env=compose.environment(),
+                                 stdout=subprocess.PIPE, text=True)
 
 
 def containers_to_wait_for(inst, compose):
@@ -72,9 +72,10 @@ def cmd_wait(name, args):
                  f"--fail-on-unhealthy={'true' if fail_fast else 'false'}"],
                 env=compose.environment())
             if fail_fast:
-                logs.append(subprocess.Popen(
-                    ["docker", "logs", "-f", "--since", str(int(time.time())), container],
-                    env=compose.environment(), stderr=subprocess.STDOUT))
+                command = ["docker", "logs", "-f", "--since", str(int(time.time())), container]
+                compose_module.echo(command)
+                logs.append(subprocess.Popen(command, env=compose.environment(),
+                                             stderr=subprocess.STDOUT))
         failed = None
         while processes and not failed:
             time.sleep(POLL_SECONDS)

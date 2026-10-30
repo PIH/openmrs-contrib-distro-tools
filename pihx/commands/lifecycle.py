@@ -35,7 +35,7 @@ def _docker(compose, *args, **kwargs):
     otherwise."""
     kwargs.setdefault("capture_output", True)
     kwargs.setdefault("text", True)
-    return subprocess.run(["docker", *args], env=compose.environment(), **kwargs)
+    return compose_module.docker(["docker", *args], env=compose.environment(), **kwargs)
 
 
 def _project_label(inst):

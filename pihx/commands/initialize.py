@@ -193,7 +193,7 @@ def _parse_args(name, args):
 def _docker(env, *args, **kwargs):
     kwargs.setdefault("capture_output", True)
     kwargs.setdefault("text", True)
-    return subprocess.run(["docker", *args], env=env, **kwargs)
+    return compose_module.docker(["docker", *args], env=env, **kwargs)
 
 
 def tool_images(inst):
