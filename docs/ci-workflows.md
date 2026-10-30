@@ -347,7 +347,8 @@ openmrs-docker myinstance wait
 openmrs-docker myinstance run-service openmrs-smoke-tests ./execute-smoke-tests.sh liberia
 ```
 
-Run `wait` before `run-service`: it streams the logs and returns once OpenMRS's healthcheck
+`run-service` doesn't start the services the smoke tests depend on: `start` does. Run `wait`
+before `run-service`: it streams the logs and returns once OpenMRS's healthcheck
 (`/openmrs/health/started`) passes, so the smoke tests don't start against a half-started OpenMRS.
 
 The smoke tests' settings are the service's own: set them when you `add-service` it (they go in the

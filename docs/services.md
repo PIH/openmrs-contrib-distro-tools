@@ -35,7 +35,11 @@ volumes (naming them) and deletes its env file. Deleting the file by hand and ru
 `pihx <name> update` does the same, since the files present are the instance's services.
 
 A job (PETL) isn't brought up by `start`: run it with `pihx <name> run-service [--pull] <svc>
-[command...]` (`--pull` pulls its image first; a plain `pull` skips it).
+[command...]` (`--pull` pulls its image first; a plain `pull` skips it). `run-service` runs only a
+job or a service behind a Compose profile (e.g. `openmrs-smoke-tests`), and refuses one that runs
+with the instance (`openmrs`, `openmrs-db`, ...): a second copy on the same volumes could damage
+them. It never starts or recreates what the service depends on (`--no-deps`), so start the instance
+first if the service needs it.
 
 ## Writing a service
 

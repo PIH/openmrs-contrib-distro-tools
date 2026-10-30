@@ -175,9 +175,29 @@ YAML
 
 @test "run-service --pull pulls the named service's image first" {
     create modality-simulator
-    run "$BIN/pihx" "$NAME" run-service --pull modality-simulator echo PULLED
+    printf '  job:\n    image: alpine:3.21\n    profiles: ["job"]\n' >> "$DIR/modality-simulator.override.yaml"
+    run "$BIN/pihx" "$NAME" run-service --pull job echo PULLED
     assert_success
     assert_output --partial PULLED
+}
+
+@test "run-service refuses a service that runs with the instance, and starts nothing" {
+    create modality-simulator
+    run "$BIN/pihx" "$NAME" run-service modality-simulator echo RAN
+    assert_failure 2
+    assert_output --partial "modality-simulator runs with the instance"
+    refute_output --partial RAN
+    assert_equal "$(running)" ""
+}
+
+@test "run-service doesn't start what the service depends on" {
+    create modality-simulator
+    printf '  job:\n    image: alpine:3.21\n    profiles: ["job"]\n    depends_on: [modality-simulator]\n' \
+        >> "$DIR/modality-simulator.override.yaml"
+    run "$BIN/pihx" "$NAME" run-service job echo JOB-RAN
+    assert_success
+    assert_output --partial JOB-RAN
+    assert_equal "$(running)" ""
 }
 
 # --- jobs: petl --------------------------------------------------------------------------------

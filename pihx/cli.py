@@ -40,7 +40,8 @@ Commands:
   update                     Pull, bring up (removing containers of removed services), and remove
                              the images replaced
   run-service [--pull] <service> [command...]
-                             Run a service once (a job holds the lock); exits with its exit code
+                             Run a job or profiled service once (a job holds the lock), never
+                             its dependencies: start the instance first; exits with its exit code
   wait                       Wait until its containers with a healthcheck are healthy (a container
                              labelled pihx.wait=fail-on-unhealthy fails it at once; PIHX_WAIT_TIMEOUT,
                              default 3600 s)

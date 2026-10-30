@@ -1,6 +1,7 @@
 """start, stop, restart, status, logs, pull, update, run-service and destroy."""
 
 import contextlib
+import json
 import os
 import re
 import shutil
@@ -327,11 +328,22 @@ def cmd_run_service(name, args):
     inst = _open(name)
     compose = compose_module.Compose(inst)
     # All profiles, and the instance's override files too: any container Compose knows.
-    defined = compose.run("--profile", "*", "config", "--services", stdout=subprocess.PIPE,
-                          text=True).stdout.split()
+    defined = json.loads(compose.run("--profile", "*", "config", "--format", "json",
+                                     stdout=subprocess.PIPE, text=True).stdout or "{}")
+    defined = defined.get("services") or {}
     if svc not in defined:
         raise InstanceError(f"{svc} not present on {name} (run 'add-service {svc}' first)")
     job = any(s.name == svc and s.manifest.job for s in inst.services)
+    # Only one-shot containers: a job (its manifest's `job`) or one behind a profile, which no
+    # start runs. A second openmrs or openmrs-db on the same volumes could corrupt them.
+    runnable = sorted(n for n, spec in defined.items()
+                      if (spec or {}).get("profiles") or any(s.name == n and s.manifest.job
+                                                             for s in inst.services))
+    if svc not in runnable:
+        which = ", ".join(runnable) or "none here"
+        raise CliError(f"{svc} runs with the instance, so run-service won't start another one: it "
+                       f"runs only jobs and profiled services ({which}). For a command in its "
+                       f"container: pihx {name} compose exec {svc} ...", status=2)
     if job:
         context = lock.hold(inst, lock.wait_seconds(), command="run-service")
     else:
@@ -346,8 +358,10 @@ def _run(inst, compose, svc, command, pull, job):
     # Named explicitly, so a profiled service's image is pulled too (a plain `pull` skips them).
     if pull:
         compose.run("pull", svc)
+    # --no-deps: never starts or recreates what it depends on (start the instance first).
     if not job:
-        return exit_status(compose.run("run", "--rm", svc, *command, check=False).returncode)
+        return exit_status(compose.run("run", "--rm", "--no-deps", svc, *command,
+                                       check=False).returncode)
     return _run_job(inst, compose, svc, command)
 
 

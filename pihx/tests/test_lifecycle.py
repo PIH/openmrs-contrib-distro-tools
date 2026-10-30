@@ -1,3 +1,4 @@
+import json
 import subprocess
 from unittest import mock
 
@@ -267,7 +268,10 @@ class DestroyTest(LifecycleTest):
 
 
 class RunServiceTest(LifecycleTest):
-    def run_service(self, *args, defined="app\ndb\n"):
+    # app is profiled (one-shot); db runs with the instance.
+    CONFIG = json.dumps({"services": {"app": {"profiles": ["app"]}, "db": {}}})
+
+    def run_service(self, *args, defined=CONFIG):
         def fake_run(compose_self, *a, **kwargs):
             self.compose_calls.append(a)
             return done(defined) if kwargs.get("stdout") == subprocess.PIPE else done()
@@ -278,7 +282,7 @@ class RunServiceTest(LifecycleTest):
     def test_a_signal_death_is_128_plus_the_signal(self):
         def fake_run(compose_self, *a, **kwargs):
             if kwargs.get("stdout") == subprocess.PIPE:
-                return done("app\ndb\n")
+                return done(self.CONFIG)
             return done(returncode=-9)
         with mock.patch.object(compose.Compose, "run", fake_run):
             self.assertEqual(run(["kz", "run-service", "app", "x"])[0], 137)
@@ -296,7 +300,22 @@ class RunServiceTest(LifecycleTest):
         status, _, err = self.run_service("--pull", "app", "echo", "hi")
         self.assertEqual(status, 0, err)
         self.assertIn(("pull", "app"), self.compose_calls)
-        self.assertIn(("run", "--rm", "app", "echo", "hi"), self.compose_calls)
+        self.assertIn(("run", "--rm", "--no-deps", "app", "echo", "hi"), self.compose_calls)
+
+    def test_a_service_that_runs_with_the_instance_is_refused(self):
+        status, _, err = self.run_service("db", "sh")
+        self.assertEqual(status, 2)
+        self.assertIn("db runs with the instance, so run-service won't start another one", err)
+        self.assertIn("(app)", err)
+        self.assertIn("pihx kz compose exec db", err)
+        self.assertFalse([c for c in self.compose_calls if "run" in c or "up" in c])
+
+    def test_a_job_runs_even_without_a_profile(self):
+        manifest = self.tools / "services" / "app" / "service.yaml"
+        manifest.write_text(manifest.read_text().replace("job: false", "job: true"))
+        status, _, err = self.run_service("app", defined=json.dumps({"services": {"app": {}}}))
+        self.assertNotIn("runs with the instance", err)
+        self.assertIn(("up", "--no-start", "--no-deps", "app"), self.compose_calls)
 
 
 class StartLockedTest(LifecycleTest):
