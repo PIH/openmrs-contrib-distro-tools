@@ -73,11 +73,10 @@ jobs:
 
       - name: Create instance
         env:
-          DISTRO_SOURCE_DIR: ${{ github.workspace }}
+          OPENMRS_DISTRO_DIR: ${{ github.workspace }}
           OPENMRS_IMAGE_NAME: ${{ inputs.image_name }}
-          SEED_IMAGE_NAME: ${{ env.SEED_IMAGE_NAME }}
           OPENMRS_PIH_CONFIG: ${{ inputs.pih_config }}
-        run: .openmrs-contrib-distro-tools/bin/openmrs-docker create ${{ env.INSTANCE_NAME }}
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} create
 
       - name: Start stack
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} start --build
