@@ -1,0 +1,103 @@
+name: Build helper images
+
+# Every images/<name>/ and services/<name>/image/ is published as partnersinhealth/<name>, tagged by the
+# hash of its directory (utils/hash-directory.sh). A tag that exists is never rebuilt or overwritten. On
+# main, missing tags are pushed and `latest` is moved to each image's current tag; pull requests build
+# without pushing. A push from outside this workflow could still overwrite a tag with identical
+# content at the same moment; that is accepted. (Seed images are built by build-seeded-image.yml, not here.)
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - 'images/**'
+      - 'services/*/image/**'
+      - 'utils/hash-directory.sh'
+      - '.github/workflows/build-images.yml'
+  pull_request:
+    paths:
+      - 'images/**'
+      - 'services/*/image/**'
+      - 'utils/hash-directory.sh'
+      - '.github/workflows/build-images.yml'
+
+# Two runs on main would race to push the same tag, so they queue; a PR's newer commit cancels its older run.
+concurrency:
+  group: build-images-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Logged in first, so the set-up images pull as pihci, not anonymously (rate limited).
+      - name: Login to Docker Hub
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: pihci
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Set up QEMU
+        if: env.PUSH == 'true'
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build, and on main push missing tags
+        id: images
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in images/*/ services/*/image/; do
+            [ -d "$dir" ] || continue
+            dir=${dir%/}
+            case "$dir" in
+              services/*) name=$(basename "$(dirname "$dir")") ;;
+              *) name=$(basename "$dir") ;;
+            esac
+            image=partnersinhealth/$name
+            tag=$(utils/hash-directory.sh "$dir")
+            platforms=linux/amd64,linux/arm64
+            echo "::group::$image:$tag"
+            # Only a definite "not found" means the tag is missing. Any other failure (network,
+            # auth or rate limit, Hub 5xx) is retried, then fails the run: it must never lead to
+            # a push over a tag that exists.
+            published=unknown
+            for attempt in 1 2 3; do
+              if err=$(docker manifest inspect "$image:$tag" 2>&1 >/dev/null); then
+                published=yes; break
+              elif grep -q -i -E 'no such manifest|manifest unknown' <<< "$err"; then
+                published=no; break
+              fi
+              # A repository that doesn't exist yet (its first publish) answers "denied", like an auth
+              # failure does. Docker Hub's API says which: 404 means no repository, so no tag.
+              if code=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' \
+                  "https://hub.docker.com/v2/repositories/$image/") && [ "$code" = 404 ]; then
+                published=no; break
+              fi
+              echo "docker manifest inspect $image:$tag failed (attempt $attempt): $err" >&2
+              sleep $((attempt * ${RETRY_DELAY:-5}))
+            done
+            if [ "$published" = unknown ]; then
+              echo "::error::Can't tell whether $image:$tag is published; not building or pushing it"
+              exit 1
+            elif [ "$published" = yes ]; then
+              echo "$image:$tag is published; not rebuilt"
+            elif [ "$PUSH" = true ]; then
+              docker buildx build --push --platform "$platforms" -t "$image:$tag" "$dir"
+            else
+              docker build -t "$image:$tag" "$dir"
+            fi
+            if [ "$PUSH" = true ]; then
+              docker buildx imagetools create -t "$image:latest" "$image:$tag"
+            fi
+            echo "::endgroup::"
+          done

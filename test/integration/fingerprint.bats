@@ -24,7 +24,7 @@ teardown_file() { common_teardown_file; }
 
 setup() { cd "$BATS_TEST_TMPDIR"; }
 teardown() {
-    [ -n "${NAME:-}" ] && destroy_instance "$NAME"
+    [ -n "${NAME:-}" ] && remove_test_instance "$NAME"
     common_teardown
 }
 
@@ -68,8 +68,8 @@ without_accounts() { # <fingerprint file>
 @test "a logical restore fingerprints the same as its source before the first start, apart from accounts" {
     MYSQL_PASSWORD=openmrs "$UTILS/backup-mysqldump.sh" --container="$SRC_DB" --user=root --output=dump.sql 2>/dev/null
     NAME="$(instance)"
-    SERVICES=openmrs-db create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
+    create_instance "$NAME" --services=openmrs-db
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql)"
     assert_success
     "$UTILS/fingerprint.sh" --db-volume="${NAME}_db-data" --output=after.txt
     run diff <(without_accounts "$BEFORE") <(without_accounts after.txt)
@@ -80,8 +80,8 @@ without_accounts() { # <fingerprint file>
     MYSQL_PASSWORD=openmrs ARCHIVE_PASSWORD=pw "$UTILS/backup-percona.sh" --container="$SRC_DB" \
         --volume="$SRC_DB-data" --output=backup.7z >/dev/null 2>&1
     NAME="$(instance)"
-    SERVICES=openmrs-db create_instance "$NAME"
-    ARCHIVE_PASSWORD=pw run_initialize "$NAME" RESTORE_MYSQL_PERCONA_PATH=backup.7z
+    create_instance "$NAME" --services=openmrs-db
+    ARCHIVE_PASSWORD=pw run_initialize "$NAME" --from "$(from_folder openmrs-db.percona.7z backup.7z)"
     assert_success
     "$UTILS/fingerprint.sh" --db-volume="${NAME}_db-data" --output=after.txt
     run diff <(without_accounts "$BEFORE") <(without_accounts after.txt)
@@ -91,8 +91,8 @@ without_accounts() { # <fingerprint file>
 @test "a row written after the backup shows in [rows] and [recent]" {
     MYSQL_PASSWORD=openmrs "$UTILS/backup-mysqldump.sh" --container="$SRC_DB" --user=root --output=dump.sql 2>/dev/null
     NAME="$(instance)"
-    SERVICES=openmrs-db create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql
+    create_instance "$NAME" --services=openmrs-db
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql)"
     "$UTILS/fingerprint.sh" --db-volume="${NAME}_db-data" --output=restored.txt
     # the source moves on: a copy of the source's volume stands in, so the shared source stays as is
     local later=$(res later)
@@ -125,7 +125,7 @@ without_accounts() { # <fingerprint file>
     assert_output --partial "is in use by a running container"
 }
 
-@test "--data-dir summarizes each top-level folder, leaving out distribution artifacts when asked" {
+@test "--data-dir summarizes each top-level directory, leaving out distribution artifacts when asked" {
     mkdir -p data/complex_obs/2026 data/modules data/.openmrs-lib-cache
     head -c 1000 /dev/urandom > data/complex_obs/2026/a.png
     head -c 500 /dev/urandom > data/complex_obs/b.pdf

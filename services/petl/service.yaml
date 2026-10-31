@@ -1,0 +1,5 @@
+description: PETL, the extract-transform-load job that fills the reporting databases
+requires: [openmrs-db]
+# Holds the instance lock while it runs (`run-service petl`).
+job: true
+backup: none

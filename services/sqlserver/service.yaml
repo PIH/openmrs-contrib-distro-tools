@@ -1,0 +1,4 @@
+description: Microsoft SQL Server, and the setup that applies its settings, databases and logins
+# Runs on every start, once the server is healthy.
+setup: [sqlserver-setup]
+backup: none

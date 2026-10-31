@@ -1,0 +1,8 @@
+# Applied when the instance has both petl and sqlserver: PETL's SQL Server login, which
+# sqlserver-setup creates (set SQLSERVER_LOGIN_PETL_* in sqlserver.env or petl.env to change it).
+services:
+  sqlserver-setup:
+    environment:
+      SQLSERVER_LOGIN_PETL_USER: ${SQLSERVER_LOGIN_PETL_USER:-${PETL_SQLSERVER_USER}}
+      SQLSERVER_LOGIN_PETL_PASSWORD: ${SQLSERVER_LOGIN_PETL_PASSWORD:-${PETL_SQLSERVER_PASSWORD}}
+      SQLSERVER_LOGIN_PETL_DATABASES: ${SQLSERVER_LOGIN_PETL_DATABASES:-${PETL_SQLSERVER_DATABASE}}

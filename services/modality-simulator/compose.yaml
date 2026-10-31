@@ -1,0 +1,36 @@
+# Fake CR/US/CT modalities for testing, one console tab per station: each reads the AdvaPACS
+# gateway's DICOM worklist and sends images for the entries picked in its tab (or all of them, with
+# auto-acquire). Its settings are in stations.yaml in $MODALITY_SIMULATOR_CONFIG_DIR. Its code and
+# README: https://github.com/PIH/modality-simulator.
+#
+# No depends_on advapacs-gateway: the gateway may be outside this instance, and it opens its DICOM
+# port only once AdvaPACS has sent it its configuration. The simulator shows why it can't connect
+# and retries. The gateway uses the host's network, so it's reached through host.docker.internal.
+services:
+  modality-simulator:
+    container_name: ${SERVICE_NAME}-modality-simulator
+    image: ${MODALITY_SIMULATOR_IMAGE_NAME}:${MODALITY_SIMULATOR_IMAGE_TAG}
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${MODALITY_SIMULATOR_HOST_PORT}:8080"
+    env_file:
+      - path: ${PIHX_TOOLS}/services/modality-simulator/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/modality-simulator.env
+        required: false
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - modality-simulator-data:/data
+      # stations.yaml: the gateway and the stations. A directory holding that file.
+      - ${MODALITY_SIMULATOR_CONFIG_DIR}:/config:ro
+      # De-identified DICOM files to send instead of generated images; with none, it generates them.
+      - ${MODALITY_SIMULATOR_IMAGE_DIR}:/images:ro
+
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
+volumes:
+  modality-simulator-data:
+    external: true
+    name: ${SERVICE_NAME}_modality-simulator-data

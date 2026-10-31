@@ -5,3 +5,5 @@
 
 # test dependencies fetched by test/run
 test/.deps/
+__pycache__/
+*.pyc

@@ -1,0 +1,32 @@
+# The pih-biometrics fingerprint server, for OpenMRS (pihcore): https://github.com/PIH/pih-biometrics.
+# Nothing is published: OpenMRS reaches it as http://biometrics:9000. See docs/services.md.
+services:
+  biometrics:
+    container_name: ${SERVICE_NAME}-biometrics
+    image: ${BIOMETRICS_IMAGE_NAME}:${BIOMETRICS_IMAGE_TAG}
+    restart: unless-stopped
+    hostname: ${SERVICE_NAME}-biometrics
+    env_file:
+      - path: ${PIHX_TOOLS}/services/biometrics/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/biometrics.env
+        required: false
+    environment:
+      TZ: ${TZ}
+      PIH_BIOMETRICS_LICENSE_BASE64: "${BIOMETRICS_LICENSE_BASE64:?must be set: the Neurotechnology license file, base64-encoded (base64 -w0 <file>.lic)}"
+      PIH_BIOMETRICS_MATCHING_THRESHOLD: ${BIOMETRICS_MATCHING_THRESHOLD}
+      PIH_BIOMETRICS_MATCHING_SPEED: ${BIOMETRICS_MATCHING_SPEED}
+      PIH_BIOMETRICS_TEMPLATE_SIZE: ${BIOMETRICS_TEMPLATE_SIZE}
+    volumes:
+      - biometrics-data:/opt/pih-biometrics/data
+      # The Neurotechnology license follows the hostname and an identity kept here: see docs/services.md.
+      - biometrics-licensing:/var/tmp
+
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
+volumes:
+  biometrics-data:
+    external: true
+    name: ${SERVICE_NAME}_biometrics-data
+  biometrics-licensing:
+    external: true
+    name: ${SERVICE_NAME}_biometrics-licensing

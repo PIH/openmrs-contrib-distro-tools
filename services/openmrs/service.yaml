@@ -1,0 +1,15 @@
+description: The OpenMRS application
+requires: [openmrs-db]
+# Runtime properties, set when the instance is created, as OMRS_EXTRA_<property>.
+capture-env: [OMRS_EXTRA_]
+# Before every start and update: whether OpenMRS creates its tables (compose.yaml).
+start-env:
+  - script: start/create-tables
+    sets: [OPENMRS_DB_FOUND_EMPTY]
+backup: none
+# initialize: openmrs-data from an archive or a directory named after the service (restore/*.yaml).
+restore:
+  - names: [openmrs.7z, openmrs.tar.gz, openmrs.tgz, openmrs.tar, openmrs.zip]
+    overlay: restore/archive.yaml
+  - names: [openmrs/]
+    overlay: restore/directory.yaml

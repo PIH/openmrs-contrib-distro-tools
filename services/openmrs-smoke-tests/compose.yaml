@@ -1,0 +1,24 @@
+services:
+  openmrs-smoke-tests:
+    image: ${SMOKE_TESTS_IMAGE_NAME}:${SMOKE_TESTS_IMAGE_TAG}
+    profiles: ["openmrs-smoke-tests"]
+    depends_on:
+      openmrs:
+        condition: service_healthy
+    env_file:
+      - path: ${PIHX_TOOLS}/services/openmrs-smoke-tests/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/openmrs-smoke-tests.env
+        required: false
+    environment:
+      WEBAPP_URL: http://openmrs:8080/openmrs
+      WEBAPP_NAME: openmrs
+      DATABASE_URL: jdbc:mysql://openmrs-db:3306/openmrs
+      DATABASE_USERNAME: ${OPENMRS_DB_USER}
+      DATABASE_PASSWORD: ${OPENMRS_DB_PASSWORD}
+      ADMIN_USER_PASSWORD: ${SMOKE_TESTS_ADMIN_PASSWORD}
+      MAVEN_GOALS: verify
+      TZ: ${TZ}
+    shm_size: 512m
+    volumes:
+      - ${SMOKE_TESTS_OUTPUT_DIR}:/smoketests/target
+      - ${SMOKE_TESTS_SCREENSHOTS_DIR}:/smoketests/screenshots

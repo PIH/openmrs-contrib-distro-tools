@@ -1,0 +1,36 @@
+# AdvaPACS's on-premises gateway: receives DICOM (and optionally HL7) from local modalities and
+# uploads it to the AdvaPACS cloud, over outbound HTTPS only. Independent of openhim.
+#
+# Its listening ports (Local AEs, HL7 inbound services) are set in the AdvaPACS UI and pushed to the
+# gateway, not set here, so it uses the host's network, as AdvaPACS recommends: there's nothing to
+# publish, and a port configured in AdvaPACS works without changing this instance.
+#
+# The data directory (received studies, the upload queue, the embedded database) is the image's
+# default, /opt/AdvaHealthSolutions/AdvaPACSGateway. Leave the gateway's Data Directory in AdvaPACS
+# at that path, or the data lands outside the volume.
+services:
+  advapacs-gateway:
+    container_name: ${SERVICE_NAME}-advapacs-gateway
+    image: ${ADVAPACS_GATEWAY_IMAGE_NAME}:${ADVAPACS_GATEWAY_IMAGE_TAG}
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - path: ${PIHX_TOOLS}/services/advapacs-gateway/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/advapacs-gateway.env
+        required: false
+    environment:
+      TZ: ${TZ}
+      # Prefixed ADVAPACS_GATEWAY_* in the instance's env, passed to the gateway under the names it
+      # reads. No defaults: the instance must set them, from AdvaPACS (Configuration > Gateways).
+      ADVAPACS_REGION: "${ADVAPACS_GATEWAY_REGION:?must be set: the region of the gateway, from AdvaPACS (Configuration > Gateways)}"
+      ADVAPACS_ACCESS_KEY_ID: "${ADVAPACS_GATEWAY_ACCESS_KEY_ID:?must be set: the access key ID of the gateway, from AdvaPACS (Configuration > Gateways)}"
+      ADVAPACS_ACCESS_KEY_SECRET: "${ADVAPACS_GATEWAY_ACCESS_KEY_SECRET:?must be set: the access key secret of the gateway, from AdvaPACS (Configuration > Gateways)}"
+    volumes:
+      - advapacs-gateway-data:/opt/AdvaHealthSolutions/AdvaPACSGateway
+
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
+volumes:
+  advapacs-gateway-data:
+    external: true
+    name: ${SERVICE_NAME}_advapacs-gateway-data

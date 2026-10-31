@@ -60,11 +60,12 @@ jobs:
             fi
           done
       # Output isn't streamed: PETL's errors can include data, and this job runs in the calling repo's
-      # context (often public). run-petl writes the full log under /home/<instance>/logs on the host.
+      # context (often public). The full output builds up in the instance's petl container log on the
+      # host (`pihx <instance> logs petl`), and each run's exit code goes to syslog (tag run-petl).
       - name: Run PETL
         if: steps.gate.outputs.disabled != 'true'
-        # Above run-petl's own waits (up to an hour for another openmrs-docker command, then for
-        # OpenMRS), so a run that waits too long fails with run-petl's message rather than a kill.
+        # Above run-petl's own wait (for another pihx command to release the instance lock), so a run
+        # that waits too long fails with run-petl's message rather than a kill.
         timeout-minutes: 150
         env:
           INSTANCE: ${{ inputs.instance }}

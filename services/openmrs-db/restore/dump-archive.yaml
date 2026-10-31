@@ -1,0 +1,47 @@
+# initialize, openmrs-db.sql.7z or openmrs-db.sql.zip: extracts the archive's one dump (.sql or
+# .sql.gz) into db-init, where MySQL's entrypoint imports it on first start.
+
+services:
+  restore-mysql-dump-archive:
+    image: ${P7ZIP_IMAGE:?P7ZIP_IMAGE must be set}
+    container_name: ${SERVICE_NAME}-restore-mysql-dump-archive
+    environment:
+      - ARCHIVE_PASSWORD
+      - ARCHIVE_NAME=${OPENMRS_DB_RESTORE_ARCHIVE:?OPENMRS_DB_RESTORE_ARCHIVE must be set}
+    volumes:
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}
+        target: /source/${OPENMRS_DB_RESTORE_ARCHIVE:?OPENMRS_DB_RESTORE_ARCHIVE must be set}
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PIHX_TOOLS}/utils/lib/in-container/extract.sh:/extract.sh:ro
+      - db-init:/target
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        STAGING=/target/.restore-staging
+        sh /extract.sh "/source/$$ARCHIVE_NAME" "$$STAGING"
+        FILES=$$(find "$$STAGING" -type f)
+        if [ -z "$$FILES" ] || [ "$$(echo "$$FILES" | wc -l)" -ne 1 ]; then
+            echo "error: $$ARCHIVE_NAME must contain exactly one dump file" >&2
+            exit 1
+        fi
+        case "$$FILES" in
+            *.gz) mv "$$FILES" /target/dump.sql.gz ;;
+            *)    mv "$$FILES" /target/dump.sql ;;
+        esac
+        rm -rf "$$STAGING"
+
+  openmrs-db:
+    depends_on:
+      restore-mysql-dump-archive:
+        condition: service_completed_successfully
+    volumes:
+      - db-init:/docker-entrypoint-initdb.d
+
+volumes:
+  db-init:

@@ -7,12 +7,12 @@ load ../helpers
 # Needs quoting in SQL and the shell; a single quote can't be in an env file at all.
 PW='pa$s "w;d`x'
 
-teardown() { destroy_instance "$NAME"; common_teardown; }
+teardown() { remove_test_instance "$NAME"; common_teardown; }
 
 new_instance() { # [image name] [image tag]
     NAME="$(instance)"
-    OPENMRS_DB_IMAGE_NAME="${1:-mysql}" OPENMRS_DB_IMAGE_TAG="${2:-5.6}" SERVICES=openmrs-db create_instance "$NAME"
-    ENV="$OPENMRS_DOCKER_HOME/$NAME/env"
+    OPENMRS_DB_IMAGE_NAME="${1:-mysql}" OPENMRS_DB_IMAGE_TAG="${2:-5.6}" create_instance "$NAME" --services=openmrs-db
+    ENV="$(env_file_of "$NAME" openmrs-db)"
 }
 
 declare_account() { # <id> <user> <password> <grants> [databases]
@@ -120,16 +120,23 @@ assert_account_created() {
 }
 
 @test "changing an account's password doesn't recreate openmrs-db" {
-    new_instance
-    declare_account RPT reports "$PW" 'SELECT ON openmrs.*'
+    # A service's account comes from its own env file through its with-openmrs-db.yaml (petl's), so
+    # only openmrs-db-accounts sees it; one declared in openmrs-db.env reaches the database
+    # container too (docs/services.md).
+    NAME="$(instance)"
+    PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD="$PW" \
+        create_instance "$NAME" --services=openmrs-db,petl 2>/dev/null
     run start_and_wait_for_accounts
     assert_output 0
     local before
     before=$(docker inspect -f '{{.Id}}' "$NAME-openmrs-db")
-    sed -i "s/^OPENMRS_DB_ACCOUNT_RPT_PASSWORD=.*/OPENMRS_DB_ACCOUNT_RPT_PASSWORD='n3w-pw'/" "$ENV"
-    run start_and_wait_for_accounts
-    assert_output 0
+    set_env_value "$NAME" petl PETL_MYSQL_PASSWORD n3w-pw
+    run "$BIN/openmrs-docker" "$NAME" update
+    assert_success
+    assert_equal "$(docker wait "$NAME-openmrs-db-accounts")" 0
     assert_equal "$(docker inspect -f '{{.Id}}' "$NAME-openmrs-db")" "$before"
+    run db_as petl n3w-pw 'SELECT 1'
+    assert_output 1
 }
 
 @test "a declared account can't be root or the OpenMRS user, and nothing changes" {

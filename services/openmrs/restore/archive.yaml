@@ -1,0 +1,33 @@
+# initialize, openmrs.7z, .tar.gz, .tgz, .tar or .zip: extracts it into openmrs-data, through a
+# staging directory in the volume so the last step is a rename. A single top-level directory (as
+# backup-openmrs-data-directory makes) is unwrapped. Then scripts/finish-data-restore.sh.
+
+services:
+  restore-openmrs-data-volume:
+    image: ${P7ZIP_IMAGE:?P7ZIP_IMAGE must be set}
+    container_name: ${SERVICE_NAME}-restore-openmrs-data-volume
+    environment:
+      - ARCHIVE_PASSWORD
+      - ARCHIVE_NAME=${OPENMRS_RESTORE_ARCHIVE:?OPENMRS_RESTORE_ARCHIVE must be set}
+      - OWNER=${OPENMRS_DATA_OWNER:?OPENMRS_DATA_OWNER must be set}
+    volumes:
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${OPENMRS_RESTORE_PATH:?OPENMRS_RESTORE_PATH must be set}
+        target: /source/${OPENMRS_RESTORE_ARCHIVE:?OPENMRS_RESTORE_ARCHIVE must be set}
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PIHX_TOOLS}/utils/lib/in-container/extract.sh:/extract.sh:ro
+      - ${PIHX_TOOLS}/services/openmrs/scripts/finish-data-restore.sh:/finish-data-restore.sh:ro
+      - openmrs-data:/target
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        STAGING=/target/.restore-staging
+        ROOT=$$(sh /extract.sh "/source/$$ARCHIVE_NAME" "$$STAGING" --print-root)
+        find "$$ROOT" -mindepth 1 -maxdepth 1 -exec mv {} /target/ \;
+        rm -rf "$$STAGING"
+        sh /finish-data-restore.sh

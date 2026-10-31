@@ -29,7 +29,7 @@ on:
         type: string
         default: ''
       tools_ref:
-        description: Ref of openmrs-contrib-distro-tools to check out (branch/tag/SHA). Defaults to its default branch. Set this to validate changes to this workflow itself, or to bin/openmrs-docker/docker/services, from a branch before merging.
+        description: Ref of openmrs-contrib-distro-tools to check out (branch/tag/SHA). Defaults to its default branch. Set this to validate changes to this workflow itself, or to bin/openmrs-docker, openmrs/ or services/, from a branch before merging.
         required: false
         type: string
         default: ''
@@ -69,16 +69,25 @@ jobs:
         env:
           OPENMRS_IMAGE_NAME: ${{ inputs.image_name }}
           OPENMRS_PIH_CONFIG: ${{ inputs.pih_config }}
-          SEED_IMAGE_NAME: ${{ inputs.seed_image_name }}
           # avoid OOM/swap-thrashing on the 7GB ubuntu-latest runner
           OPENMRS_DB_OPT_innodb_buffer_pool_size: 1G
-        run: .openmrs-contrib-distro-tools/bin/openmrs-docker create ${{ env.INSTANCE_NAME }}
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} create
 
+      # Its settings go in the instance's openmrs-smoke-tests.env; the password only when given, so
+      # the service's default applies otherwise.
       - name: Add smoke-tests service
-        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} add-service openmrs-smoke-tests
+        env:
+          ADMIN_USER_PASSWORD: ${{ inputs.admin_user_password }}
+          SMOKE_TESTS_OUTPUT_DIR: ${{ github.workspace }}/smoke-test-output
+          SMOKE_TESTS_SCREENSHOTS_DIR: ${{ github.workspace }}/smoke-test-screenshots
+        run: |
+          if [ -n "$ADMIN_USER_PASSWORD" ]; then
+            export SMOKE_TESTS_ADMIN_PASSWORD="$ADMIN_USER_PASSWORD"
+          fi
+          .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} add-service openmrs-smoke-tests
 
       - name: Initialize from seed
-        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} initialize
+        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} initialize --from-image "${{ inputs.seed_image_name }}:latest"
 
       - name: Start stack
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} start
@@ -87,10 +96,6 @@ jobs:
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} wait
 
       - name: Run smoke tests
-        env:
-          SMOKE_TESTS_ADMIN_PASSWORD: ${{ inputs.admin_user_password }}
-          SMOKE_TESTS_OUTPUT_DIR: ${{ github.workspace }}/smoke-test-output
-          SMOKE_TESTS_SCREENSHOTS_DIR: ${{ github.workspace }}/smoke-test-screenshots
         run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} run-service openmrs-smoke-tests ./execute-smoke-tests.sh ${{ inputs.suite }}
 
       - name: Upload smoke test results
@@ -102,10 +107,6 @@ jobs:
             ${{ github.workspace }}/smoke-test-output
             ${{ github.workspace }}/smoke-test-screenshots
           if-no-files-found: ignore
-
-      - name: Destroy instance
-        if: always()
-        run: .openmrs-contrib-distro-tools/bin/openmrs-docker ${{ env.INSTANCE_NAME }} destroy --force
 
   notify-ci-dashboard:
     needs: smoke-test

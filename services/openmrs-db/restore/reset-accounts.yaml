@@ -1,0 +1,26 @@
+# initialize, after a physical restore (percona.yaml, datadir.yaml): the restored data directory
+# brings the source server's accounts, so this sets them to the instance's before openmrs-db first
+# starts (utils/lib/in-container/reset-mysql-accounts.sh), keeping and listing the source's others.
+
+services:
+  reset-mysql-accounts:
+    image: ${OPENMRS_DB_IMAGE_NAME:?OPENMRS_DB_IMAGE_NAME must be set}:${OPENMRS_DB_IMAGE_TAG:?OPENMRS_DB_IMAGE_TAG must be set}
+    container_name: ${SERVICE_NAME}-reset-mysql-accounts
+    depends_on:
+      restore-mysql-volume:
+        condition: service_completed_successfully
+    entrypoint: ["bash", "/reset-mysql-accounts.sh"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD:?OPENMRS_DB_ROOT_PASSWORD must be set}
+      MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD:?OPENMRS_DB_PASSWORD must be set}
+      RESET_DB_USER: ${OPENMRS_DB_USER:?OPENMRS_DB_USER must be set}
+      RESET_DB_NAME: openmrs
+    volumes:
+      - db-data:/var/lib/mysql
+      - ${PIHX_TOOLS}/utils/lib/in-container/reset-mysql-accounts.sh:/reset-mysql-accounts.sh:ro
+      - ${PIHX_TOOLS}/services/openmrs-db/scripts/mysql-accounts.sh:/mysql-accounts.sh:ro
+
+  openmrs-db:
+    depends_on:
+      reset-mysql-accounts:
+        condition: service_completed_successfully

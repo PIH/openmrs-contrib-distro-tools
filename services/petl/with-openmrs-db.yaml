@@ -1,0 +1,9 @@
+# Applied when the instance has both petl and openmrs-db: PETL's MySQL account, which
+# openmrs-db-accounts creates (set OPENMRS_DB_ACCOUNT_PETL_* in openmrs-db.env or petl.env to change it).
+services:
+  openmrs-db-accounts:
+    environment:
+      OPENMRS_DB_ACCOUNT_PETL_USER: ${OPENMRS_DB_ACCOUNT_PETL_USER:-${PETL_MYSQL_USER}}
+      OPENMRS_DB_ACCOUNT_PETL_PASSWORD: ${OPENMRS_DB_ACCOUNT_PETL_PASSWORD:-${PETL_MYSQL_PASSWORD}}
+      OPENMRS_DB_ACCOUNT_PETL_GRANTS: ${OPENMRS_DB_ACCOUNT_PETL_GRANTS}
+      OPENMRS_DB_ACCOUNT_PETL_DATABASES: ${OPENMRS_DB_ACCOUNT_PETL_DATABASES:-${PETL_MYSQL_REPORTING_DATABASE}}

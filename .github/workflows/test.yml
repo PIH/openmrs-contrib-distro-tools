@@ -6,9 +6,12 @@ on:
       - 'main'
     paths:
       - 'bin/**'
-      - 'lib/**'
       - 'utils/**'
-      - 'docker/**'
+      - 'pihx/**'
+      - 'services/**'
+      - 'openmrs/**'
+      - 'images/**'
+      - 'instance.env.defaults'
       - 'test/**'
       - 'docs/**'
       - 'README.md'
@@ -17,9 +20,12 @@ on:
   pull_request:
     paths:
       - 'bin/**'
-      - 'lib/**'
       - 'utils/**'
-      - 'docker/**'
+      - 'pihx/**'
+      - 'services/**'
+      - 'openmrs/**'
+      - 'images/**'
+      - 'instance.env.defaults'
       - 'test/**'
       - 'docs/**'
       - 'README.md'
@@ -38,6 +44,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+
+      - name: Unit tests
+        run: test/run unit
 
       - name: Static checks
         run: test/run static

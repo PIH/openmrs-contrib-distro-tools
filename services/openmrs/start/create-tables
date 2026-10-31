@@ -1,0 +1,84 @@
+#!/bin/sh
+# start-env (service.yaml), before every start and update: prints OPENMRS_DB_FOUND_EMPTY=true only
+# when it has just found the OpenMRS database to hold no tables, so OpenMRS creates them (see
+# compose.yaml). Anything else -- openmrs-db not healthy, a failed or timed-out query, unexpected
+# output, any table -- prints false, with one line saying why. Nothing is ever written or dropped:
+# it starts openmrs-db and reads information_schema, that's all. OPENMRS_CREATE_TABLES (openmrs.env)
+# can force false, never true.
+# An existing openmrs container keeps its value, so this value doesn't recreate it, only where that
+# is safe: false always, and true only while OpenMRS's first install can't have finished -- the
+# container is running, has never stopped since it was created (State.FinishedAt is unset), its
+# health is still `starting`, and no healthcheck in its log has passed. (A restart resets the health
+# status to `starting`; the log keeps only the last five checks.) A recreate part way through the
+# first install could leave a half-built schema that the next start takes for an installed one.
+# Anything else -- a container that was healthy or stopped, or one that can't be read -- is decided
+# from the database, as a new one is: a full database gives false, at the cost of one recreate.
+set -u
+
+decide() { # <true|false> <why>
+    echo "openmrs: $2" >&2
+    echo "OPENMRS_DB_FOUND_EMPTY=$1"
+    exit 0
+}
+
+# OPENMRS_CREATE_TABLES (openmrs.env) can only force false: true still needs an empty database, and
+# any other value is taken as false.
+case ${OPENMRS_CREATE_TABLES:-} in
+    "") ;;
+    true) echo "openmrs: warning: OPENMRS_CREATE_TABLES=true (openmrs.env) can only apply to an empty database: checking it" >&2 ;;
+    false) decide false "OPENMRS_CREATE_TABLES=false (openmrs.env): OpenMRS won't create tables" ;;
+    *) decide false "OPENMRS_CREATE_TABLES (openmrs.env) is neither true nor false: OpenMRS won't create tables" ;;
+esac
+
+NEVER=0001-01-01T00:00:00Z
+if ! ids=$(docker compose --project-directory "$PIHX_INSTANCE_DIR" ps -a -q openmrs 2>/dev/null); then
+    echo "openmrs: warning: couldn't tell whether the openmrs container exists; checking the database" >&2
+    ids=
+fi
+if [ -n "$ids" ]; then
+    id=$(printf '%s\n' "$ids" | head -n 1)
+    # The first line its state, health, when it last stopped and its health checks' exit codes;
+    # then its environment.
+    # shellcheck disable=SC2016 # a Go template
+    template='{{.State.Status}} {{with .State.Health}}{{.Status}}{{else}}none{{end}} {{.State.FinishedAt}} {{with .State.Health}}{{range .Log}}{{.ExitCode}},{{end}}{{end}}
+{{range .Config.Env}}{{println .}}{{end}}'
+    if found=$(docker inspect -f "$template" "$id" 2>/dev/null); then
+        state=$(printf '%s\n' "$found" | head -n 1)
+        value=$(printf '%s\n' "$found" | sed -n 's/^OMRS_CONFIG_CREATE_TABLES=//p')
+        case $value:$state in
+            false:*) decide false "the openmrs container exists: keeping its create_tables (false)" ;;
+            # A check that passed (exit code 0) in the log.
+            "true:running starting $NEVER 0,"* | "true:running starting $NEVER "*",0,"*) ;;
+            "true:running starting $NEVER "*)
+                decide true "the openmrs container is still on its first start: keeping its create_tables (true)" ;;
+        esac
+        echo "openmrs: the openmrs container can't keep its create_tables; checking the database" >&2
+    else
+        echo "openmrs: warning: couldn't read the openmrs container's settings; checking the database" >&2
+    fi
+fi
+
+# Compose's progress to stderr: standard output is only for the value.
+if ! docker compose --project-directory "$PIHX_INSTANCE_DIR" \
+        up -d --wait --wait-timeout 600 openmrs-db >&2; then
+    decide false "openmrs-db didn't become healthy, so the database wasn't checked: OpenMRS won't create tables"
+fi
+
+# As root, which sees every table; the schema is the database's own (MYSQL_DATABASE). Two counts:
+# the schema exists (1), and its tables (0 for an empty database).
+# shellcheck disable=SC2016 # expanded in openmrs-db's container
+query='MYSQL_PWD="$MYSQL_ROOT_PASSWORD" "$(command -v mysql || command -v mariadb)" -uroot -N -B -e "
+SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = '"'"'$MYSQL_DATABASE'"'"';
+SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '"'"'$MYSQL_DATABASE'"'"';"'
+if ! counts=$(timeout 120 docker compose --project-directory "$PIHX_INSTANCE_DIR" \
+        exec -T openmrs-db sh -c "$query" 2>/dev/null); then
+    decide false "couldn't count the database's tables: OpenMRS won't create tables"
+fi
+nl='
+'
+case $counts in
+    "1${nl}0") decide true "the database has no tables: OpenMRS will create them" ;;
+    "1${nl}"*[!0-9]* | "1${nl}") ;;
+    "1${nl}"*) decide false "the database has tables: OpenMRS won't create them" ;;
+esac
+decide false "unexpected answer counting the database's tables: OpenMRS won't create tables"

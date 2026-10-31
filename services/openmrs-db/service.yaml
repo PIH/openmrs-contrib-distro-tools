@@ -1,0 +1,20 @@
+description: The OpenMRS database (MySQL or MariaDB), and the setup that makes sure the accounts declared for it exist
+# Server options set when the instance is created, as OPENMRS_DB_OPT_<option> (see compose.yaml).
+capture-env: [OPENMRS_DB_OPT_]
+# Runs on every start, once the database is healthy.
+setup: [openmrs-db-accounts]
+backup: none
+# initialize: one entry, named after the service, in the directory it restores from (restore/*.yaml).
+# A physical restore (Percona, a data directory) brings the source's accounts: reset after it.
+restore:
+  - names: [openmrs-db.sql, openmrs-db.sql.gz]
+    overlay: restore/dump.yaml
+  - names: [openmrs-db.sql.7z, openmrs-db.sql.zip]
+    overlay: restore/dump-archive.yaml
+  - names: [openmrs-db.percona/, openmrs-db.percona.7z, openmrs-db.percona.zip,
+            openmrs-db.percona.tar.gz, openmrs-db.percona.tgz, openmrs-db.percona.tar]
+    overlay: restore/percona.yaml
+    after: restore/reset-accounts.yaml
+  - names: [openmrs-db.datadir/]
+    overlay: restore/datadir.yaml
+    after: restore/reset-accounts.yaml

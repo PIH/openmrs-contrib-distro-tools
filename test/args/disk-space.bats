@@ -7,7 +7,7 @@ load ../helpers
 
 setup() { cd "$BATS_TEST_TMPDIR"; }
 teardown() {
-    [ -n "${NAME:-}" ] && destroy_instance "$NAME"
+    [ -n "${NAME:-}" ] && remove_test_instance "$NAME"
     common_teardown
 }
 
@@ -17,10 +17,10 @@ random_file() { # <path> <KiB>
 
 @test "initialize refuses before creating any volume, counting a .7z dump twice (extracted, then imported)" {
     NAME="$(instance)"
-    SERVICES=openmrs-db create_instance "$NAME"
+    create_instance "$NAME" --services=openmrs-db
     random_file src/dump.sql 1024
     docker run --rm -v "$BATS_TEST_TMPDIR/src:/w" -w /w "$P7ZIP_IMAGE" 7z a -ppw /w/dump.7z dump.sql >/dev/null
-    ARCHIVE_PASSWORD=pw DISK_SPACE_FREE_KB=100 run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=src/dump.7z
+    ARCHIVE_PASSWORD=pw DISK_SPACE_FREE_KB=100 run_initialize "$NAME" --from "$(from_folder openmrs-db.sql.7z src/dump.7z)"
     assert_failure
     assert_output --partial "not enough disk space on Docker's volumes"
     assert_output --partial "needs about 2.0M"
@@ -29,10 +29,11 @@ random_file() { # <path> <KiB>
 
 @test "initialize counts a .sql.gz dump at its uncompressed size, plus the openmrs-data directory" {
     NAME="$(instance)"
-    SERVICES=openmrs-db create_instance "$NAME"
+    create_instance "$NAME" --services=openmrs-db,openmrs
     random_file dump.sql 1024 && gzip dump.sql
     random_file data/complex_obs/a 1024
-    DISK_SPACE_FREE_KB=100 run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH=dump.sql.gz RESTORE_OPENMRS_DATA_PATH=data
+    DISK_SPACE_FREE_KB=100 run_initialize "$NAME" \
+        --from "$(from_folder openmrs-db.sql.gz dump.sql.gz openmrs data)"
     assert_failure
     assert_output --regexp 'needs about 2\.0M'
     assert_no_leftovers
@@ -69,12 +70,14 @@ random_file() { # <path> <KiB>
     assert [ -f out.tar.gz ]
 }
 
-@test "initialize counts a Percona backup twice (extracted into a temporary volume, then copied in)" {
+@test "initialize counts a Percona backup directory, and refuses before creating any volume" {
     NAME="$(instance)"
-    SERVICES=openmrs-db create_instance "$NAME"
+    create_instance "$NAME" --services=openmrs-db
     random_file percona/ibdata1 1024
-    DISK_SPACE_FREE_KB=100 run_initialize "$NAME" RESTORE_MYSQL_PERCONA_PATH=percona
+    DISK_SPACE_FREE_KB=100 run_initialize "$NAME" --from "$(from_folder openmrs-db.percona percona)"
     assert_failure
-    assert_output --partial "needs about 2.0M"
+    # pihx's estimate is generic: a directory counts once, though a Percona backup is copied into a
+    # temporary volume first (documented; an archive counts twice, extracted then copied)
+    assert_output --partial "needs about 1.0M"
     assert_no_leftovers
 }

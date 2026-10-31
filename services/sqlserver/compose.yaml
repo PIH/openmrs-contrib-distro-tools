@@ -1,0 +1,59 @@
+services:
+  sqlserver:
+    container_name: ${SERVICE_NAME}-sqlserver
+    image: mcr.microsoft.com/mssql/server:${SQLSERVER_IMAGE_TAG}
+    env_file:
+      - path: ${PIHX_TOOLS}/services/sqlserver/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/sqlserver.env
+        required: false
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${SQLSERVER_SA_PASSWORD:?must be set: the SQL Server sa password (SQL Server's policy: at least 8 characters, and characters from at least 3 of upper case, lower case, digits and symbols)}"
+      MSSQL_MEMORY_LIMIT_MB: ${SQLSERVER_MEMORY_MB}
+      # For sqlcmd (healthcheck), so the password isn't on its command line.
+      SQLCMDPASSWORD: ${SQLSERVER_SA_PASSWORD}
+      TZ: ${TZ}
+    ports:
+      - ${SQLSERVER_PUBLISHED_PORT}:1433
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      # -C: 2022+ images encrypt by default, with a self-signed certificate.
+      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-C", "-S", "localhost", "-U", "sa", "-Q", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${SQLSERVER_MEMORY_LIMIT}
+
+  # Server settings, databases and logins (scripts/sqlserver-setup.sh). Runs on every
+  # start, and first for any service that depends on it.
+  sqlserver-setup:
+    container_name: ${SERVICE_NAME}-sqlserver-setup
+    image: mcr.microsoft.com/mssql/server:${SQLSERVER_IMAGE_TAG}
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    entrypoint: ["bash", "/sqlserver-setup.sh"]
+    # Its SQLSERVER_LOGIN_* come from sqlserver.env; other services add theirs in their
+    # with-sqlserver.yaml.
+    env_file:
+      - path: ${PIHX_TOOLS}/services/sqlserver/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/sqlserver.env
+        required: false
+    environment:
+      SQLCMDPASSWORD: ${SQLSERVER_SA_PASSWORD}
+    volumes:
+      - ${PIHX_TOOLS}/services/sqlserver/scripts/sqlserver-setup.sh:/sqlserver-setup.sh:ro
+    restart: "no"
+
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
+volumes:
+  sqlserver-data:
+    external: true
+    name: ${SERVICE_NAME}_sqlserver-data

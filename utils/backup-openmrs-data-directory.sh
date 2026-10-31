@@ -1,7 +1,7 @@
 #!/bin/bash
-# Archives an OpenMRS data directory into a file usable as `openmrs-docker <name> initialize`'s
-# RESTORE_OPENMRS_DATA_PATH. The archive holds one folder named after itself (data.tar.gz and
-# data.7z both hold data/), which extract-archive prints the path of.
+# Archives an OpenMRS data directory into a file usable as the openmrs.<ext> entry of
+# `pihx <name> initialize --from <dir>`. The archive holds one directory named after itself
+# (data.tar.gz and data.7z both hold data/), which extract-archive prints the path of.
 #
 # Usage: openmrs-utils backup-openmrs-data-directory --volume=<volume or dir> --output=<file>
 #            [--exclude-distribution-artifacts] [--exclude=<path>...] [--allow-running]
@@ -11,7 +11,7 @@
 #                     leaves out what the OpenMRS image copies in on every start (the contents of
 #                     modules/, owa/, configuration/ and frontend/) and .openmrs-lib-cache, which
 #                     it rebuilds: smaller, and no stale .omods restored beside a newer distro's
-#   --exclude=<path>  leaves out <path>, relative to --volume (a file, folder or link), e.g. a link
+#   --exclude=<path>  leaves out <path>, relative to --volume (a file, directory or link), e.g. a link
 #                     the image recreates on every start; repeatable
 #   --allow-running   backs up even while a container is using --volume (the copy may then be
 #                     inconsistent, e.g. the search index)
@@ -72,7 +72,7 @@ LEAVE_OUT=()
 EXCLUDES=()
 if $EXCLUDE_DISTRIBUTION_ARTIFACTS; then
     LEAVE_OUT=(modules owa configuration frontend .openmrs-lib-cache)
-    # The four folders' contents only, so they're still restored, empty.
+    # The four directories' contents only, so they're still restored, empty.
     EXCLUDES=("$TOP/modules/*" "$TOP/owa/*" "$TOP/configuration/*" "$TOP/frontend/*" "$TOP/.openmrs-lib-cache")
 fi
 for path in ${EXCLUDE_PATHS[@]+"${EXCLUDE_PATHS[@]}"}; do
@@ -80,9 +80,9 @@ for path in ${EXCLUDE_PATHS[@]+"${EXCLUDE_PATHS[@]}"}; do
     EXCLUDES+=("$TOP/$path")
 done
 
-# Paths relative to the source, as find prints them under /s. Left-out folders are skipped whole,
-# though the four distribution folders themselves are kept, empty. A link's target is judged by its
-# text alone, from the link's folder (so one dangling is fine; one reaching .. through another link
+# Paths relative to the source, as find prints them under /s. Left-out directories are skipped whole,
+# though the four distribution directories themselves are kept, empty. A link's target is judged by its
+# text alone, from the link's directory (so one dangling is fine; one reaching .. through another link
 # is judged as written).
 LINKS=$(docker run --rm -v "$VOLUME:/s:ro" "$ALPINE_IMAGE" sh -c '
     cd /s && for d in "$@"; do set -- "$@" -path "./$d" -prune -o; shift; done

@@ -7,12 +7,16 @@
 #            [--client-image=mysql:5.6] [--user=root] | --db-volume=<volume or dir> [--image=mysql:5.6]
 #            [--server-opt=<flag>...]) [--database=openmrs]
 #            [--data-dir=<volume or dir> [--exclude-distribution-artifacts]] [--output=<file>]
+#        openmrs-utils fingerprint --data-dir=<volume or dir> --data-dir-only
+#            [--exclude-distribution-artifacts] [--output=<file>]
 #   --db-volume   a stopped server's data directory, read by starting --image on it with grants
 #                 and networking off. Give the instance's image and server options, or [server]
-#                 shows the image's defaults: `openmrs-docker <name> fingerprint` does both.
+#                 shows the image's defaults: `pihx <name> summary` does both.
 #   --database    the OpenMRS database, for [recent]
 #   --data-dir    also summarizes this OpenMRS data directory; --exclude-distribution-artifacts
 #                 leaves out what the image supplies, as backup-openmrs-data-directory does
+#   --data-dir-only  only the [data-dir] section, with no database (what `pihx <instance> summary`
+#                 asks of the openmrs service)
 #   MYSQL_PASSWORD  password for --user, for --container and --host (required)
 #
 # Sections, each sorted, one fact per line, so a diff shows only what changed:
@@ -24,7 +28,7 @@
 #   [recent]     the highest id and date_created in --database's encounter, obs, patient, person
 #                and users: a backup taken before the last writes shows here
 #   [accounts]   user@host
-#   [data-dir]   files and bytes per top-level folder (top-level files together)
+#   [data-dir]   files and bytes per top-level directory (top-level files together)
 #
 # Expected differences between a source and its restore: [accounts] (initialize resets them after
 # a physical restore), databases a physical restore brought along, [server] if the servers are
@@ -44,6 +48,7 @@ SERVER_OPTS=()
 DATABASE=openmrs
 DATA_DIR=
 EXCLUDE_DISTRIBUTION_ARTIFACTS=false
+DATA_DIR_ONLY=false
 OUTPUT=
 for arg in "$@"; do
     case "$arg" in
@@ -55,12 +60,15 @@ for arg in "$@"; do
         --database=*) DATABASE="${arg#*=}" ;;
         --data-dir=*) DATA_DIR="${arg#*=}" ;;
         --exclude-distribution-artifacts) EXCLUDE_DISTRIBUTION_ARTIFACTS=true ;;
+        --data-dir-only) DATA_DIR_ONLY=true ;;
         --output=*) OUTPUT="${arg#*=}" ;;
         *) mysql_source_arg "$arg" || die "unknown argument: $arg" ;;
     esac
 done
 
-if [ -z "$DB_VOLUME" ]; then
+if $DATA_DIR_ONLY; then
+    [ -n "$DATA_DIR" ] && [ -z "$DB_VOLUME$DB_CONTAINER$DB_HOST" ] || usage
+elif [ -z "$DB_VOLUME" ]; then
     mysql_source_given || usage
     mysql_password
     mysql_connect "$DB_PASSWORD"
@@ -84,7 +92,24 @@ fi
 SYSTEM_DBS="'mysql', 'information_schema', 'performance_schema', 'sys'"
 ident() { printf '`%s`' "${1//\`/\`\`}"; }   # a quoted SQL identifier
 
+data_dir_section() {
+    echo "[data-dir]"
+    local leave_out=""
+    $EXCLUDE_DISTRIBUTION_ARTIFACTS && leave_out="modules owa configuration frontend .openmrs-lib-cache"
+    # busybox: file count and bytes per top-level directory; files at the top level together.
+    docker run --rm -e LEAVE_OUT="$leave_out" -v "$DATA_DIR:/d:ro" "$ALPINE_IMAGE" sh -c '
+        summarize() { find "$1" -type f $2 -exec stat -c %s {} + 2>/dev/null | awk -v n="$3" "{ c++; b += \$1 } END { printf \"%s files=%d bytes=%.0f\n\", n, c, b }"; }
+        for e in /d/* /d/.[!.]*; do
+            [ -e "$e" ] || continue
+            name=${e#/d/}
+            case " $LEAVE_OUT " in *" $name "*) continue ;; esac
+            [ -d "$e" ] && summarize "$e" "" "$name/"
+        done
+        summarize /d "-maxdepth 1" "(top level)"' | sort
+}
+
 fingerprint() {
+    $DATA_DIR_ONLY && { data_dir_section; return; }
     echo "[server]"
     # The version number only: VERSION() also says e.g. "-log" when binary logging is on.
     sql "SELECT CONCAT('version ', SUBSTRING_INDEX(VERSION(), '-', 1)), CONCAT('version_comment ', @@version_comment),
@@ -132,21 +157,7 @@ fingerprint() {
     echo "[accounts]"
     sql "SELECT CONCAT(user, '@', host) FROM mysql.user" | sort
 
-    if [ -n "$DATA_DIR" ]; then
-        echo "[data-dir]"
-        local leave_out=""
-        $EXCLUDE_DISTRIBUTION_ARTIFACTS && leave_out="modules owa configuration frontend .openmrs-lib-cache"
-        # busybox: file count and bytes per top-level folder; files at the top level together.
-        docker run --rm -e LEAVE_OUT="$leave_out" -v "$DATA_DIR:/d:ro" "$ALPINE_IMAGE" sh -c '
-            summarize() { find "$1" -type f $2 -exec stat -c %s {} + 2>/dev/null | awk -v n="$3" "{ c++; b += \$1 } END { printf \"%s files=%d bytes=%.0f\n\", n, c, b }"; }
-            for e in /d/* /d/.[!.]*; do
-                [ -e "$e" ] || continue
-                name=${e#/d/}
-                case " $LEAVE_OUT " in *" $name "*) continue ;; esac
-                [ -d "$e" ] && summarize "$e" "" "$name/"
-            done
-            summarize /d "-maxdepth 1" "(top level)"' | sort
-    fi
+    [ -z "$DATA_DIR" ] || data_dir_section
 }
 
 if [ -n "$OUTPUT" ]; then

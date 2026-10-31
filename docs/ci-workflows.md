@@ -325,8 +325,8 @@ jobs:
 | `pih_config` | Required | Full PIH config chain to test, matching what the site's real CI server actually runs (e.g. `liberia,liberia-harper,liberia-harper-jjd-ci`) — check the site repo's own `<server>.env` file for the authoritative value, not just its `build-seeded-images.yml` base profile |
 | `seed_image_name` | Required | Full seed image name, no tag — pass the exact value the corresponding `build-seeded-images.yml` job produces (with `pih_config` now potentially multi-value, there's no reliable way to derive this automatically) |
 | `suite` | Required | Smoke-test suite passed to `execute-smoke-tests.sh`, independent of `pih_config` (e.g. `liberia`, `sierraleone`, `mexico`, `zlCentral`) |
-| `admin_user_password` | Optional | Admin user password baked into this site's seed data. Defaults to the smoke-tests image's own default |
-| `tools_ref` | Optional | Ref of `openmrs-contrib-distro-tools` to check out. Defaults to its default branch — only needed to validate a change to this workflow, or to `bin/openmrs-docker`/`docker/services`, from a branch before merging |
+| `admin_user_password` | Optional | Admin user password baked into this site's seed data. Defaults to the smoke-tests image's own default. It is written to an env file, so it can't contain a single quote, a newline or a trailing backslash |
+| `tools_ref` | Optional | Ref of `openmrs-contrib-distro-tools` to check out. Defaults to its default branch — only needed to validate a change to this workflow, or to `bin/openmrs-docker`, `openmrs/` or `services/`, from a branch before merging |
 
 Requires a `DOCKERHUB_PASSWORD` secret available to the caller (passed via `secrets: inherit`).
 
@@ -338,27 +338,31 @@ an instance creates with, so attach it explicitly:
 ```bash
 OPENMRS_IMAGE_NAME=partnersinhealth/pihliberia-emr \
 OPENMRS_PIH_CONFIG=liberia \
-SEED_IMAGE_NAME=partnersinhealth/pihliberia-emr-seed-liberia \
-openmrs-docker create myinstance
+openmrs-docker myinstance create
 
 openmrs-docker myinstance add-service openmrs-smoke-tests
-openmrs-docker myinstance initialize
+openmrs-docker myinstance initialize --from-image partnersinhealth/pihliberia-emr-seed-liberia
 openmrs-docker myinstance start
 openmrs-docker myinstance wait
 openmrs-docker myinstance run-service openmrs-smoke-tests ./execute-smoke-tests.sh liberia
 ```
 
-Run `wait` before `run-service`: it streams the logs and returns once OpenMRS's healthcheck
+`run-service` doesn't start the services the smoke tests depend on: `start` does. Run `wait`
+before `run-service`: it streams the logs and returns once OpenMRS's healthcheck
 (`/openmrs/health/started`) passes, so the smoke tests don't start against a half-started OpenMRS.
+
+The smoke tests' settings are the service's own: set them when you `add-service` it (they go in the
+instance's `openmrs-smoke-tests.env`), or edit that file afterwards.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SMOKE_TESTS_OUTPUT_DIR` | `./smoke-test-output` | Host directory bind-mounted onto the container's Maven `target/` (build output, failsafe/surefire reports) |
+| `SMOKE_TESTS_OUTPUT_DIR` | `./smoke-test-output` (in the instance directory) | Host directory bind-mounted onto the container's Maven `target/` (build output, failsafe/surefire reports) |
 | `SMOKE_TESTS_SCREENSHOTS_DIR` | `./smoke-test-screenshots` | Host directory bind-mounted onto the container's Selenium screenshot directory |
 | `SMOKE_TESTS_ADMIN_PASSWORD` | image default (`Admin123`) | Admin password baked into this site's seed data |
 | `SMOKE_TESTS_IMAGE_NAME`, `SMOKE_TESTS_IMAGE_TAG` | `partnersinhealth/pihemr-smoke-tests`, `latest` | Smoke-tests image to run |
 
-Once done, tear the instance down with `openmrs-docker myinstance destroy --force`.
+There's nothing to tear down on a GitHub-hosted runner, which is discarded after the job. Elsewhere,
+`openmrs-docker myinstance destroy` archives the instance and asks twice before removing it.
 
 ## Deploys and PETL runs on self-hosted runners
 
@@ -374,15 +378,15 @@ a time, so jobs for the same host queue whichever repo they come from.
   manifest only; an app's deploy passes its own instance and `host: false`. A deploy for a held instance skips entirely; one for
   `all` warns about held instances, which puppet skips. A running deploy is never cancelled; per
   repository and instance, only the newest pending deploy waits. For `openmrs_docker` instances,
-  puppet runs `openmrs-docker <instance> update`. With `run-etl`, the legacy host-installed PETL
+  puppet runs `pihx <instance> update`. With `run-etl`, the legacy host-installed PETL
   (`/opt/petl/bin/execute-full.sh`).
 - **`run-petl-via-runner.yml`** (`runner-label`, `instance`): runs PETL for an `openmrs_docker`
   instance, as `sudo -u <instance> /home/<instance>/bin/run-petl`. Puppet's
   `openmrs_docker::service::petl` installs that script and, with `ci_runner => true`, the one sudoers
-  rule allowing it. The script runs `openmrs-docker <instance> run-service --pull petl`, which holds
+  rule allowing it. The script runs `pihx <instance> run-service --pull petl`, which holds
   the instance's lock (a deploy waits for it). PETL's output, which may contain data, isn't in the
   job's log: it's in the instance's `petl` container log on the host, `docker logs <instance>-petl`
-  ([PETL](services.md#petl)). The job
+  ([PETL](../services/petl/README.md)). The job
   fails when PETL does, so the author of the change that triggered it is notified.
 
 An ETL project calls it after building its image:
@@ -400,6 +404,32 @@ An ETL project calls it after building its image:
       notify_ci_dashboard: true
     secrets: inherit
 ```
+
+## Helper images
+
+`.github/workflows/build-images.yml` builds and publishes the images this repo defines: every
+`images/<name>/` and every `services/<svc>/image/`, as `partnersinhealth/<name>` (multi-arch: amd64
+and arm64). It is not reusable; it runs here, on pushes to `main` and on pull requests that touch
+those directories, `utils/hash-directory.sh` or the workflow itself.
+
+- **Tags are content hashes.** An image's tag is the hash of its directory (`utils/hash-directory.sh`)
+  ([Developing this tool](development.md#image-tags)), so one commit changing the directory means one
+  new tag, and `pihx` computes the same tag from its checkout to find the image it needs.
+- **A tag is never overwritten.** For each directory, the workflow asks Docker Hub whether the tag
+  exists (`docker manifest inspect`). Only a definite "no such manifest" or "manifest unknown" means
+  it doesn't; a repository that doesn't exist yet (the first publish) is told apart by Docker Hub's
+  API answering 404. Any other failure (network, rate limit, an auth error, a 5xx) is retried
+  three times and then fails the run, without building or pushing: it must never lead to a push over a
+  tag that exists. A tag that exists isn't rebuilt.
+- **On `main`**, a missing tag is built and pushed, then `latest` is moved to the image's current tag
+  (for people and for tools that pull without a tag). **On a pull request** the image is built
+  without being pushed, to check it builds, and `latest` is left alone. Two runs on `main` queue
+  rather than race to push the same tag.
+- It needs `DOCKERHUB_PASSWORD` as a secret (the `pihci` account).
+
+`p7zip` and `percona-0.1-4`, which the utilities use, are not built here yet: they stay with
+`docker-openmrs` until the `backup-tools` image is rebuilt in this repo ([Utilities](utilities.md#images)).
+Seed images are a different thing, built by [`build-seeded-image.yml`](#seed-image-builds).
 
 ## Vulnerability scanning
 

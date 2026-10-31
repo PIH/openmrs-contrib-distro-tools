@@ -1,7 +1,7 @@
 #!/bin/bash
 # Turns a prepared (--apply-log'd) XtraBackup backup directory, from backup-percona or a legacy
-# nightly backup, into a MySQL data directory (innobackupex --copy-back), usable as initialize's
-# RESTORE_MYSQL_DATA_PATH. Prints the data directory's path.
+# nightly backup, into a MySQL data directory (innobackupex --copy-back), usable as the
+# openmrs-db.datadir entry of initialize --from. Prints the data directory's path.
 #
 # Usage: openmrs-utils convert-percona-backup --backup-dir=<dir> --output-dir=<new dir>
 #   The output is written as root: reclaim it (chown) before removing it as another user.

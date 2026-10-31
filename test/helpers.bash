@@ -18,16 +18,15 @@ load "$TEST_DIR/.deps/bats-assert/load"
 
 # Every Docker container/volume a test creates is named under RUN_PREFIX, so teardown can find and
 # remove exactly this run's resources (and assert_no_leftovers can check for them) without touching
-# anything else on the machine. Lowercase + digits only: valid as a Compose project name.
-export RUN_PREFIX="${RUN_PREFIX:-odt${BATS_ROOT_PID}}"
+# anything else on the machine. test/run sets it (and removes the resources if the run is killed). Lowercase + digits only: valid as a Compose project name.
+export RUN_PREFIX="${RUN_PREFIX:-pihxtest${BATS_ROOT_PID}}"
 
-# openmrs-docker instances live in a throwaway home, use a placeholder OpenMRS image (initialize
-# only ever starts openmrs-db) and random host ports, so tests never collide with a real instance.
-export OPENMRS_DOCKER_HOME="$BATS_RUN_TMPDIR/openmrs-home"
+# pihx's and openmrs-docker's instances live in a throwaway home (never the caller's ~/pihx), use a
+# placeholder OpenMRS image (initialize only ever starts openmrs-db) and random host ports, so tests
+# never collide with a real instance.
+export PIHX_HOME="$BATS_RUN_TMPDIR/pihx-home"
 export OPENMRS_IMAGE_NAME=placeholder/openmrs
 export OPENMRS_DB_PORT=0
-# As openmrs-docker exports it, for tests that run docker compose on an instance's fragments directly.
-export DISTRO_TOOLS_UTILS_DIR="$REPO_ROOT/utils"
 export OPENMRS_HTTP_PORT=0
 export OPENMRS_DB_OPT_innodb_buffer_pool_size=256M
 # initialize would otherwise run the (placeholder) OpenMRS image to find the owner for a restored
@@ -35,10 +34,10 @@ export OPENMRS_DB_OPT_innodb_buffer_pool_size=256M
 OPENMRS_DATA_OWNER="$(id -u):$(id -g)"
 export OPENMRS_DATA_OWNER
 
-# A name for a Docker resource owned by the current test, e.g. `res db` -> odt1234-t7-db.
+# A name for a Docker resource owned by the current test, e.g. `res db` -> pihxtest1234-t7-db.
 res() { echo "$RUN_PREFIX-t${BATS_SUITE_TEST_NUMBER}-$1"; }
 
-# A name for an openmrs-docker instance owned by the current test.
+# A name for an instance owned by the current test.
 instance() { echo "$RUN_PREFIX-t${BATS_SUITE_TEST_NUMBER}${1:+-$1}"; }
 
 # A name for a Docker resource or instance shared by the current file's tests (made in setup_file).
@@ -101,7 +100,7 @@ mysql_exec() { # <container> <root password> <sql>
 }
 
 # Starts a MySQL container with a named data volume (<name>-data) holding an `openmrs` database
-# (marker row 1) and a `malawi` database (marker row 2). Credentials match openmrs-docker's
+# (marker row 1) and a `malawi` database (marker row 2). Credentials match openmrs-db's
 # defaults, so a physical restore of it is usable by an instance created with those defaults.
 start_source_db() { # <name>
     docker run -d --name "$1" -v "$1-data:/var/lib/mysql" -v /usr/share/zoneinfo:/usr/share/zoneinfo:ro \
@@ -134,19 +133,120 @@ db_marker_in_volume() { # <volume>
 
 # --- openmrs-docker --------------------------------------------------------------------------------
 
-create_instance() { # <name>
-    "$BIN/openmrs-docker" create "$1" >/dev/null
+# An instance's directory, and one of its env files (instance.env, or <service>.env).
+instance_dir() { echo "$PIHX_HOME/$1"; }
+env_file_of() { echo "$PIHX_HOME/$1/$2.env"; }
+
+# Sets <VAR> to <value> in an instance's env file, replacing any line that sets it.
+set_env_value() { # <instance> <file: instance or a service> <VAR> <value>
+    local file
+    file="$(env_file_of "$1" "$2")"
+    sed -i "/^$3=/d" "$file"
+    printf "%s='%s'\n" "$3" "$4" >> "$file"
 }
 
-# Runs `openmrs-docker <name> initialize` via bats `run`, with extra env assignments, capped so a
-# hung restore fails the test instead of waiting out initialize's own hour-long wait.
-run_initialize() { # <name> [VAR=value...]
+# The instance's merged values (pihx config), secrets included.
+instance_config() { # <instance>
+    "$BIN/pihx" "$1" config --show-secrets
+}
+
+# docker compose on the instance <dir> with the services given, as `pihx` runs it: env files in
+# override order, the environment pihx sets and nothing else (project name COMPOSE_PROJECT, default
+# config). Extra arguments for Compose follow the services' own after `--`; files after `+`
+# (relative to the checkout) are added as overlays.
+instance_compose() { # <dir> <service,...> [+overlay...] -- <compose args...>
+    local dir=$1 services=${2//,/ } svc other with args=() overlays=() env=()
+    shift 2
+    while [ "$1" != -- ]; do overlays+=("$REPO_ROOT/${1#+}"); shift; done
+    shift
+    args=(-p "${COMPOSE_PROJECT:-config}" --project-directory "$dir"
+          --env-file "$REPO_ROOT/instance.env.defaults")
+    for svc in $services; do args+=(--env-file "$REPO_ROOT/services/$svc/env.defaults"); done
+    for svc in $services; do [ -f "$dir/$svc.env" ] && args+=(--env-file "$dir/$svc.env"); done
+    [ -f "$dir/instance.env" ] && args+=(--env-file "$dir/instance.env")
+    # as pihx: every compose.yaml, then the with-files whose other service is present, then overrides
+    for svc in $services; do args+=(-f "$REPO_ROOT/services/$svc/compose.yaml"); done
+    for svc in $services; do
+        for with in "$REPO_ROOT/services/$svc"/with-*.yaml; do
+            [ -f "$with" ] || continue
+            other=$(basename "$with" .yaml); other=${other#with-}
+            [[ " $services " == *" $other "* ]] && args+=(-f "$with")
+        done
+    done
+    for svc in $services; do [ -f "$dir/$svc.override.yaml" ] && args+=(-f "$dir/$svc.override.yaml"); done
+    for svc in "${overlays[@]}"; do args+=(-f "$svc"); done
+    env=(PATH="$PATH" HOME="$HOME" PIHX_TOOLS="$REPO_ROOT" PIHX_INSTANCE_DIR="$dir"
+         SERVICE_NAME="${COMPOSE_PROJECT:-config}" PIHX_INSTANCE="${COMPOSE_PROJECT:-config}"
+         "${EXTRA_ENV[@]}")
+    [ -z "${DOCKER_HOST:-}" ] || env+=(DOCKER_HOST="$DOCKER_HOST")
+    [ -z "${DOCKER_CONFIG:-}" ] || env+=(DOCKER_CONFIG="$DOCKER_CONFIG")
+    env -i "${env[@]}" docker compose "${args[@]}" "$@"
+}
+
+# docker compose on an instance made by create_instance, as pihx runs it.
+instance_compose_of() { # <instance> <compose args...>
+    local name=$1 services
+    shift
+    services=$(cd "$PIHX_HOME/$name" && ls ./*.env | sed 's|^\./||; s|\.env$||' | grep -vx instance | paste -sd, -)
+    COMPOSE_PROJECT=$name instance_compose "$PIHX_HOME/$name" "$services" -- "$@"
+}
+
+create_instance() { # <name> [create options...]
     local name=$1; shift
-    run env "$@" timeout 300 "$BIN/openmrs-docker" "$name" initialize
+    "$BIN/openmrs-docker" "$name" create "$@" >/dev/null
 }
 
-destroy_instance() { # <name>
-    "$BIN/openmrs-docker" "$1" destroy --force >/dev/null 2>&1 || true
+# Runs `openmrs-docker <name> initialize <args>` via bats `run`, capped so a hung restore fails the
+# test instead of waiting out initialize's own hour-long wait.
+run_initialize() { # <name> <initialize args...>
+    local name=$1; shift
+    run timeout 300 "$BIN/openmrs-docker" "$name" initialize "$@"
+}
+
+# Makes a new directory for initialize --from, each entry a link to its source (relative to the
+# current directory), and prints its path.
+from_folder() { # <entry> <source> [<entry> <source>...]
+    local folder source
+    folder=$(mktemp -d "$BATS_TEST_TMPDIR/from.XXXXXX")
+    while [ $# -gt 0 ]; do
+        source=${2%/}
+        case $source in /*) ;; *) source=$PWD/$source ;; esac
+        ln -s "$source" "$folder/$1"
+        shift 2
+    done
+    echo "$folder"
+}
+
+# Test-only cleanup of a test's instance <name> (pihx destroy asks, and archives first): its
+# containers and networks (Compose's project label), its volumes (pihx's label, Compose's project
+# label, or named <name>_...) and its directory. Only a name under this run's RUN_PREFIX, so it can't
+# touch anything that isn't a test's.
+remove_test_instance() { # <name>
+    local name=${1:-} ids
+    [ -n "$name" ] || return 0
+    case $name in
+        "$RUN_PREFIX"-*) ;;
+        *) echo "remove_test_instance: '$name' isn't a test instance (under $RUN_PREFIX)" >&2; return 1 ;;
+    esac
+    ids=$(docker ps -aq --filter "label=com.docker.compose.project=$name")
+    [ -z "$ids" ] || docker rm -f $ids >/dev/null
+    ids=$( { docker volume ls -q --filter "label=pihx.instance=$name"
+             docker volume ls -q --filter "label=com.docker.compose.project=$name"
+             docker volume ls -q | awk -v p="${name}_" 'index($0, p) == 1'
+           } | sort -u)
+    [ -z "$ids" ] || docker volume rm -f $ids >/dev/null
+    ids=$(docker network ls -q --filter "label=com.docker.compose.project=$name")
+    [ -z "$ids" ] || docker network rm $ids >/dev/null
+    if [ -d "$PIHX_HOME/$name" ]; then
+        reclaim "$PIHX_HOME/$name"
+        rm -rf "${PIHX_HOME:?}/$name"
+    fi
+    return 0
+}
+
+# Runs `<command> <name> destroy` via bats `run`, typing the instance's name and then `delete`.
+run_destroy() { # <bin/pihx or bin/openmrs-docker> <name>
+    run bash -c 'printf "%s\ndelete\n" "$2" | "$1" "$2" destroy' _ "$1" "$2"
 }
 
 # A tiny, valid logical dump (plain SQL), for tests that need initialize to have a db source but
@@ -157,13 +257,14 @@ write_tiny_dump() { # <path>
 
 # A stand-in for an OpenMRS image, so start/wait/stop can run without one: it sleeps, and a curl
 # shim answers openmrs.yaml's healthcheck (curl .../health/started) once it has started. With
-# OMRS_EXTRA_stub_exit set (an instance's OMRS_EXTRA_* reach the container), it exits at once.
+# OMRS_EXTRA_stub_exit set (an instance's OMRS_EXTRA_* reach the container), it exits at once; with
+# OMRS_EXTRA_stub_installing set, it never becomes ready (an install still running).
 STUB_OPENMRS_IMAGE=distro-tools-test/stub-openmrs
 build_stub_openmrs_image() {
     docker build -q -t "$STUB_OPENMRS_IMAGE" - >/dev/null <<'DOCKERFILE'
 FROM alpine:3.21
 RUN printf '#!/bin/sh\nexec test -e /tmp/started\n' > /usr/local/bin/curl && chmod +x /usr/local/bin/curl
-CMD ["sh", "-c", "[ -z \"$OMRS_EXTRA_stub_exit\" ] || exit 1; touch /tmp/started; exec sleep 3600"]
+CMD ["sh", "-c", "[ -z \"$OMRS_EXTRA_stub_exit\" ] || exit 1; [ -n \"$OMRS_EXTRA_stub_installing\" ] || touch /tmp/started; exec sleep 3600"]
 DOCKERFILE
 }
 

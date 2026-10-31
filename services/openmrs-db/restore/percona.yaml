@@ -1,0 +1,61 @@
+# initialize, openmrs-db.percona/ or an archive of one (.7z, .zip, .tar.gz, .tgz, .tar): extracts
+# the backup into percona-staging (a legacy flat percona.7z, or one <name>-percona/ directory),
+# prepares it if it isn't already (innobackupex --apply-log; legacy nightly backups are), and
+# copies it into db-data. The manifest runs reset-accounts.yaml after it.
+
+services:
+  extract-percona-backup:
+    image: ${P7ZIP_IMAGE:?P7ZIP_IMAGE must be set}
+    container_name: ${SERVICE_NAME}-extract-percona-backup
+    environment:
+      - ARCHIVE_PASSWORD
+      # A directory is mounted as backup, which extract.sh copies.
+      - SOURCE_NAME=${OPENMRS_DB_RESTORE_ARCHIVE:-backup}
+    volumes:
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}
+        target: /source/${OPENMRS_DB_RESTORE_ARCHIVE:-backup}
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PIHX_TOOLS}/utils/lib/in-container/extract.sh:/extract.sh:ro
+      - percona-staging:/staging
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        ROOT=$$(sh /extract.sh "/source/$$SOURCE_NAME" /staging/raw --print-root)
+        if [ ! -f "$$ROOT/xtrabackup_checkpoints" ]; then
+            echo "error: $$SOURCE_NAME isn't a Percona/xtrabackup backup (no xtrabackup_checkpoints)" >&2
+            exit 1
+        fi
+        mv "$$ROOT" /staging/backup
+
+  restore-mysql-volume:
+    image: ${PERCONA_IMAGE:?PERCONA_IMAGE must be set}
+    container_name: ${SERVICE_NAME}-restore-mysql-volume
+    depends_on:
+      extract-percona-backup:
+        condition: service_completed_successfully
+    volumes:
+      - percona-staging:/staging
+      - db-data:/var/lib/mysql
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        # innobackupex's own output is long; it's shown only if a step fails.
+        run() { "$$@" > /tmp/innobackupex.log 2>&1 || { cat /tmp/innobackupex.log; exit 1; }; }
+        if grep -q "backup_type = full-backuped" /staging/backup/xtrabackup_checkpoints; then
+            echo "Preparing the backup (innobackupex --apply-log)"
+            run innobackupex --apply-log /staging/backup
+        fi
+        echo "Copying the backup into db-data (innobackupex --copy-back)"
+        run innobackupex --copy-back --datadir=/var/lib/mysql /staging/backup
+        chown -R 999:999 /var/lib/mysql
+
+volumes:
+  percona-staging:

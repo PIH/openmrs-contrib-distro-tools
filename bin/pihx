@@ -1,0 +1,327 @@
+#!/bin/sh
+# Usage: pihx <instance> <command> [args...] | pihx list | help | version
+#
+# Runs the pihx package from this tools directory inside pihx-runtime, so the host needs only Docker and a
+# POSIX shell. The tools directory and PIHX_HOME (default ~/pihx) are mounted at their host paths, so paths
+# pihx hands to Compose resolve on the host. pihx <instance> ... runs the instance's own tools directory,
+# whichever bin/pihx was typed.
+#
+# An extension (e.g. bin/openmrs-docker) runs its own Python module through this launcher instead:
+#   PIHX_EXTENSION         the module (e.g. openmrs.extension), a .py file in the tools directory
+#   PIHX_EXTENSION_MOUNTS  host paths it needs in the container, one per line, mounted read-only at
+#                          their own paths (those outside the paths every run mounts)
+# Without PIHX_EXTENSION, PIHX_EXTENSION_MOUNTS isn't taken from the caller.
+set -eu
+# A relative cd would otherwise follow CDPATH and print the directory it picked.
+unset CDPATH
+
+die() { echo "error: $*" >&2; exit 1; }
+
+# This checkout, following a link to this script (e.g. from a bin directory on PATH).
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case $link in
+        /*) self=$link ;;
+        *) self=$(dirname "$self")/$link ;;
+    esac
+done
+PIHX_TOOLS=$(cd -P "$(dirname "$self")/.." && pwd)
+
+PIHX_HOME=${PIHX_HOME:-$HOME/pihx}
+# Made here, not by docker run, which would make it root-owned.
+mkdir -p "$PIHX_HOME"
+PIHX_HOME=$(cd -P "$PIHX_HOME" && pwd)
+
+# An instance runs as the user who owns its directory: files pihx makes in it, and the registry
+# credentials it pulls with, are that user's. Anyone else (root after sudo, say) is refused, naming the user.
+case ${1-} in
+    '' | [!a-z0-9]* | *[!a-z0-9_-]* | list | help | version) ;;
+    *)
+        if [ -d "$PIHX_HOME/$1" ]; then
+            owner=$(ls -ndL "$PIHX_HOME/$1" | awk '{print $3}')
+            if [ "$owner" != "$(id -u)" ]; then
+                owner_name=$(id -nu "$owner" 2>/dev/null) || owner_name="uid $owner"
+                die "$PIHX_HOME/$1 belongs to $owner_name: run pihx as that user (e.g. sudo -iu $owner_name)"
+            fi
+        fi
+        ;;
+esac
+
+# Hand-off: `pihx <instance> ...` re-runs itself from the instance's own tools directory, so an instance
+# always runs one version of the tools. Only for a valid instance name, so the argument can't point
+# outside PIHX_HOME. Once only: the launcher handed to never hands off again, so it can't loop.
+if [ -z "${PIHX_HANDED_OFF-}" ]; then
+    case ${1-} in
+        '' | [!a-z0-9]* | *[!a-z0-9_-]*) ;;
+        *)
+            if instance_tools=$(cd -P "$PIHX_HOME/$1/tools" 2>/dev/null && pwd) \
+                    && [ "$instance_tools" != "$PIHX_TOOLS" ]; then
+                [ -x "$instance_tools/bin/pihx" ] || die "$PIHX_HOME/$1/tools has no bin/pihx"
+                PIHX_HANDED_OFF=1
+                export PIHX_HANDED_OFF
+                exec "$instance_tools/bin/pihx" "$@"
+            fi
+            # An instance with no tools directory (it was moved or deleted) has nothing to run.
+            # Python never looks at other instances' tools, so this is the one place that says so.
+            # use-tools is the fix, and create refuses an existing directory itself.
+            case $1:${2-} in
+                list:* | help:* | version:* | *:use-tools | *:create) ;;
+                *)
+                    if [ -d "$PIHX_HOME/$1" ] && [ ! -d "$PIHX_HOME/$1/tools" ]; then
+                        die "$PIHX_HOME/$1/tools is missing; point it at a tools directory with: pihx $1 use-tools <dir>"
+                    fi
+                    ;;
+            esac
+            ;;
+    esac
+fi
+
+# The Python module to run: pihx, or an extension's, which must be a module of this checkout.
+module=pihx
+if [ -n "${PIHX_EXTENSION-}" ]; then
+    case $PIHX_EXTENSION in
+        [!a-z_]* | *[!a-z0-9_.]* | *..* | *.) die "invalid PIHX_EXTENSION '$PIHX_EXTENSION'" ;;
+    esac
+    [ -f "$PIHX_TOOLS/$(printf '%s' "$PIHX_EXTENSION" | tr . /).py" ] \
+        || die "PIHX_EXTENSION '$PIHX_EXTENSION' isn't a module of $PIHX_TOOLS"
+    module=$PIHX_EXTENSION
+else
+    unset PIHX_EXTENSION_MOUNTS
+fi
+
+# Whether <path> is outside the paths every run mounts, so needs mounting itself.
+outside_mounts() { # <path>
+    case $1/ in
+        "$PIHX_TOOLS"/* | "$PIHX_HOME"/*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+# The socket is mounted into the container, so only a local one will do.
+docker_host=${DOCKER_HOST:-unix:///var/run/docker.sock}
+case $docker_host in
+    unix://*) socket=${docker_host#unix://} ;;
+    *) die "pihx needs a local Docker socket; DOCKER_HOST is $DOCKER_HOST" ;;
+esac
+# GNU stat, then BSD (macOS).
+socket_gid=$(stat -c %g "$socket" 2>/dev/null || stat -f %g "$socket" 2>/dev/null) \
+    || die "can't read the Docker socket $socket"
+
+image=partnersinhealth/pihx-runtime:$("$PIHX_TOOLS/utils/hash-directory.sh" "$PIHX_TOOLS/images/pihx-runtime")
+# Pulled when CI has published the tag; built here only when it hasn't (a changed Dockerfile).
+if ! docker image inspect "$image" >/dev/null 2>&1 \
+        && ! docker pull -q "$image" >/dev/null 2>&1; then
+    echo "Pulling $image failed; building it" >&2
+    docker build -q -t "$image" "$PIHX_TOOLS/images/pihx-runtime" >/dev/null \
+        || die "couldn't build $image"
+fi
+
+# use-tools checks the checkout it is given, so that is mounted too (read-only) when it's elsewhere.
+# pihx gets the resolved path (PIHX_USE_TOOLS), the one mounted, not the argument as typed.
+unset PIHX_USE_TOOLS
+use_tools_mount=
+if [ "${2-}" = use-tools ] && [ -n "${3-}" ] && [ -d "$3" ]; then
+    use_tools_dir=$(cd -P "$3" && pwd)
+    PIHX_USE_TOOLS=$use_tools_dir
+    export PIHX_USE_TOOLS
+    if outside_mounts "$use_tools_dir"; then use_tools_mount=$use_tools_dir:$use_tools_dir:ro; fi
+fi
+
+# initialize --from <dir> reads the directory, so it is resolved here, as on the host (a relative
+# path against the caller's directory), and mounted read-only at that path when it's elsewhere; the
+# restore containers mount its entries by the same host paths. pihx gets it as PIHX_FROM.
+unset PIHX_FROM
+from_mount=
+if [ "${2-}" = initialize ]; then
+    from=
+    take=false
+    for arg in "$@"; do
+        if $take; then from=$arg; take=false; continue; fi
+        case $arg in
+            --from) take=true ;;
+            --from=*) from=${arg#--from=} ;;
+        esac
+    done
+    if [ -n "$from" ] && [ -d "$from" ]; then
+        PIHX_FROM=$(cd -P "$from" && pwd)
+        export PIHX_FROM
+        if outside_mounts "$PIHX_FROM"; then from_mount=$PIHX_FROM:$PIHX_FROM:ro; fi
+    fi
+fi
+
+# archive --to <dir> writes there, so the directory is resolved here, as on the host, made (as the
+# caller) if it doesn't exist yet, and mounted read-write at that path when it's elsewhere. pihx gets
+# it as PIHX_TO, and PIHX_TO_CREATED=1 if it was made here (removed again if it's left empty).
+unset PIHX_TO PIHX_TO_CREATED
+to_mount=
+to_created=
+if [ "${2-}" = archive ]; then
+    to=
+    take=false
+    for arg in "$@"; do
+        if $take; then to=$arg; take=false; continue; fi
+        case $arg in
+            --to) take=true ;;
+            --to=*) to=${arg#--to=} ;;
+        esac
+    done
+    if [ -n "$to" ]; then
+        if [ ! -e "$to" ]; then
+            mkdir -m 700 "$to" || die "can't make $to"
+            to_created=1
+            PIHX_TO_CREATED=1
+            export PIHX_TO_CREATED
+        fi
+        [ -d "$to" ] || die "--to $to isn't a directory"
+        PIHX_TO=$(cd -P "$to" && pwd)
+        export PIHX_TO
+        case $PIHX_TO in *'"'*) die "--to $to can't be mounted (it has a double quote)" ;; esac
+        if outside_mounts "$PIHX_TO"; then to_mount=type=bind,\"source=$PIHX_TO\",\"target=$PIHX_TO\"; fi
+    fi
+fi
+
+# Only a service command that holds an instance's lock sets this, for its own children: never taken
+# from the caller (see lifecycle.cmd_start_locked).
+unset PIHX_LOCK_HELD
+
+# summary --output <file>: the launcher writes the file, on the host, as the caller, from the
+# module's standard output (the option is taken out of its arguments), so nothing needs mounting.
+# It is written whole or not at all.
+output=
+if [ "${2-}" = summary ]; then
+    inst=$1
+    shift 2
+    n=$#
+    take=false
+    while [ "$n" -gt 0 ]; do
+        arg=$1
+        shift
+        n=$((n - 1))
+        if $take; then output=$arg; take=false; continue; fi
+        case $arg in
+            --output) take=true ;;
+            --output=*) output=${arg#--output=} ;;
+            *) set -- "$@" "$arg" ;;
+        esac
+    done
+    $take && die "--output needs a file"
+    set -- "$inst" summary "$@"
+    if [ -n "$output" ]; then
+        [ ! -d "$output" ] || die "$output is a directory"
+        output_tmp=$(mktemp "$output.XXXXXX" 2>/dev/null) || die "can't write $output"
+        # Not left behind however the launcher ends.
+        trap 'rm -f "$output_tmp"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+    fi
+fi
+
+# From here "$@" is the container's command, so options for docker run can go in front of it.
+set -- "$image" python3 -m "$module" "$@"
+[ -z "$use_tools_mount" ] || set -- -v "$use_tools_mount" "$@"
+[ -z "$from_mount" ] || set -- -v "$from_mount" "$@"
+[ -z "$to_mount" ] || set -- --mount "$to_mount" "$@"
+# An extension's extra mounts, one host path per line.
+if [ -n "${PIHX_EXTENSION_MOUNTS-}" ]; then
+    saved_ifs=$IFS
+    IFS='
+'
+    set -f
+    for path in $PIHX_EXTENSION_MOUNTS; do
+        case $path in
+            /*) ;;
+            *) die "PIHX_EXTENSION_MOUNTS: $path isn't an absolute path" ;;
+        esac
+        case $path in *'"'*) die "PIHX_EXTENSION_MOUNTS: $path can't be mounted (it has a double quote)" ;; esac
+        # --mount, quoted, so a comma or colon in the path is part of it.
+        if outside_mounts "$path"; then
+            set -- --mount "type=bind,\"source=$path\",\"target=$path\",readonly" "$@"
+        fi
+    done
+    set +f
+    IFS=$saved_ifs
+fi
+
+# The caller's Docker config, for registry credentials (Puppet writes the instance user's). Mounted
+# aside, read-only: pihx installs a copy without credential helpers, whose binaries the image lacks,
+# and keeps ~/.docker writable for buildx.
+unset PIHX_DOCKER_CONFIG
+docker_config=${DOCKER_CONFIG:-$HOME/.docker}/config.json
+if [ -f "$docker_config" ]; then
+    PIHX_DOCKER_CONFIG=/run/pihx/docker-config.json
+    export PIHX_DOCKER_CONFIG
+    set -- -v "$docker_config:$PIHX_DOCKER_CONFIG:ro" "$@"
+fi
+
+# The container's working directory is the caller's when it's mounted; PIHX_CWD carries it anyway,
+# so relative paths can be resolved as on the host.
+PIHX_CWD=$(pwd -P)
+case $PIHX_CWD/ in
+    "$PIHX_TOOLS"/* | "$PIHX_HOME"/*) workdir=$PIHX_CWD ;;
+    *) workdir=/ ;;
+esac
+
+# Every variable the caller has, passed by name (-e NAME) so values, secrets included, stay off the
+# command line: `create` captures whatever a service defines or requires (including values with no
+# default), and pihx's Python decides which belong in which file. Not passed: what the container sets
+# for itself (PATH, HOME, ...), the host's shell state, DOCKER_* (handled above), and Python's and
+# the loader's own settings.
+export PIHX_TOOLS PIHX_HOME PIHX_CWD
+PIHX_RUNTIME_IMAGE=$image
+export PIHX_RUNTIME_IMAGE
+env_args=
+for name in $(awk 'BEGIN { for (k in ENVIRON) print k }' | grep -E '^[A-Za-z_][A-Za-z0-9_]*$' |
+        grep -Ev '^(PATH|HOME|PWD|OLDPWD|SHLVL|HOSTNAME|_|DOCKER_.*|PYTHON.*|LD_.*)$'); do
+    env_args="$env_args -e $name"
+done
+
+tty=
+[ -t 0 ] && [ -t 1 ] && tty=-t
+
+# env_args and tty are unquoted on purpose: a list of options of variable names, or nothing.
+# Exec, so pihx's exit status is the launcher's, except for summary --output, which then moves its
+# output into place.
+if [ -n "$output" ]; then
+    # shellcheck disable=SC2086
+    if docker run --rm -i --init \
+        -u "$(id -u):$(id -g)" --group-add "$socket_gid" \
+        -v "$socket:/var/run/docker.sock" \
+        -v "$PIHX_TOOLS:$PIHX_TOOLS:ro" -v "$PIHX_HOME:$PIHX_HOME" \
+        -w "$workdir" \
+        -e HOME=/tmp -e PYTHONPATH="$PIHX_TOOLS" -e PYTHONDONTWRITEBYTECODE=1 $env_args \
+        "$@" > "$output_tmp"; then
+        chmod 644 "$output_tmp" && mv -f "$output_tmp" "$output" || {
+            rm -f "$output_tmp"
+            die "can't write $output"
+        }
+        echo "Wrote $output." >&2
+        exit 0
+    else
+        status=$?
+        rm -f "$output_tmp"
+        exit "$status"
+    fi
+fi
+# A directory made here for archive --to goes again if the archive left it empty (it failed).
+if [ -n "$to_created" ]; then
+    status=0
+    # shellcheck disable=SC2086
+    docker run --rm -i --init $tty \
+        -u "$(id -u):$(id -g)" --group-add "$socket_gid" \
+        -v "$socket:/var/run/docker.sock" \
+        -v "$PIHX_TOOLS:$PIHX_TOOLS:ro" -v "$PIHX_HOME:$PIHX_HOME" \
+        -w "$workdir" \
+        -e HOME=/tmp -e PYTHONPATH="$PIHX_TOOLS" -e PYTHONDONTWRITEBYTECODE=1 $env_args \
+        "$@" || status=$?
+    rmdir "$PIHX_TO" 2>/dev/null || true
+    exit "$status"
+fi
+# shellcheck disable=SC2086
+exec docker run --rm -i --init $tty \
+    -u "$(id -u):$(id -g)" --group-add "$socket_gid" \
+    -v "$socket:/var/run/docker.sock" \
+    -v "$PIHX_TOOLS:$PIHX_TOOLS:ro" -v "$PIHX_HOME:$PIHX_HOME" \
+    -w "$workdir" \
+    -e HOME=/tmp -e PYTHONPATH="$PIHX_TOOLS" -e PYTHONDONTWRITEBYTECODE=1 $env_args \
+    "$@"

@@ -1,0 +1,13 @@
+# initialize, openmrs-db.sql or openmrs-db.sql.gz: mounts the dump where MySQL's entrypoint imports
+# it on first start.
+
+services:
+  openmrs-db:
+    volumes:
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${OPENMRS_DB_RESTORE_PATH:?OPENMRS_DB_RESTORE_PATH must be set}
+        target: /docker-entrypoint-initdb.d/${OPENMRS_DB_RESTORE_NAME:?OPENMRS_DB_RESTORE_NAME must be set}
+        read_only: true
+        bind:
+          create_host_path: false

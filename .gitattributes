@@ -1,0 +1,4 @@
+# An image's tag is the hash of its directory (utils/hash-directory.sh): image and service directories are
+# checked out with LF everywhere, so every checkout computes the same tags as CI.
+images/** text=auto eol=lf
+services/** text=auto eol=lf

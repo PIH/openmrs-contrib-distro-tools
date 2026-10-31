@@ -1,0 +1,20 @@
+# initialize, openmrs/: copies the directory into openmrs-data, then
+# scripts/finish-data-restore.sh.
+
+services:
+  restore-openmrs-data-volume:
+    image: ${ALPINE_IMAGE:?ALPINE_IMAGE must be set}
+    container_name: ${SERVICE_NAME}-restore-openmrs-data-volume
+    environment:
+      - OWNER=${OPENMRS_DATA_OWNER:?OPENMRS_DATA_OWNER must be set}
+    volumes:
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${OPENMRS_RESTORE_PATH:?OPENMRS_RESTORE_PATH must be set}
+        target: /source
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PIHX_TOOLS}/services/openmrs/scripts/finish-data-restore.sh:/finish-data-restore.sh:ro
+      - openmrs-data:/target
+    command: ["sh", "-c", "cp -a /source/. /target/ && sh /finish-data-restore.sh"]

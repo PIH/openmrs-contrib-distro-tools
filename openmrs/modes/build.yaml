@@ -1,0 +1,7 @@
+# build and --build: builds the openmrs image from the distro built in OPENMRS_DISTRO_DIR. See
+# openmrs/README.md.
+
+services:
+  openmrs:
+    build:
+      context: ${OPENMRS_DISTRO_DIR:?OPENMRS_DISTRO_DIR must be set to build}/distro/target/distro/web

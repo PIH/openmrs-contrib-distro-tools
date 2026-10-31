@@ -1,74 +1,109 @@
 # Running an instance
 
-An instance is a directory under `$OPENMRS_DOCKER_HOME` (default `~/openmrs`) holding its `env` file
-and a copy of the Compose fragment of each of its services, run as one Docker Compose project named
-after the instance. Run `openmrs-docker` with no arguments for every command and option.
+An instance is a directory under `PIHX_HOME` (default `~/pihx`) with an env file for each of its
+services ([An instance's files](env.md)), run as one Docker Compose project named after the
+instance. `pihx` is the general tool. `openmrs-docker` is a `pihx` extension that can be used in
+place of `pihx`: it does everything `pihx` does, with the same command line, plus OpenMRS development
+commands (OpenMRS's default services, building a distribution from source; [The openmrs-docker
+extension](../openmrs/README.md)). Run either with no arguments for every command and option. (`~/openmrs` is the OpenMRS SDK's directory, which is why instances
+aren't kept there.)
+
+An instance runs as the user who owns its directory, so the files pihx makes in it are that user's:
+`pihx <name> ...` from anyone else (root, say) is refused, naming the user to run it as.
 
 ## Creating an instance
 
 Each distribution has its own published image and, if it uses one, its own PIH config profiles; its
-README lists them. `OPENMRS_IMAGE_NAME` is required for an instance with the `openmrs` service (one of
-the defaults). `OPENMRS_PIH_CONFIG` is optional, since not every distro uses one, but a distro that
-needs it fails at startup without it. The instance name is also its Compose project name, so it must
-be lowercase letters, digits, `-` and `_`, starting with a letter or digit:
+README lists them. `OPENMRS_IMAGE_NAME` is required for an instance with the `openmrs` service.
+`OPENMRS_PIH_CONFIG` is optional, since not every distro uses one, but a distro that needs it fails at
+startup without it. The instance name is also its Compose project name, so it must be lowercase
+letters, digits, `-` and `_`, starting with a letter or digit, and not `list`, `help` or `version`.
+`create` takes the values you set in your shell ([An instance's files](env.md#where-values-come-from)):
 
 ```bash
 OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr \
 OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci \
 OPENMRS_HTTP_PORT=9090 \
-openmrs-docker create <name>
+openmrs-docker <name> create
+
+# the same with pihx, which needs the services named:
+OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr \
+pihx <name> create --services=openmrs-db,openmrs
 ```
 
-`create` writes every setting to the instance's `env`, taking a value set in your shell over its
-default ([The env file](env.md)). So a settings file you source first works too, as long as it
-`export`s each variable (plain `KEY=value` lines only set shell variables, which `openmrs-docker`
-never sees):
+A settings file you `export` from and `source` first works too ([An instance's
+files](env.md#where-values-come-from)). `--services=<comma-separated>` chooses the services
+(`openmrs-docker`'s default is `openmrs-db,openmrs`), and others are added later with
+`add-service` ([Services](services.md)). Before the first start, [`initialize`](restore.md) can fill the
+instance's volumes from a seed image or a backup, which is much faster than OpenMRS building them up
+itself.
+
+If volumes named `<name>_...` already exist (left by an earlier instance of that name, or one you
+are converting in place), `create` warns and lists them: the new instance uses them, and `destroy`
+would remove them.
+
+## Volumes
+
+An instance's data is in Docker volumes named `<name>_<volume>` (e.g. `lesotho_db-data`), declared
+in the services' compose files as external: Compose never creates or removes them. `pihx` creates
+the missing ones, labelled `pihx.instance=<name>`, before anything starts containers (`start`,
+`update`, `run-service`, `initialize`, a service command's own start), and only `destroy` removes
+them, after archiving them. So a `docker compose ... down -v` typed by hand leaves the data where
+it is, and a bare `docker compose ... up` on an instance whose volumes don't exist fails
+(`external volume "<name>_<volume>" not found`) instead of starting on new, empty ones. Volumes
+Compose made before (an existing instance, or one converted in place) have the same names and keep
+working unchanged. `remove-service` keeps a service's volumes.
+
+## Archive and destroy
 
 ```bash
-# kol-ci.sh
-export OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr
-export OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci
-export OPENMRS_HTTP_PORT=9090
+pihx <name> stop
+pihx <name> archive [--to=<dir>]
 ```
 
-```bash
-source kol-ci.sh
-openmrs-docker create <name>
-```
+`archive` takes a full, cold copy of a stopped instance (it refuses while any of its containers is
+running, and holds the instance lock throughout): one `<volume>.tar.gz` per volume (the whole
+volume, owners and permissions kept), including volumes of services removed since and older
+Compose-made ones (labelled `com.docker.compose.project=<name>`); copies of the instance's env and
+override files (mode 0600, the directory 0700); and `RESTORE.txt`, the exact commands that recreate
+the instance from them (`mkdir` the instance directory, copy the files back, link `tools`,
+`docker volume create` and untar each volume, `pihx <name> start`). It goes to
+`$PIHX_HOME/<name>.archive-<UTC time>/`, or to `--to`, a new or empty directory. It checks there's
+room for the volumes first, reads every archive back, and if anything fails removes what it wrote,
+so a directory it leaves is complete.
 
-To start from another instance's `env` instead, wrap the `source` in `set -a`/`set +a`: those files
-use plain `KEY='value'` lines, since they're also Docker Compose `--env-file`s.
-
-```bash
-set -a; source ~/openmrs/other-instance/env; set +a
-openmrs-docker create <name>
-```
-
-`SERVICES=<comma-separated>` (default `openmrs-db,openmrs`) chooses the services
-([Optional services](services.md)). To keep instances apart from `openmrs-sdk` servers, which also
-live in `~/openmrs` by default, set `OPENMRS_DOCKER_HOME`.
-
-Before the first start, [`initialize`](restore.md) can fill the instance's volumes from a seed image
-or a backup, which is much faster than OpenMRS building them up itself.
+`destroy` is for development and test instances. It lists the instance directory and every volume
+it would delete, with their sizes, and asks you to type the instance's name; then it stops the
+instance, archives it as above to `$PIHX_HOME/<name>.destroyed-<UTC time>/`, prints where and how
+big, and asks you to type `delete`. Only then does it remove exactly the volumes it listed, and the
+instance directory (keeping a real `tools` directory, and the instance directory with it). Any
+other answer, or no input, stops it: before the archive with nothing changed, after it with the
+instance stopped and its archive and volumes kept. There's no `--force`. It needs `PIHX_HOME` to be
+writable, so it refuses on a Puppet host, whose `/home` isn't; and it refuses a directory without
+`instance.env`.
 
 ## Starting, stopping and logs
 
 ```bash
-openmrs-docker <name> start
-openmrs-docker <name> wait      # until OpenMRS has started (its /health/started endpoint)
+pihx <name> start
+pihx <name> wait      # until OpenMRS has started (its /health/started endpoint)
 ```
 
-When `wait` prints **OpenMRS is ready**, go to `http://localhost:8080/openmrs` (or the instance's
-`OPENMRS_HTTP_PORT`).
+When `wait` finishes, go to `http://localhost:8080/openmrs` (or the instance's `OPENMRS_HTTP_PORT`).
 
 ```bash
-openmrs-docker <name> logs [service]   # follow the logs, of every service by default
-openmrs-docker <name> status           # the containers, and the command holding the lock, if any
-openmrs-docker <name> stop             # removes the containers; the data stays in the volumes
-openmrs-docker <name> destroy          # removes the containers, the volumes and the instance directory
+pihx <name> logs [service]   # follow the logs, of every service by default
+pihx <name> status           # the containers, and the command holding the lock, if any
+pihx <name> stop             # removes the containers; the data stays in the volumes
+pihx <name> compose <args>   # inspect with docker compose: `config`, `ps`, `exec openmrs-db sh`, ...
+pihx <name> archive          # a full copy of the stopped instance ([Archive and destroy](#archive-and-destroy))
+pihx <name> destroy          # archives it, then removes its containers, volumes and directory; asks twice
+pihx list                    # the instances, with their services and the tools directory each runs
+pihx <name> config           # the merged values, secrets masked
 ```
 
-`restart` restarts the containers in place, so it doesn't pick up changes to `env`; `start` does.
+`restart` restarts the containers in place, so it doesn't pick up changes to the env files; `start`
+does.
 
 Each container's log is Docker's, kept and rotated as the host's Docker is set up to (Docker's own
 default, `json-file`, doesn't rotate; servers set the `local` driver, which does). It lasts as long as
@@ -78,85 +113,89 @@ setting), start it over. Keeping logs longer means shipping them off the host.
 ## Updating
 
 ```bash
-openmrs-docker <name> update    # pulls the latest images, and recreates the containers that changed
+pihx <name> update    # pulls the latest images, and recreates the containers that changed
 ```
 
-`update` and `start` then remove the images the recreated containers were made from, so repeated
-deploys don't pile them up: one a pull of the same tag replaced (left untagged), or one a registry
-has (it can be pulled again), e.g. the previous version after a tag change. Never a local build
-still tagged, which no registry may have, nor an image another container is made from (another
-instance on the same version): Docker refuses those, and they're left quietly.
+`update` pulls, brings the instance up (removing the containers of services whose env file is gone),
+checks that each service's setup containers succeeded, and then removes the images the recreated
+containers were made from, so repeated deploys don't pile them up: one a pull of the same tag
+replaced (left untagged), or one a registry has (it can be pulled again), e.g. the previous version
+after a tag change. Never a local build still tagged, which no registry may have, nor an image
+another container is made from (another instance on the same version): Docker refuses those, and
+they're left quietly. `start` removes them too.
 
-An instance keeps its own copy of each service's fragment, so a newer version of this tool doesn't
-change it by itself. `start` and `update` say when a fragment differs from the tool's (without
-changing anything), and `sync` brings them up to date:
-
-```bash
-openmrs-docker <name> sync
-openmrs-docker <name> update
-```
-
-`sync` also adds to `env`, with its default, any variable the refreshed fragments require that `env`
-lacks, and prints the names it added. It never changes a variable already in `env`, and doesn't put
-back an optional one you deleted (e.g. an `OPENMRS_DB_OPT_*` server option).
+An instance runs the service files of its own `tools` directory ([An instance's
+files](env.md#the-tools-directory)), so there is nothing to sync: updating the tool updates its
+instances, once the containers are recreated.
 
 ## Building a distro from source (developers)
 
-Set `DISTRO_SOURCE_DIR` (at `create`, or later in `env`) to a checkout of the distro, then:
+`openmrs-docker`: set `OPENMRS_DISTRO_DIR` (at `create`, or later in `openmrs.env`) to the distro's
+Maven project (an absolute path), then:
 
-- `start --build` or `update --build` builds the distro (`mvn clean package`) and its image first;
-  `build` does only that.
+- `start --build` or `update --build` builds the distro (`mvn clean package`, on the host) and its
+  image first; `build` does only that.
 - `start --dev` or `update --dev` runs the image with what you last built mounted over its distro,
   and with Java debugging on `OPENMRS_DEBUG_PORT`.
+
+## Compose on the instance
+
+`pihx <name> compose <subcommand> [args...]` inspects the instance with `docker compose`, using what
+pihx's own commands use: the instance's project name, project directory, env files and compose files.
+The subcommand (first, before any option) is one of `config`, `ps`, `images`, `top`, `port`, `logs`,
+`events`, `ls`, `version` and `exec`; its arguments go to Compose untouched, and its exit status is
+the command's. The others (`up`, `down`, `run`, ...) are refused with the managed command to use,
+and so is `config -o`/`--output`, which could overwrite one of the instance's files: redirect the
+output instead.
+
+**`compose config` prints every secret unmasked** (passwords in the services' environment), unlike
+`pihx <name> config`: don't paste its output anywhere, and delete any copy you redirect it to.
+
+```bash
+pihx <name> compose config            # the resolved model: what runs for each service
+pihx <name> compose config openmrs    # one service's
+pihx <name> compose ps
+pihx <name> compose exec openmrs-db sh
+```
+
+It doesn't take the instance lock, so use the managed commands to change the instance. Values a service's start script decides (e.g.
+`create-tables`) aren't computed, since that could start containers: those variables are passed
+empty, as when the script fails, so `config` shows the fail-closed default.
 
 ## One command at a time
 
 Every command that changes an instance (`initialize`, `start`, `stop`, `restart`, `update`, `pull`,
-`build`, `sync`, `add-service`, `remove-service`, `reset-openmrs-db-accounts`, `destroy`) holds a lock
-on it until it exits, and refuses to run while another command holds it, naming that command:
+`add-service`, `remove-service`, `use-tools`, `archive`, `destroy`, a job's `run-service` and a service's commands
+unless they say `# pihx: no-lock`) holds a lock on it until it exits, and refuses to run while another
+command holds it, naming that command:
 
 ```
 error: <name> is busy: initialize (pid 12345, started 2026-09-30 11:39:19) -- run this again once that finishes.
 ```
 
-So on a puppet-managed host, the `pull && start` puppet runs on every apply fails, and changes
-nothing, while an `initialize`, `reset-openmrs-db-accounts` or PETL run is in progress. With
-`OPENMRS_DOCKER_LOCK_WAIT=<seconds>` set, a command waits up to that long for the lock instead, and
-then fails naming the holder (puppet's deploys wait an hour). `run-service` holds the lock for a
-service that declares it (`# run-service: holds-lock` in its `.env.defaults`; petl does, so a deploy
-can't restart MySQL under a PETL run). Such a run is a job against the running instance: it runs the
+So on a puppet-managed host, the `update` puppet runs on every apply fails, and changes nothing, while an `initialize`, `reset-accounts` or PETL run is in progress. With
+`PIHX_LOCK_WAIT=<seconds>` set, a command waits up to that long for the lock instead, and then fails
+naming the holder (puppet's deploys wait an hour). A job (PETL) holds the lock for its whole run, so a
+deploy can't restart MySQL under a PETL run. Such a run is against the running instance: it runs the
 setup services first (account and login setup), and starts, stops or recreates none of the
 instance's containers, so `openmrs-db` (and `sqlserver`, if it has one) must be running. It doesn't
-need OpenMRS: PETL also runs against restored databases with no OpenMRS. For other services (the smoke tests) it refuses while the instance is busy but doesn't hold the
-lock. `status`, `logs` and `wait` never wait for it. The lock is released however its holder exits,
-so there's nothing to clean up after a crash. It uses `flock(1)` (util-linux, on every Linux host);
-where `flock` isn't installed (e.g. macOS), commands run unlocked.
+need OpenMRS: PETL also runs against restored databases with no OpenMRS. For other services (the
+smoke tests) it refuses while the instance is busy but doesn't hold the lock. `status`, `logs`, `compose` and
+`wait` never wait for it. The lock is released however its holder exits, so there's nothing to
+clean up after a crash. It uses `flock`.
 
 ## Changing the database passwords
 
-`OPENMRS_DB_PASSWORD` can't contain a backslash, and neither can `OPENMRS_DB_ROOT_PASSWORD` with a
-MySQL image: the MySQL images' first setup and openmrs-core's first install store it wrongly, so
-`openmrs-db` refuses one before setting up an empty data directory (MariaDB's images handle it in
-the root password).
-
-Changing either password in `env` changes nothing by itself: MySQL takes them only when it sets up an
-empty data directory, and OpenMRS (core 2.6+) keeps the connection settings its runtime properties
-file got on its first start. After editing `env`, run:
-
-```bash
-openmrs-docker <name> reset-openmrs-db-accounts
-```
-
-It stops the instance, sets the MySQL accounts to the passwords in `env` (with
-`reset-mysql-accounts`), sets `connection.username` and `connection.password` in
-`openmrs-runtime.properties` in `openmrs-data` (keeping the previous file as
-`openmrs-runtime.properties.bak`, which still holds the old password), and starts it again. Until it
-runs, the database reports unhealthy: its healthcheck already uses the new password.
+Editing `OPENMRS_DB_PASSWORD` or `OPENMRS_DB_ROOT_PASSWORD` changes nothing in an existing database by
+itself: see [`reset-accounts`](../services/openmrs-db/README.md#changing-the-passwords).
 
 ## Updating this tool, and pinning it
 
 The tool is a git clone, so `git pull` in it updates it, and `git checkout <commit/branch/tag>` pins
-it. Then `sync` each instance to take up changed fragments (above).
+it. Each instance runs its own `tools` directory, so to keep some instances on a stable
+version while you work on the tool in another checkout (e.g. a `git worktree` on `main`), point them
+at it with `pihx <name> use-tools <dir>`. The first run with a new version of
+`images/pihx-runtime` pulls that image (or builds it, when CI hasn't published it yet).
 
 ## Troubleshooting on Windows
 

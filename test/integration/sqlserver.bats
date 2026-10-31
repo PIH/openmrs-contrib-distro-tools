@@ -15,10 +15,10 @@ PW='pa$s "w;d`x-1A'
 
 setup() {
     NAME="$(instance)"
-    SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 SERVICES=sqlserver create_instance "$NAME"
-    ENV="$OPENMRS_DOCKER_HOME/$NAME/env"
+    SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 create_instance "$NAME" --services=sqlserver
+    ENV="$(env_file_of "$NAME" sqlserver)"
 }
-teardown() { destroy_instance "$NAME"; common_teardown; }
+teardown() { remove_test_instance "$NAME"; common_teardown; }
 
 # Starts the instance and waits for sqlserver-setup to exit; prints its exit code.
 start_and_wait_for_setup() {
@@ -69,20 +69,26 @@ sqlcmd_as() { # <login> <password> <query>
     assert_output 1
 }
 
-@test "a password SQL Server's policy refuses (here: containing the login name) fails start, with SQL Server's message" {
+@test "a password SQL Server's policy refuses (here: containing the login name) fails start before anything is created" {
     printf "SQLSERVER_LOGIN_PETL_USER='petl'\nSQLSERVER_LOGIN_PETL_PASSWORD='Petl-pw-1'\nSQLSERVER_LOGIN_PETL_DATABASES='db1'\n" >> "$ENV"
     run "$BIN/openmrs-docker" "$NAME" start
     assert_failure
     assert_output --partial "sqlserver-setup failed"
-    assert_output --partial "Password validation failed"
+    assert_output --partial "the password for login petl (SQLSERVER_LOGIN_PETL_PASSWORD) contains the login name"
+    assert_output --partial "nothing was changed"
+    refute_output --partial "Petl-pw-1"
+    run sqlcmd_as sa "$SA" "SELECT COUNT(*) FROM sys.server_principals WHERE name = 'petl'"
+    assert_output 0
+    run sqlcmd_as sa "$SA" "SELECT COUNT(*) FROM sys.databases WHERE name = 'db1'"
+    assert_output 0
 }
 
 @test "run-service stops before the service runs when a setup fails" {
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     NAME="$(instance)-petl"
     PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=My-pw-1 PETL_SQLSERVER_PASSWORD=Sql-pw-1 \
-        SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 SERVICES=openmrs-db,petl,sqlserver create_instance "$NAME"
-    printf "SQLSERVER_LOGIN_BAD_USER='reports'\nSQLSERVER_LOGIN_BAD_PASSWORD='Rpt-pw-9'\n" >> "$OPENMRS_DOCKER_HOME/$NAME/env"   # no databases
+        SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 create_instance "$NAME" --services=openmrs-db,petl,sqlserver
+    printf "SQLSERVER_LOGIN_BAD_USER='reports'\nSQLSERVER_LOGIN_BAD_PASSWORD='Rpt-pw-9'\n" >> "$(env_file_of "$NAME" sqlserver)"   # no databases
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1 || true   # fails on the same login; leaves the instance up
     run "$BIN/openmrs-docker" "$NAME" run-service petl sh -c 'echo PETL-RAN'
     assert_failure
@@ -91,11 +97,11 @@ sqlcmd_as() { # <login> <password> <query>
 }
 
 @test "an instance with petl and sqlserver but no PETL_SQLSERVER_PASSWORD fails start, naming the login's password" {
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     NAME="$(instance)-petl"
     env -u PETL_SQLSERVER_PASSWORD PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=My-pw-1 \
-        SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 SERVICES=openmrs-db,petl,sqlserver \
-        "$BIN/openmrs-docker" create "$NAME" >/dev/null
+        SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 \
+        "$BIN/openmrs-docker" "$NAME" create --services=openmrs-db,petl,sqlserver >/dev/null
     run "$BIN/openmrs-docker" "$NAME" start
     assert_failure
     assert_output --partial "SQLSERVER_LOGIN_PETL_PASSWORD must be set"

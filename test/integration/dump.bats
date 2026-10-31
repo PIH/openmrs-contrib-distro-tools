@@ -21,7 +21,7 @@ teardown_file() { common_teardown_file; }
 
 setup() { cd "$BATS_TEST_TMPDIR"; }
 teardown() {
-    [ -n "${NAME:-}" ] && destroy_instance "$NAME"
+    [ -n "${NAME:-}" ] && remove_test_instance "$NAME"
     common_teardown
 }
 
@@ -35,12 +35,18 @@ names_in_7z() { # <archive> <password>
         sh -c "7z l -slt -p'$2' '/w/$1' | sed -n 's/^Path = //p' | tail -n +2"
 }
 
-# Initializes a new instance from RESTORE_MYSQL_DUMP_PATH=<dump>.
-initialize_from() { # <dump> [VAR=value...]
-    local d=$1; shift
+# Initializes a new instance from <dump>, as its openmrs-db entry.
+initialize_from() { # <dump>
+    local entry
+    case $1 in
+        *.7z) entry=openmrs-db.sql.7z ;;
+        *.zip) entry=openmrs-db.sql.zip ;;
+        *.gz) entry=openmrs-db.sql.gz ;;
+        *) entry=openmrs-db.sql ;;
+    esac
     NAME="$(instance)"
     create_instance "$NAME"
-    run_initialize "$NAME" RESTORE_MYSQL_DUMP_PATH="$d" "$@"
+    run_initialize "$NAME" --from "$(from_folder "$entry" "$1")"
 }
 
 # --- output formats --------------------------------------------------------------------------------
@@ -115,7 +121,7 @@ initialize_from() { # <dump> [VAR=value...]
 
 @test "initialize restores a .sql.7z dump directly" {
     ARCHIVE_PASSWORD=pw dump backup.sql.7z >/dev/null 2>&1
-    initialize_from backup.sql.7z ARCHIVE_PASSWORD=pw
+    ARCHIVE_PASSWORD=pw initialize_from backup.sql.7z
     assert_success
     run db_marker_in_volume "${NAME}_db-data"
     assert_output 1
@@ -123,7 +129,7 @@ initialize_from() { # <dump> [VAR=value...]
 
 @test "a .7z dump restore removes its temporary db-init volume afterwards" {
     ARCHIVE_PASSWORD=pw dump backup.sql.7z >/dev/null 2>&1
-    initialize_from backup.sql.7z ARCHIVE_PASSWORD=pw
+    ARCHIVE_PASSWORD=pw initialize_from backup.sql.7z
     assert_success
     run docker volume inspect "${NAME}_db-init"
     assert_failure
@@ -132,7 +138,7 @@ initialize_from() { # <dump> [VAR=value...]
 @test "initialize never puts a .7z dump's ARCHIVE_PASSWORD in a docker command line" {
     ARCHIVE_PASSWORD=s3cret-dumparchive-pw dump backup.sql.7z >/dev/null 2>&1
     record_docker_argv
-    initialize_from backup.sql.7z ARCHIVE_PASSWORD=s3cret-dumparchive-pw
+    ARCHIVE_PASSWORD=s3cret-dumparchive-pw initialize_from backup.sql.7z
     assert_success
     assert_not_in_docker_argv s3cret-dumparchive-pw
 }
@@ -141,7 +147,7 @@ initialize_from() { # <dump> [VAR=value...]
     dump inner.sql.gz 2>/dev/null
     docker run --rm -v "$BATS_TEST_TMPDIR:/w" "$P7ZIP_IMAGE" \
         7z a -ppw -t7z /w/legacy.sql.gz.7z /w/inner.sql.gz >/dev/null
-    initialize_from legacy.sql.gz.7z ARCHIVE_PASSWORD=pw
+    ARCHIVE_PASSWORD=pw initialize_from legacy.sql.gz.7z
     assert_success
     run db_marker_in_volume "${NAME}_db-data"
     assert_output 1
@@ -149,7 +155,7 @@ initialize_from() { # <dump> [VAR=value...]
 
 @test "initialize with a wrong password for a .7z dump fails and shows why" {
     ARCHIVE_PASSWORD=pw dump backup.sql.7z >/dev/null 2>&1
-    initialize_from backup.sql.7z ARCHIVE_PASSWORD=wrong
+    ARCHIVE_PASSWORD=wrong initialize_from backup.sql.7z
     assert_failure
     assert_output --partial 'Wrong password'
     assert_equal "$(docker ps -aq --filter "name=^$NAME")" ""
@@ -184,7 +190,7 @@ initialize_from() { # <dump> [VAR=value...]
 
 @test "--strip-definers also applies to a .7z dump" {
     ARCHIVE_PASSWORD=pw dump backup.sql.7z --strip-definers >/dev/null 2>&1
-    initialize_from backup.sql.7z ARCHIVE_PASSWORD=pw
+    ARCHIVE_PASSWORD=pw initialize_from backup.sql.7z
     assert_success
     run db_query_in_volume "${NAME}_db-data" 'INSERT INTO audited VALUES (9); SELECT id FROM audit;'
     assert_output 9

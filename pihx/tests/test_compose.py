@@ -1,0 +1,119 @@
+import io
+import shlex
+import os
+import stat
+from unittest import mock
+
+from pihx import compose, instance
+from pihx.tests.fixtures import TempDirTest, two_service_instance, write
+
+
+class ComposeTest(TempDirTest):
+    def setUp(self):
+        super().setUp()
+        self.home, self.tools = two_service_instance(self.root)
+        self.kz = instance.open(self.home, "kz", tools=self.tools)
+        self.dir = self.home / "kz"
+        self.svc = self.tools / "services"
+        self.env_files = [self.tools / "instance.env.defaults", self.svc / "app" / "env.defaults", self.svc / "db" / "env.defaults",
+                          self.dir / "app.env", self.dir / "db.env", self.dir / "instance.env"]
+        # every compose.yaml, then with-files (both services present), then overrides
+        self.compose_files = [self.svc / "app" / "compose.yaml", self.svc / "db" / "compose.yaml",
+                              self.svc / "app" / "with-db.yaml", self.dir / "app.override.yaml"]
+
+    def test_with_file_is_applied_only_when_both_services_are_present(self):
+        (self.dir / "db.env").unlink()
+        alone = instance.open(self.home, "kz", tools=self.tools)
+        self.assertEqual(compose.Compose(alone).compose_files(),
+                         [self.svc / "app" / "compose.yaml", self.dir / "app.override.yaml"])
+        self.assertEqual(compose.Compose(self.kz).compose_files(), self.compose_files)
+
+    def test_args(self):
+        extra = self.root / "restore.yaml"
+        args = compose.Compose(self.kz, extra_files=[extra]).args()
+        expected = ["-p", "kz", "--project-directory", str(self.dir)]
+        for f in self.env_files:
+            expected += ["--env-file", str(f)]
+        for f in self.compose_files + [extra]:
+            expected += ["-f", str(f)]
+        self.assertEqual(args, expected)
+
+    def test_env(self):
+        env = compose.Compose(self.kz).env()
+        self.assertEqual(env, {
+            "COMPOSE_PROJECT_NAME": "kz",
+            "COMPOSE_FILE": os.pathsep.join(str(f) for f in self.compose_files),
+            "COMPOSE_ENV_FILES": ",".join(str(f) for f in self.env_files),
+            "SERVICE_NAME": "kz",
+            "PIHX_TOOLS": str(self.tools),
+            "PIHX_INSTANCE_DIR": str(self.dir),
+            "PIHX_INSTANCE": "kz",
+        })
+        # The names start-env scripts can't set.
+        self.assertEqual(set(env), compose.OWN_NAMES)
+
+    def fake_docker(self, status=0):
+        """A docker on PATH that records its arguments, then its environment."""
+        bin_dir = self.root / "bin"
+        record = self.root / "record"
+        docker = write(bin_dir / "docker",
+                       f'#!/bin/sh\n{{ printf "%s\\n" "$@"; echo --; env; }} > "{record}"\n'
+                       f'exit {status}\n')
+        docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
+        self.addCleanup(os.environ.__setitem__, "PATH", os.environ["PATH"])
+        os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
+        return record
+
+    def test_run(self):
+        record = self.fake_docker()
+        c = compose.Compose(self.kz)
+        result = c.run("ps", "--all")
+        self.assertEqual(result.returncode, 0)
+        args, env = record.read_text().split("--\n", 1)
+        self.assertEqual(args.splitlines(), ["compose"] + c.args() + ["ps", "--all"])
+        self.assertIn("SERVICE_NAME=kz", env.splitlines())
+
+    def test_run_gets_only_pihx_values_and_passed_through_ones(self):
+        record = self.fake_docker()
+        polluted = {"OPENMRS_X": "from the caller", "TZ": "Mars/Base", "DOCKER_HOST": "unix:///s",
+                    "HOME": "/home/caller"}
+        with mock.patch.dict(os.environ, polluted):
+            compose.Compose(self.kz).run("ps")
+        env = dict(line.split("=", 1) for line in record.read_text().split("--\n", 1)[1].splitlines()
+                   if "=" in line)
+        self.assertNotIn("OPENMRS_X", env)
+        self.assertNotIn("TZ", env)
+        self.assertEqual(env["DOCKER_HOST"], "unix:///s")
+        self.assertEqual(env["HOME"], "/home/caller")
+        self.assertEqual(env["COMPOSE_PROJECT_NAME"], "kz")
+        with mock.patch.dict(os.environ, polluted):
+            self.assertEqual(set(compose.environment(self.kz)),
+                             set(compose.Compose(self.kz).env())
+                             | {n for n in compose.PASSED_THROUGH if n in os.environ})
+
+    def test_run_failure(self):
+        self.fake_docker(status=3)
+        c = compose.Compose(self.kz)
+        with self.assertRaises(compose.ComposeError) as raised:
+            c.run("up", "-d")
+        self.assertIn("up -d", str(raised.exception))
+        self.assertEqual(c.run("up", check=False).returncode, 3)
+
+    def test_pihx_debug_echoes_each_docker_command_to_stderr(self):
+        self.fake_docker()
+        c = compose.Compose(self.kz)
+        for debug, echoed in (("1", True), (None, False), ("0", False)):
+            with self.subTest(debug=debug), mock.patch.dict(os.environ), \
+                    mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+                os.environ.pop("PIHX_DEBUG", None)
+                if debug:
+                    os.environ["PIHX_DEBUG"] = debug
+                c.run("exec", "app", "sh", "-c", "echo a b")
+                compose.docker(["docker", "ps", "-q"])
+                if echoed:
+                    self.assertEqual(err.getvalue().splitlines(), [
+                        "+ " + shlex.join(["docker", "compose", *c.args(), "exec", "app", "sh", "-c",
+                                           "echo a b"]),
+                        "+ docker ps -q"])
+                else:
+                    self.assertEqual(err.getvalue(), "")

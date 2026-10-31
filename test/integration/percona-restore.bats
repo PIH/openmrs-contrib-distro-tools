@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# initialize RESTORE_MYSQL_PERCONA_PATH restores a Percona/xtrabackup backup in containers: from a
+# initialize --from a directory with an openmrs-db.percona entry restores a Percona/xtrabackup backup in containers: from a
 # .7z like the legacy nightly percona.7z (which backup-percona --output=<.7z> also writes), a
-# folder-wrapped .tar.gz, or an unprepared directory. backup-percona --host backs up a MySQL that
+# directory-wrapped .tar.gz, or an unprepared directory. backup-percona --host backs up a MySQL that
 # isn't in a container.
 
 load ../helpers
@@ -14,7 +14,7 @@ teardown_file() { common_teardown_file; }
 
 setup() { cd "$BATS_TEST_TMPDIR"; }
 teardown() {
-    [ -n "${NAME:-}" ] && destroy_instance "$NAME"
+    [ -n "${NAME:-}" ] && remove_test_instance "$NAME"
     common_teardown
 }
 
@@ -23,11 +23,16 @@ percona_backup() { # <output> [args...]
     MYSQL_PASSWORD=openmrs "$UTILS/backup-percona.sh" --container="$SRC_DB" --volume="$SRC_DB-data" --output="$out" "$@"
 }
 
-restore_percona() { # <path> [VAR=value...]
+# Initializes a new instance from the backup <path>, a directory or an archive.
+restore_percona() { # <path>
+    local entry=openmrs-db.percona
+    case $1 in
+        *.tar.gz) entry=$entry.tar.gz ;;
+        *.*) entry=$entry.${1##*.} ;;
+    esac
     NAME="$(instance)"
-    SERVICES=openmrs-db create_instance "$NAME"
-    local path=$1; shift
-    run_initialize "$NAME" RESTORE_MYSQL_PERCONA_PATH="$path" "$@"
+    create_instance "$NAME" --services=openmrs-db
+    run_initialize "$NAME" --from "$(from_folder "$entry" "$1")"
 }
 
 in_7z() { # <archive> <password> <7z args...>
@@ -75,7 +80,7 @@ in_7z() { # <archive> <password> <7z args...>
     assert_output 1
 }
 
-@test "a .tar.gz holding one <name>-percona folder restores" {
+@test "a .tar.gz holding one <name>-percona directory restores" {
     percona_backup site-percona >/dev/null 2>&1
     tar czf site-percona.tar.gz site-percona
     restore_percona site-percona.tar.gz
@@ -90,7 +95,7 @@ in_7z() { # <archive> <password> <7z args...>
     restore_percona notpercona.tar.gz
     assert_failure
     assert_output --partial "isn't a Percona/xtrabackup backup"
-    destroy_instance "$NAME"; NAME=
+    remove_test_instance "$NAME"; NAME=
     assert_no_leftovers
 }
 

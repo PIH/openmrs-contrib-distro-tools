@@ -15,30 +15,24 @@ teardown_file() {
     common_teardown_file
 }
 
+# The instance's one service: modality-simulator, whose image each test chooses (start_on).
 setup() {
     NAME="$(instance)"
-    SERVICES=openmrs-smoke-tests create_instance "$NAME"
-    DIR="$OPENMRS_DOCKER_HOME/$NAME"
-    rm "$DIR/openmrs-smoke-tests.yaml"   # only the test's own service
-    cat > "$DIR/app.yaml" <<'YAML'
-name: ${SERVICE_NAME:?SERVICE_NAME must be set}
-services:
-  app:
-    container_name: ${SERVICE_NAME:?SERVICE_NAME must be set}-app
-    image: ${APP_IMAGE:?APP_IMAGE must be set}
-YAML
+    MODALITY_SIMULATOR_IMAGE_NAME=alpine MODALITY_SIMULATOR_IMAGE_TAG=3.21 \
+        MODALITY_SIMULATOR_HOST_PORT=0 MODALITY_SIMULATOR_IMAGE_DIR=/tmp \
+        create_instance "$NAME" --services=modality-simulator 2>/dev/null
 }
 teardown() {
-    destroy_instance "$NAME"
+    remove_test_instance "$NAME"
     remove_images "$NAME-"
     remove_images "$REGISTRY/$NAME-"
     common_teardown
 }
 
-# Points the instance's app at <ref> and starts it.
+# Points the instance's service at <ref> and starts it (through openmrs-docker).
 start_on() { # <ref>
-    sed -i '/^APP_IMAGE=/d' "$DIR/env"
-    echo "APP_IMAGE='$1'" >> "$DIR/env"
+    set_env_value "$NAME" modality-simulator MODALITY_SIMULATOR_IMAGE_NAME "${1%:*}"
+    set_env_value "$NAME" modality-simulator MODALITY_SIMULATOR_IMAGE_TAG "${1##*:}"
     run "$BIN/openmrs-docker" "$NAME" start
     assert_success
 }

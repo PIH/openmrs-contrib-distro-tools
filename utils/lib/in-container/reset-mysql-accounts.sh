@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs inside a MySQL/MariaDB image, with a stopped data directory at /var/lib/mysql (from
-# utils/reset-mysql-accounts.sh, and initialize's reset-mysql-accounts.yaml overlay). Starts the
+# utils/reset-mysql-accounts.sh, and services/openmrs-db/restore/reset-accounts.yaml). Starts the
 # server with --skip-grant-tables --skip-networking (no password needed, and nothing can connect),
 # then:
 #   - sets the password of every root@<host> account, and creates root@'%' if missing;
