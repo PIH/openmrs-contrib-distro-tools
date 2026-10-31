@@ -101,6 +101,7 @@ Run `pihx`, `openmrs-docker` or `openmrs-utils` with no arguments for every comm
 
 | | |
 |---|---|
+| [Getting to know the tools](docs/getting-to-know-the-tools.md) | A walk-through of what the tools do: a first instance, backup and restore, seeds, developing a distro, companion services, archive and destroy |
 | [Running an instance](docs/instances.md) | Creating, starting, updating and pinning instances; the instance lock |
 | [An instance's files](docs/env.md) | `instance.env` and one env file per service: where values come from, what a container sees, overrides, the tools directory an instance runs |
 | [Services](docs/services.md) | The services, adding and removing them, and how to write one; each service's README has its variables |
