@@ -209,6 +209,9 @@ def instances(home):
     for d in sorted(home.iterdir()) if home.is_dir() else []:
         if not d.is_dir() or instance_module.instance_name_error(d.name):
             continue
+        # Another user's directory the caller can't look into (a host's /home) isn't listed.
+        if not os.access(d, os.R_OK | os.X_OK):
+            continue
         svcs = sorted(f.name[:-len(".env")] for f in d.glob("*.env")
                       if f.name != instance_module.INSTANCE_ENV and not f.name.startswith("."))
         if svcs or (d / instance_module.INSTANCE_ENV).is_file():

@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import pathlib
 import stat
 import subprocess
 from unittest import mock
@@ -272,6 +273,27 @@ class ConfigAndListTest(CommandTest):
         self.assertEqual(lines[0], ["INSTANCE", "SERVICES", "TOOLS"])
         self.assertEqual(lines[1:], [["kz", "app,db", str(self.root / "gone")],
                                      ["puppet", "db", "(directory)"]])
+
+    def test_list_skips_a_directory_the_caller_cant_read(self):
+        if os.geteuid() == 0:
+            self.skipTest("root reads every directory")
+        other = self.home / "other"
+        write(other / "instance.env", "")
+        other.chmod(0)
+        self.addCleanup(other.chmod, 0o700)
+        # As Python 3.12 (pihx-runtime's) does; later versions return False instead of raising.
+        is_file = pathlib.Path.is_file
+
+        def raising_is_file(path, *args, **kwargs):
+            if path.parent == other:
+                raise PermissionError(13, "Permission denied", str(path))
+            return is_file(path, *args, **kwargs)
+
+        with mock.patch.object(pathlib.Path, "is_file", raising_is_file):
+            status, out, err = self.run_pihx("list")
+        self.assertEqual(status, 0, err)
+        names = [line.split()[0] for line in out.splitlines()[1:]]
+        self.assertEqual(names, ["kz"])
 
     def test_list_with_no_instances_prints_nothing(self):
         self.set_env({"PIHX_HOME": str(self.root / "nowhere")})
