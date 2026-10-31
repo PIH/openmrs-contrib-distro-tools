@@ -8,6 +8,9 @@ commands (OpenMRS's default services, building a distribution from source; [The 
 extension](../openmrs/README.md)). Run either with no arguments for every command and option. (`~/openmrs` is the OpenMRS SDK's directory, which is why instances
 aren't kept there.)
 
+An instance runs as the user who owns its directory, so the files pihx makes in it are that user's:
+`pihx <name> ...` from anyone else (root, say) is refused, naming the user to run it as.
+
 ## Creating an instance
 
 Each distribution has its own published image and, if it uses one, its own PIH config profiles; its

@@ -33,6 +33,21 @@ PIHX_HOME=${PIHX_HOME:-$HOME/pihx}
 mkdir -p "$PIHX_HOME"
 PIHX_HOME=$(cd -P "$PIHX_HOME" && pwd)
 
+# An instance runs as the user who owns its directory: files pihx makes in it, and the registry
+# credentials it pulls with, are that user's. Anyone else (root after sudo, say) is refused, naming the user.
+case ${1-} in
+    '' | [!a-z0-9]* | *[!a-z0-9_-]* | list | help | version) ;;
+    *)
+        if [ -d "$PIHX_HOME/$1" ]; then
+            owner=$(ls -ndL "$PIHX_HOME/$1" | awk '{print $3}')
+            if [ "$owner" != "$(id -u)" ]; then
+                owner_name=$(id -nu "$owner" 2>/dev/null) || owner_name="uid $owner"
+                die "$PIHX_HOME/$1 belongs to $owner_name: run pihx as that user (e.g. sudo -iu $owner_name)"
+            fi
+        fi
+        ;;
+esac
+
 # Hand-off: `pihx <instance> ...` re-runs itself from the instance's own tools directory, so an instance
 # always runs one version of the tools. Only for a valid instance name, so the argument can't point
 # outside PIHX_HOME. Once only: the launcher handed to never hands off again, so it can't loop.

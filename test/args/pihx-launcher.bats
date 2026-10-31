@@ -200,3 +200,18 @@ copy_tools() { # <dir>
     assert_failure
     assert_output "error: $PIHX_HOME/inst/tools is missing; point it at a tools directory with: pihx inst use-tools <dir>"
 }
+
+@test "an instance whose directory another user owns is refused, naming the user" {
+    [ "$(id -u)" != 0 ] || skip "run as root, which owns /usr/bin"
+    # /usr/bin is root's, so with PIHX_HOME=/usr it stands in for an instance someone else owns.
+    PIHX_HOME=/usr run "$BIN/pihx" bin status
+    assert_failure
+    assert_output "error: /usr/bin belongs to root: run pihx as that user (e.g. sudo -iu root)"
+}
+
+@test "an instance the caller owns isn't refused for its owner" {
+    mkdir -p "$PIHX_HOME/inst"
+    ln -s "$BATS_TEST_TMPDIR/gone" "$PIHX_HOME/inst/tools"
+    run "$BIN/pihx" inst version
+    refute_output --partial "belongs to"
+}
