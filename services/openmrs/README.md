@@ -46,10 +46,10 @@ over a full database if its runtime properties file were later removed.
 
 openmrs-core's `startup-init.sh` turns each `OMRS_EXTRA_<name>` into a runtime property: `_` becomes
 `.` and `__` becomes `_` (so `OMRS_EXTRA_pihmalawi_warehouse_connection_url` sets
-`pihmalawi.warehouse.connection.url`). A name with any lowercase letter keeps its case
-(`OMRS_EXTRA_mail_smtp_socketFactory_class` sets `mail.smtp.socketFactory.class`); an all-uppercase
-name is lowercased. If two variables give the same property, the first in sorted order wins and the
-other is logged as ignored.
+`pihmalawi.warehouse.connection.url`). As of openmrs-core 2.8.11, a name with any lowercase letter
+keeps its case (`OMRS_EXTRA_mail_smtp_socketFactory_class` sets `mail.smtp.socketFactory.class`), an
+all-uppercase name is lowercased, and if two variables give the same property, the first in sorted
+order wins and the other is logged as ignored. Older images lowercase every name.
 At `create`, `OMRS_EXTRA_*` set in your shell go into `openmrs.env` (the manifest's `capture-env`);
 later, add them there, and `pihx <name> start` picks them up (`restart` doesn't).
 

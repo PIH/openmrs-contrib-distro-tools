@@ -186,7 +186,8 @@ To set a property on an instance you manage by hand (a local or dev instance), a
 instance's `openmrs.env` and start it again:
 
 ```bash
-# OMRS_EXTRA_<key>, with '_' written as '__' and '.' as '_'; a key with capitals keeps its case
+# OMRS_EXTRA_<key>, with '_' written as '__' and '.' as '_'. As of openmrs-core 2.8.11, a key with capitals
+# keeps its case; older images lowercase it
 OMRS_EXTRA_mail_smtp_host='smtp.example.org'
 OMRS_EXTRA_terms__and__conditions__enabled='true'
 OMRS_EXTRA_mail_smtp_socketFactory_class='javax.net.ssl.SSLSocketFactory'
