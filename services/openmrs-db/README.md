@@ -7,7 +7,7 @@ in the instance's `openmrs-db.env`; defaults are in [`env.defaults`](env.default
 | Variable | Default | |
 |---|---|---|
 | `OPENMRS_DB_IMAGE_NAME`, `OPENMRS_DB_IMAGE_TAG` | `mysql`, `5.6` | any MySQL or MariaDB image. After a physical restore, the tag should still match the version the backup came from |
-| `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD` | `openmrs` for each | the OpenMRS account and root. `openmrs` reads the account from here, so it is defined once. Neither password can contain a backslash ([below](#changing-the-passwords)) |
+| `OPENMRS_DB_USER`, `OPENMRS_DB_PASSWORD`, `OPENMRS_DB_ROOT_PASSWORD` | `openmrs` for each | the OpenMRS account and root. `openmrs` reads the account from here, so it is defined once. With a MySQL image, neither password can contain a backslash ([below](#changing-the-passwords)) |
 | `OPENMRS_DB_PORT` | `3306` | the port published on the host; set it differently to run more than one instance at once |
 | `OPENMRS_DB_MEMORY_LIMIT` | `2g` | the container's memory limit |
 | `OPENMRS_DB_OPT_<option>` | see below | MySQL/MariaDB server options |
@@ -83,24 +83,20 @@ database container (which reads that file), so changing one recreates `openmrs-d
 
 ## Changing the passwords
 
-`OPENMRS_DB_PASSWORD` can't contain a backslash, and neither can `OPENMRS_DB_ROOT_PASSWORD` with a
-MySQL image: the MySQL images' first setup and openmrs-core's first install store it wrongly, so
-`openmrs-db` refuses one before setting up an empty data directory (MariaDB's images handle it in
-the root password).
+With a MySQL image, neither password can contain a backslash: the MySQL images' first setup stores
+it wrongly, so `openmrs-db` refuses one before setting up an empty data directory. MariaDB's images
+and OpenMRS (core 2.8.11+) handle it.
 
-Changing either password in `openmrs-db.env` changes nothing by itself: MySQL takes them only when
-it sets up an empty data directory, and OpenMRS (core 2.6+) keeps the connection settings its
-runtime properties file got on its first start. After editing the file, run:
+Changing either password in `openmrs-db.env` doesn't change the MySQL accounts: MySQL takes the
+passwords only when it sets up an empty data directory. OpenMRS (core 2.8.11+) takes the new
+connection settings on its next start. After editing the file, run:
 
 ```bash
 pihx <name> openmrs-db reset-accounts
 ```
 
 It stops the instance, sets the MySQL accounts to the passwords in the instance's files (with
-`reset-mysql-accounts`), sets `connection.username` and `connection.password` in
-`openmrs-runtime.properties` in `openmrs-data` (keeping the previous file as
-`openmrs-runtime.properties.bak`, which still holds the old password), and starts it again. Until it
-runs, the database reports unhealthy: its healthcheck already uses the new password.
+`reset-mysql-accounts`), and starts it again. Until it runs, the database reports unhealthy: its healthcheck already uses the new password.
 
 ## Restoring and summarizing
 

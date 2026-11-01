@@ -44,9 +44,12 @@ over a full database if its runtime properties file were later removed.
 
 ## Runtime properties (`OMRS_EXTRA_*`)
 
-openmrs-core's `startup-init.sh` turns each `OMRS_EXTRA_<name>` into a runtime property: the name is
-lowercased, `_` becomes `.` and `__` becomes `_` (so `OMRS_EXTRA_pihmalawi_warehouse_connection_url`
-sets `pihmalawi.warehouse.connection.url`). Property keys with capital letters can't be set this way.
+openmrs-core's `startup-init.sh` turns each `OMRS_EXTRA_<name>` into a runtime property: `_` becomes
+`.` and `__` becomes `_` (so `OMRS_EXTRA_pihmalawi_warehouse_connection_url` sets
+`pihmalawi.warehouse.connection.url`). As of openmrs-core 2.8.11, a name with any lowercase letter
+keeps its case (`OMRS_EXTRA_mail_smtp_socketFactory_class` sets `mail.smtp.socketFactory.class`), an
+all-uppercase name is lowercased, and if two variables give the same property, the first in sorted
+order wins and the other is logged as ignored. Older images lowercase every name.
 At `create`, `OMRS_EXTRA_*` set in your shell go into `openmrs.env` (the manifest's `capture-env`);
 later, add them there, and `pihx <name> start` picks them up (`restart` doesn't).
 
@@ -55,12 +58,13 @@ from `openmrs-distro.properties` into the image as `ENV OMRS_EXTRA_<key with . r
 `OMRS_EXTRA_pih_config` and `OMRS_EXTRA_initializer_startup_load`. To override one of those, use
 exactly that name, including its case. Environment variable names are case-sensitive, so
 `OMRS_EXTRA_INITIALIZER_STARTUP_LOAD` would be a second variable for the same property rather than an
-override, and on a first install openmrs-core keeps the image's value. Check an image's baked values
+override: openmrs-core uses one of them and logs the other as ignored. Check an image's baked values
 with `docker image inspect <image> --format '{{range .Config.Env}}{{println .}}{{end}}' | grep OMRS_EXTRA_`.
 
-openmrs-core 2.6+ writes the runtime properties file once, on its first install, and afterwards only
-merges `OMRS_EXTRA_*` into it. For anything else in an existing file, see
-[`runtime-properties`](../../docs/utilities.md).
+openmrs-core writes the runtime properties file on its first install. On later starts (2.8.11+) it
+writes the connection settings (`OMRS_CONFIG_CONNECTION_*`, from `OPENMRS_DB_*`) and `OMRS_EXTRA_*`
+into the existing file, overriding what's there; anything else in the file is left alone. For
+that, see [`runtime-properties`](../../docs/utilities.md).
 
 ## Restoring and summarizing
 

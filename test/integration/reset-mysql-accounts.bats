@@ -14,7 +14,7 @@ in_volume() { # <volume> <sh command>
     docker run --rm -v "$1:/data" alpine:3.21 sh -c "$2"
 }
 
-@test "openmrs-db reset-accounts sets the MySQL accounts and OpenMRS's connection settings to the passwords now in openmrs-db.env" {
+@test "openmrs-db reset-accounts sets the MySQL accounts to the passwords now in openmrs-db.env, and leaves OpenMRS's runtime properties alone" {
     NAME="$(instance)"
     local env
     create_instance "$NAME" --services=openmrs-db
@@ -22,11 +22,11 @@ in_volume() { # <volume> <sh command>
     echo 'CREATE TABLE marker (id INT); INSERT INTO marker VALUES (1);' > dump.sql
     run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql)"
     assert_success
-    # openmrs-data as OpenMRS leaves it after its first start
+    # openmrs-data as OpenMRS leaves it after its first start: OpenMRS takes the new connection
+    # settings from env on its next start (openmrs-core 2.8.11+), so the file is left alone
     docker volume create "${NAME}_openmrs-data" >/dev/null
     in_volume "${NAME}_openmrs-data" '
-        printf "connection.url=jdbc\\\\:mysql\\\\://openmrs-db\\\\:3306/openmrs\nconnection.username=openmrs\nconnection.password=openmrs\nmail.smtp.host=smtp.example.org\n" > /data/openmrs-runtime.properties
-        chown 1001:0 /data/openmrs-runtime.properties && chmod 640 /data/openmrs-runtime.properties'
+        printf "connection.username=openmrs\nconnection.password=openmrs\n" > /data/openmrs-runtime.properties'
     "$BIN/openmrs-docker" "$NAME" start >/dev/null 2>&1
 
     set_env_value "$NAME" openmrs-db OPENMRS_DB_PASSWORD 'n3w\pw'
@@ -36,21 +36,14 @@ in_volume() { # <volume> <sh command>
     run "$BIN/openmrs-docker" "$NAME" openmrs-db reset-accounts
     assert_success
     assert_output --partial "Set the password of root@localhost"
-    assert_output --partial "Set connection.username and connection.password"
 
     wait_for_mysql "$NAME-openmrs-db" root n3w-root
     run mysql_exec "$NAME-openmrs-db" openmrs 'SELECT 1'
     assert_failure
     run docker exec "$NAME-openmrs-db" sh -c 'mysql -h127.0.0.1 -uopenmrs "-pn3w\\pw" -N -e "SELECT id FROM openmrs.marker" 2>/dev/null'
     assert_output 1
-    # the properties format doubles a backslash; everything else in the file, and its owner and mode, stay
-    run in_volume "${NAME}_openmrs-data" 'grep -c "^connection.password=" /data/openmrs-runtime.properties; cat /data/openmrs-runtime.properties; stat -c "%u:%g %a" /data/openmrs-runtime.properties; grep -c "^connection.password=openmrs$" /data/openmrs-runtime.properties.bak'
-    assert_line --index 0 1
-    assert_line 'connection.password=n3w\\pw'
-    assert_line 'connection.url=jdbc\:mysql\://openmrs-db\:3306/openmrs'
-    assert_line 'mail.smtp.host=smtp.example.org'
-    assert_line '1001:0 640'
-    assert_line --index -1 1
+    run in_volume "${NAME}_openmrs-data" 'cat /data/openmrs-runtime.properties; ls /data'
+    assert_output "$(printf 'connection.username=openmrs\nconnection.password=openmrs\nopenmrs-runtime.properties')"
 }
 
 @test "reset-mysql-accounts also works on a MySQL 8 data directory" {

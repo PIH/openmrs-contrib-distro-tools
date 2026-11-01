@@ -133,9 +133,10 @@ Restored files keep the owners they had on the source host, so `initialize` give
 images). Set `OPENMRS_DATA_OWNER=<uid>:<gid>` to choose it instead.
 
 It also moves a restored `openmrs-runtime.properties` aside to `openmrs-runtime.properties.restored`
-(`openmrs-utils runtime-properties --set-aside`). That file holds the source server's connection
-settings, which would win over this instance's: openmrs-core 2.6+ only merges `OMRS_EXTRA_*` into an
-existing file. OpenMRS writes a fresh one from the instance's values (`openmrs.env`) on its first start.
+(`openmrs-utils runtime-properties --set-aside`). That file holds the source server's settings and
+secrets, which would otherwise carry on unreviewed: openmrs-core 2.8.11+ overrides only the connection
+settings and `OMRS_EXTRA_*` in an existing file. OpenMRS writes a fresh one from the instance's values
+(`openmrs.env`) on its first start.
 
 With no runtime properties in `openmrs-data` (set aside, or nothing restored), OpenMRS takes the
 database for a new install, and would create every table again if told to. It is told to only when
@@ -185,11 +186,11 @@ To set a property on an instance you manage by hand (a local or dev instance), a
 instance's `openmrs.env` and start it again:
 
 ```bash
-# lowercase keys: OMRS_EXTRA_<key>, with '_' written as '__' and '.' as '_'
+# OMRS_EXTRA_<key>, with '_' written as '__' and '.' as '_'. As of openmrs-core 2.8.11, a key with capitals
+# keeps its case; older images lowercase it
 OMRS_EXTRA_mail_smtp_host='smtp.example.org'
 OMRS_EXTRA_terms__and__conditions__enabled='true'
-# keys that aren't lowercase: -D<key>=<value> in OMRS_JAVA_SERVER_OPTS, after the image's defaults
-OMRS_JAVA_SERVER_OPTS='-Dfile.encoding=UTF-8 -server -Djava.security.egd=file:/dev/./urandom -Djava.awt.headless=true -Djava.awt.headlesslib=true -Dmail.smtp.socketFactory.class=javax.net.ssl.SSLSocketFactory'
+OMRS_EXTRA_mail_smtp_socketFactory_class='javax.net.ssl.SSLSocketFactory'
 ```
 
 ```bash

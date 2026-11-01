@@ -1,7 +1,7 @@
 #!/bin/bash
-# Edits the openmrs-runtime.properties in an OpenMRS data directory. openmrs-core 2.6+ writes that
-# file on its first install and afterwards only merges OMRS_EXTRA_* properties into it, so other
-# settings changed in env (e.g. connection.*) never reach an existing one.
+# Edits the openmrs-runtime.properties in an OpenMRS data directory. openmrs-core writes that file on
+# its first install and afterwards (2.8.11+) only writes the connection settings and OMRS_EXTRA_*
+# properties into it, so other keys in an existing one are changed here.
 #
 # Usage: openmrs-utils runtime-properties --volume=<volume or dir> (--set-aside | --set)
 #   --set-aside  renames it to openmrs-runtime.properties.restored, so OpenMRS writes a fresh one
