@@ -375,6 +375,13 @@ start_registry() { # <container name>
     docker run -d --name "$1" -p 127.0.0.1::5000 registry:2 >/dev/null
     REGISTRY="127.0.0.1:$(docker port "$1" 5000/tcp | head -1 | sed 's/.*://')"
     export REGISTRY
+    # Until it answers, so a push straight after doesn't fail.
+    local i
+    for i in $(seq 50); do
+        curl -fs "http://$REGISTRY/v2/" >/dev/null && return 0
+        sleep 0.1
+    done
+    fail "registry $1 didn't start"
 }
 
 # Builds a small image <ref> that sleeps, different for each <marker>.

@@ -6,7 +6,7 @@ data onto an instance.
 
 ```bash
 pihx <name> initialize --from <dir>
-pihx <name> initialize --from-image <image>
+pihx <name> initialize --from-image <image> [--pull]
 ```
 
 It runs only on an instance that has never been started, and refuses if any volume a service's
@@ -32,7 +32,10 @@ resolve on the host is an error before anything runs. A relative `--from`
 is the caller's directory's. `--from-image` copies the image's `/seed` directory (a distribution's
 seed image, built by `.github/workflows/build-seeded-image.yml` from `openmrs/seed/Dockerfile`,
 holds `openmrs-db.sql.gz` and `openmrs.tar.gz`) to a temporary directory in the instance directory and restores
-from that; it removes the image afterwards if it pulled it.
+from that. It pulls the image if it isn't on the host. One that is, e.g. left by an earlier run,
+is used as it is, even if the registry has a newer one under that name: `--pull` pulls it anyway
+(if that pull fails, offline or for an image built only on this host, it uses the copy on the host,
+with a warning).
 
 | Variable | |
 |---|---|
@@ -68,7 +71,7 @@ an `openmrs` entry, OpenMRS builds it up on its first start, as on a fresh insta
 database backup with no matching data directory backup).
 
 A seed image is used once, and carries a whole database: `initialize` removes it once the volumes
-are filled if it pulled it, and keeps one that was already on the host (e.g. built locally).
+are filled if it wasn't on the host before, and keeps one that was (e.g. built locally).
 
 Archives are extracted into a volume, never onto the host. A dump archive must hold exactly one dump
 (`.sql` or `.sql.gz`). An `openmrs-data` archive with a single top-level directory (as

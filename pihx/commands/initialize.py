@@ -26,7 +26,7 @@ from pihx import services as services_module
 from pihx.commands import CliError
 from pihx.commands.instance_cmds import tools_dir
 
-USAGE = "usage: pihx <instance> initialize --from <dir> | --from-image <image>"
+USAGE = "usage: pihx <instance> initialize --from <dir> | --from-image <image> [--pull]"
 # What an archive is mounted as, archive.<ext>, so the extractor knows it (utils/lib/in-container/
 # extract.sh); tgz is extracted as tar.gz.
 ARCHIVE_EXTENSIONS = ("7z", "zip", "tar.gz", "tgz", "tar")
@@ -167,10 +167,16 @@ def _entries(folder):
 
 
 def _parse_args(name, args):
+    """(option, value, pull): pull is True with --pull, which only --from-image takes."""
     sources = []
+    pull = False
     i = 0
     while i < len(args):
         arg = args[i]
+        if arg == "--pull":
+            pull = True
+            i += 1
+            continue
         for option in ("--from", "--from-image"):
             if arg == option:
                 if i + 1 >= len(args):
@@ -186,7 +192,9 @@ def _parse_args(name, args):
         i += 1
     if len(sources) != 1 or not sources[0][1]:
         raise CliError(USAGE.replace("<instance>", name), status=2)
-    return sources[0]
+    if pull and sources[0][0] != "--from-image":
+        raise CliError(f"--pull is for --from-image ({USAGE})", status=2)
+    return (*sources[0], pull)
 
 
 # --- docker ---------------------------------------------------------------------------------------
@@ -541,16 +549,27 @@ def restore_folder(inst, folder, label=None):
 
 # --- seed images ----------------------------------------------------------------------------------
 
+def _pull_seed(image, env, pull):
+    """Pulls <image> if it isn't here, or with <pull> (--pull), so a copy here from an earlier run
+    doesn't stand in for a newer one; a failed --pull of an image that is here (offline, or one
+    built here and in no registry) uses that copy, with a warning. Returns whether the image wasn't
+    here before, so is removed after the restore."""
+    here = _docker(env, "image", "inspect", image).returncode == 0
+    if here and not pull:
+        return False
+    note(f"Pulling {image}")
+    result = _docker(env, "pull", "-q", image)
+    if result.returncode != 0:
+        if not here:
+            raise CliError(f"couldn't pull {image}: {result.stderr.strip()}")
+        note(f"warning: couldn't pull {image} ({result.stderr.strip()}); using the copy here")
+    return not here
+
+
 def _copy_seed(inst, image, env):
     """Copies <image>'s /seed directory into a new temporary directory in the instance directory (under
     PIHX_HOME, mounted at its host path, so the restore containers can mount what's in it; and the
-    instance's own, so writable where PIHX_HOME isn't, e.g. /home). Returns (directory, pulled)."""
-    pulled = _docker(env, "image", "inspect", image).returncode != 0
-    if pulled:
-        note(f"Pulling {image}")
-        result = _docker(env, "pull", "-q", image)
-        if result.returncode != 0:
-            raise CliError(f"couldn't pull {image}: {result.stderr.strip()}")
+    instance's own, so writable where PIHX_HOME isn't, e.g. /home). Returns the directory."""
     folder = Path(tempfile.mkdtemp(prefix=".seed-", dir=inst.dir))
     try:
         created = _docker(env, "create", image, "none")
@@ -567,7 +586,7 @@ def _copy_seed(inst, image, env):
     except BaseException:
         shutil.rmtree(folder, ignore_errors=True)
         raise
-    return folder, pulled
+    return folder
 
 
 class SeedError(CliError):
@@ -575,11 +594,12 @@ class SeedError(CliError):
     say what such a seed probably is)."""
 
 
-def restore_image(inst, image):
-    """Restores <inst>'s services from <image>'s /seed directory, copied into a temporary directory.
-    The image is removed afterwards if this pulled it. The caller holds the instance lock."""
+def restore_image(inst, image, pull=False):
+    """Restores <inst>'s services from <image>'s /seed directory, copied into a temporary directory,
+    pulling it first if it isn't here, or with <pull>. The caller holds the instance lock."""
     env = compose_module.Compose(inst).environment()
-    folder, pulled = _copy_seed(inst, image, env)
+    pulled = _pull_seed(image, env, pull)
+    folder = _copy_seed(inst, image, env)
     try:
         restore_folder(inst, folder, label=f"{image}:{SEED_DIR}")
     except EntryError as e:
@@ -588,19 +608,19 @@ def restore_image(inst, image):
                         f"{held} ({e})") from None
     finally:
         shutil.rmtree(folder, ignore_errors=True)
-    # A seed is used once: removed if this run pulled it, kept if it was here already (e.g. built
+    # A seed is used once: removed if it wasn't here before this run, kept if it was (e.g. built
     # locally, and maybe in no registry).
     if pulled and _docker(env, "image", "rm", image).returncode == 0:
         note(f"Removed {image}, pulled for this command")
 
 
 def cmd_initialize(name, args):
-    option, value = _parse_args(name, args)
+    option, value, pull = _parse_args(name, args)
     inst = instance_module.open(instance_module.home(), name, tools=tools_dir())
     with lock.hold(inst, lock.wait_seconds(), command="initialize"):
         if option == "--from":
             restore_folder(inst, from_folder(value))
         else:
-            restore_image(inst, value)
+            restore_image(inst, value, pull)
     print(f"Initialized {name}.")
     return 0

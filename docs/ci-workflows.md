@@ -341,11 +341,14 @@ OPENMRS_PIH_CONFIG=liberia \
 openmrs-docker myinstance create
 
 openmrs-docker myinstance add-service openmrs-smoke-tests
-openmrs-docker myinstance initialize --from-image partnersinhealth/pihliberia-emr-seed-liberia
+openmrs-docker myinstance initialize --from-image partnersinhealth/pihliberia-emr-seed-liberia --pull
 openmrs-docker myinstance start
 openmrs-docker myinstance wait
-openmrs-docker myinstance run-service openmrs-smoke-tests ./execute-smoke-tests.sh liberia
+openmrs-docker myinstance run-service --pull openmrs-smoke-tests ./execute-smoke-tests.sh liberia
 ```
+
+`--pull` gets the latest seed and smoke-tests images even when an earlier run left older copies on
+the host; without it, a copy already on the host is used as it is.
 
 `run-service` doesn't start the services the smoke tests depend on: `start` does. Run `wait`
 before `run-service`: it streams the logs and returns once OpenMRS's healthcheck
@@ -356,8 +359,8 @@ instance's `openmrs-smoke-tests.env`), or edit that file afterwards.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SMOKE_TESTS_OUTPUT_DIR` | `./smoke-test-output` (in the instance directory) | Host directory bind-mounted onto the container's Maven `target/` (build output, failsafe/surefire reports) |
-| `SMOKE_TESTS_SCREENSHOTS_DIR` | `./smoke-test-screenshots` | Host directory bind-mounted onto the container's Selenium screenshot directory |
+| `SMOKE_TESTS_OUTPUT_DIR` | `./smoke-test-output` (in the instance directory) | Host directory bind-mounted onto the container's Maven `target/` (build output, failsafe/surefire reports), emptied at the start of each run |
+| `SMOKE_TESTS_SCREENSHOTS_DIR` | `./smoke-test-screenshots` | Host directory bind-mounted onto the container's Selenium screenshot directory (not emptied between runs) |
 | `SMOKE_TESTS_ADMIN_PASSWORD` | image default (`Admin123`) | Admin password baked into this site's seed data |
 | `SMOKE_TESTS_IMAGE_NAME`, `SMOKE_TESTS_IMAGE_TAG` | `partnersinhealth/pihemr-smoke-tests`, `latest` | Smoke-tests image to run |
 

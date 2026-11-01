@@ -16,7 +16,10 @@ services:
       DATABASE_USERNAME: ${OPENMRS_DB_USER}
       DATABASE_PASSWORD: ${OPENMRS_DB_PASSWORD}
       ADMIN_USER_PASSWORD: ${SMOKE_TESTS_ADMIN_PASSWORD}
-      MAVEN_GOALS: verify
+      # clean empties the output directory (mounted over target/), so a run doesn't reuse what the
+      # last one left, e.g. a ChromeDriver from an older image. Removing target/ itself, a mount
+      # point, fails after its contents are gone: failOnError=false lets the build go on.
+      MAVEN_GOALS: clean verify -Dmaven.clean.failOnError=false
       TZ: ${TZ}
     shm_size: 512m
     volumes:

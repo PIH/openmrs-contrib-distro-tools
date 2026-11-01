@@ -51,7 +51,7 @@ Commands:
   <service>                  List a service's commands
   <service> <command> [args...]
                              Run one of a service's commands (e.g. openmrs-db reset-accounts)
-  initialize --from <dir> | --from-image <image>
+  initialize --from <dir> | --from-image <image> [--pull]
                              Fill a new instance's volumes from a directory with an entry per service
                              (or an image's /seed directory), before its first start
   archive [--to=<dir>]       Archive the stopped instance: one <volume>.tar.gz per volume (those
