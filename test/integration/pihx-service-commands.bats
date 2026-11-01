@@ -151,18 +151,17 @@ in_volume() { # <volume> <sh command>
     write_tiny_dump run/openmrs-db.sql
     run timeout 300 "$BIN/pihx" "$NAME" initialize --from "$BATS_TEST_TMPDIR/run"
     assert_success
-    # openmrs-data as OpenMRS leaves it after its first start
+    # openmrs-data as OpenMRS leaves it after its first start: OpenMRS takes the new connection
+    # settings from env on its next start (openmrs-core 2.8.11+), so the file is left alone
     docker volume create "${NAME}_openmrs-data" >/dev/null
     in_volume "${NAME}_openmrs-data" '
-        printf "connection.url=jdbc\\\\:mysql\\\\://openmrs-db\\\\:3306/openmrs\nconnection.username=openmrs\nconnection.password=openmrs\nmail.smtp.host=smtp.example.org\n" > /data/openmrs-runtime.properties
-        chown 1001:0 /data/openmrs-runtime.properties && chmod 640 /data/openmrs-runtime.properties'
+        printf "connection.username=openmrs\nconnection.password=openmrs\n" > /data/openmrs-runtime.properties'
     "$BIN/pihx" "$NAME" start >/dev/null 2>&1
 
     printf '%s\n' "OPENMRS_DB_PASSWORD='n3w\\pw'" "OPENMRS_DB_ROOT_PASSWORD='n3w-root'" >> "$DIR/openmrs-db.env"
     run "$BIN/pihx" "$NAME" openmrs-db reset-accounts
     assert_success
     assert_output --partial "Set the password of root@localhost"
-    assert_output --partial "Set connection.username and connection.password"
     # no secret is echoed
     refute_output --partial 'n3w'
 
@@ -171,14 +170,8 @@ in_volume() { # <volume> <sh command>
     assert_failure
     run docker exec "$NAME-openmrs-db" sh -c 'mysql -h127.0.0.1 -uopenmrs "-pn3w\\pw" -N -e "SELECT id FROM openmrs.marker" 2>/dev/null'
     assert_output 1
-    # the properties format doubles a backslash; everything else, and the file's owner and mode, stay
-    run in_volume "${NAME}_openmrs-data" 'grep -c "^connection.password=" /data/openmrs-runtime.properties; cat /data/openmrs-runtime.properties; stat -c "%u:%g %a" /data/openmrs-runtime.properties; grep -c "^connection.password=openmrs$" /data/openmrs-runtime.properties.bak'
-    assert_line --index 0 1
-    assert_line 'connection.password=n3w\\pw'
-    assert_line 'connection.url=jdbc\:mysql\://openmrs-db\:3306/openmrs'
-    assert_line 'mail.smtp.host=smtp.example.org'
-    assert_line '1001:0 640'
-    assert_line --index -1 1
+    run in_volume "${NAME}_openmrs-data" 'cat /data/openmrs-runtime.properties; ls /data'
+    assert_output "$(printf 'connection.username=openmrs\nconnection.password=openmrs\nopenmrs-runtime.properties')"
 }
 
 @test "reset-accounts works with no openmrs-data volume, and refuses with no database volume" {

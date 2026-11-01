@@ -98,10 +98,9 @@ binlog_files() { # <instance>
     assert_output healthy
 }
 
-@test "a DB password with a backslash is refused before the image sets up an empty data directory, naming the variable" {
+@test "a DB password with a backslash is refused before a MySQL image sets up an empty data directory, naming the variable" {
     # mysql's images put the passwords into SQL unescaped (a root password with one fails the
-    # first boot; the openmrs user gets the wrong password), and openmrs-core writes the connection
-    # password into a properties file unescaped.
+    # first boot; the openmrs user gets the wrong password).
     local name
     name="$(instance)"
     OPENMRS_DB_PASSWORD='bs\x' create_instance "$name" --services=openmrs-db
@@ -115,6 +114,17 @@ binlog_files() { # <instance>
     # nothing was set up in the data directory
     run docker run --rm -v "${name}_db-data:/d:ro" alpine:3.21 sh -c 'ls -A /d | wc -l'
     assert_output 0
+}
+
+@test "a MariaDB image takes DB passwords with a backslash" {
+    local name
+    name="$(instance)"
+    OPENMRS_DB_IMAGE_NAME=mariadb OPENMRS_DB_IMAGE_TAG=11.4 OPENMRS_DB_PASSWORD='bs\x' OPENMRS_DB_ROOT_PASSWORD='root\x' \
+        create_instance "$name" --services=openmrs-db
+    "$BIN/openmrs-docker" "$name" start >/dev/null 2>&1
+    # the image has only the mariadb client, which wait_for_mysql doesn't use; start waits for healthy
+    run docker exec "$name-openmrs-db" sh -c 'MYSQL_PWD="root\\x" mariadb -h127.0.0.1 -uroot -N -e "SELECT 1"; MYSQL_PWD="bs\\x" mariadb -h127.0.0.1 -uopenmrs -N -e "SELECT 2"'
+    assert_output "$(printf '1\n2')"
 }
 
 @test "an existing data directory starts regardless (its accounts were set by other means)" {
