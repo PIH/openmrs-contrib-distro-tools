@@ -30,22 +30,35 @@ def _docker(compose, *args):
                                  stdout=subprocess.PIPE, text=True)
 
 
+def _restarts(policy, exit_code):
+    """Whether Docker restarts a container that exited with exit_code under this restart policy."""
+    return policy in ("always", "unless-stopped") or (policy == "on-failure" and exit_code != "0")
+
+
 def containers_to_wait_for(inst, compose):
-    """(name, fail_on_unhealthy) for each running container of the instance with a healthcheck."""
-    ids = []
-    for status in ("running", "restarting"):
-        ids += _docker(compose, "ps", "-q", "--filter", f"status={status}", "--filter",
-                       f"label=com.docker.compose.project={compose.environment()['COMPOSE_PROJECT_NAME']}").stdout.split()
-    if not ids:
+    """(name, fail_on_unhealthy) for each container of the instance with a healthcheck that is running
+    or that Docker restarts. A crash-looping container is briefly "exited" between restarts, and left
+    out it would let the wait report the instance ready; wait-for-healthy.sh fails it instead."""
+    project = compose.environment()['COMPOSE_PROJECT_NAME']
+    ps = ["ps", "-q", "--filter", f"label=com.docker.compose.project={project}"]
+    for status in ("running", "restarting", "exited", "dead"):
+        ps += ["--filter", f"status={status}"]
+    ids = _docker(compose, *ps).stdout.split()
+    template = ('{{.Name}}\t{{index .Config.Labels "' + LABEL + '"}}\t'
+                '{{with .Config.Healthcheck}}{{index .Test 0}}{{end}}\t'
+                '{{.State.Status}}\t{{.HostConfig.RestartPolicy.Name}}\t{{.State.ExitCode}}')
+    found = []
+    any_up = False
+    lines = _docker(compose, "inspect", "-f", template, *ids).stdout.splitlines() if ids else []
+    for line in lines:
+        name, label, test, status, policy, exit_code = (line.split("\t") + [""] * 5)[:6]
+        up = status in ("running", "restarting") or _restarts(policy, exit_code)
+        any_up = any_up or up
+        if up and test not in ("", "NONE"):
+            found.append((name.lstrip("/"), label == FAIL_ON_UNHEALTHY))
+    if not any_up:
         raise CliError(f"{inst.name} has no running containers (start it: "
                        f"'pihx {inst.name} start')")
-    template = ('{{.Name}}\t{{index .Config.Labels "' + LABEL + '"}}\t'
-                '{{with .Config.Healthcheck}}{{index .Test 0}}{{end}}')
-    found = []
-    for line in _docker(compose, "inspect", "-f", template, *ids).stdout.splitlines():
-        name, label, test = (line.split("\t") + ["", ""])[:3]
-        if test not in ("", "NONE"):
-            found.append((name.lstrip("/"), label == FAIL_ON_UNHEALTHY))
     return sorted(found)
 
 
