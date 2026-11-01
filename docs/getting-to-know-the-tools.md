@@ -189,7 +189,7 @@ PETL_SQLSERVER_PASSWORD=Reporting-pw-1 \
 pihx t2 add-service petl
 
 pihx t2 start                       # starts sqlserver; petl is a job, so not yet
-pihx t2 run-service petl     # runs the jobs, then exits
+pihx t2 run-service --pull petl     # runs the jobs, then exits
 pihx t2 logs petl
 pihx t2 remove-service petl         # its volumes are kept
 pihx t2 remove-service sqlserver

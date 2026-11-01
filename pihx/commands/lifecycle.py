@@ -339,14 +339,10 @@ def _run_job(inst, compose, svc, command):
 
 
 def cmd_run_service(name, args):
-    # Pulls by default, so a long-lived host doesn't run a stale copy. --pull, once the way to ask
-    # for one, is still accepted.
-    pull, rest = True, list(args)
-    while rest and rest[0] in ("--pull", "--no-pull"):
-        pull = rest.pop(0) == "--pull"
-    if not rest or rest[0].startswith("-"):
-        raise CliError(f"usage: pihx {name} run-service [--no-pull] <service> [command...]",
-                       status=2)
+    pull = bool(args) and args[0] == "--pull"
+    rest = args[1:] if pull else args
+    if not rest:
+        raise CliError(f"usage: pihx {name} run-service [--pull] <service> [command...]", status=2)
     svc, command = rest[0], rest[1:]
     inst = _open(name)
     compose = compose_module.Compose(inst)
@@ -374,30 +370,14 @@ def cmd_run_service(name, args):
         lock.check(inst, lock.wait_seconds())
         context = contextlib.nullcontext()
     with context:
-        return _run(inst, compose, svc, command, pull and defined[svc].get("image"), job)
+        return _run(inst, compose, svc, command, pull, job)
 
 
-def pull_service_image(compose, svc, image):
-    """Pulls <svc>'s image <image> (named explicitly, so a profiled service's is pulled too: a plain
-    `pull` skips them). A failed pull (offline, or an image only built here) leaves the local copy
-    to run, with a warning. An image the pull replaced is removed if no tag points to it any more
-    and no container uses it (docker refuses then; quietly). A job's kept container isn't recreated
-    yet, so its old image stays until _run_job's remove_replaced_images."""
-    before = _inspect_image(compose, image, "{{.Id}}")
-    if compose.run("pull", svc, check=False).returncode != 0:
-        note(f"warning: couldn't pull {image}; using the local copy, if there is one")
-        return
-    after = _inspect_image(compose, image, "{{.Id}}")
-    if before and after != before and not _inspect_image(compose, before, '{{join .RepoTags " "}}') \
-            and _docker(compose, "image", "rm", before).returncode == 0:
-        note(f"Removed the replaced image {before.removeprefix('sha256:')}")
-
-
-def _run(inst, compose, svc, command, pull_image, job):
-    """<pull_image>: the service's image, to pull first; falsy to run the local copy."""
+def _run(inst, compose, svc, command, pull, job):
     volumes.ensure(compose)
-    if pull_image:
-        pull_service_image(compose, svc, pull_image)
+    # Named explicitly, so a profiled service's image is pulled too (a plain `pull` skips them).
+    if pull:
+        compose.run("pull", svc)
     # --no-deps: never starts or recreates what it depends on (start the instance first).
     if not job:
         return exit_status(compose.run("run", "--rm", "--no-deps", svc, *command,

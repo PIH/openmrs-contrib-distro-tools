@@ -256,14 +256,11 @@ class ReplacedImagesTest(LifecycleTest):
 
 class RunServiceTest(LifecycleTest):
     # app is profiled (one-shot); db runs with the instance.
-    CONFIG = json.dumps({"services": {"app": {"profiles": ["app"], "image": "app:1"}, "db": {}}})
+    CONFIG = json.dumps({"services": {"app": {"profiles": ["app"]}, "db": {}}})
 
-    def run_service(self, *args, defined=CONFIG, pull_returncode=0):
+    def run_service(self, *args, defined=CONFIG):
         def fake_run(compose_self, *a, **kwargs):
             self.compose_calls.append(a)
-            self.events.append(["compose", *a])
-            if a[:1] == ("pull",):
-                return done(returncode=pull_returncode)
             return done(defined) if kwargs.get("stdout") == subprocess.PIPE else done()
         with mock.patch.object(compose.Compose, "run", fake_run), \
                 mock.patch.object(lifecycle.subprocess, "run", self.fake_docker):
@@ -287,71 +284,10 @@ class RunServiceTest(LifecycleTest):
             status, _, err = self.run_service("app", "echo", "hi")
         self.assertEqual(status, 1)
         self.assertIn("busy", err)
-        status, _, err = self.run_service("app", "echo", "hi")
+        status, _, err = self.run_service("--pull", "app", "echo", "hi")
         self.assertEqual(status, 0, err)
+        self.assertIn(("pull", "app"), self.compose_calls)
         self.assertIn(("run", "--rm", "--no-deps", "app", "echo", "hi"), self.compose_calls)
-
-    def compose_events(self):
-        return [e[1:] for e in self.events if e[0] == "compose" and "config" not in e]
-
-    def test_the_image_is_pulled_before_the_run_unless_no_pull(self):
-        status, _, err = self.run_service("app", "echo", "hi")
-        self.assertEqual(status, 0, err)
-        self.assertEqual(self.compose_events(),
-                         [["pull", "app"], ["run", "--rm", "--no-deps", "app", "echo", "hi"]])
-        # --pull, once the way to ask for a pull, is still accepted.
-        self.events.clear()
-        self.assertEqual(self.run_service("--pull", "app", "echo", "hi")[0], 0)
-        self.assertEqual(self.compose_events()[0], ["pull", "app"])
-        self.events.clear()
-        status, _, err = self.run_service("--no-pull", "app", "echo", "hi")
-        self.assertEqual(status, 0, err)
-        self.assertEqual(self.compose_events(), [["run", "--rm", "--no-deps", "app", "echo", "hi"]])
-
-    def test_a_failed_pull_runs_the_local_copy_with_a_warning(self):
-        status, _, err = self.run_service("app", "echo", "hi", pull_returncode=1)
-        self.assertEqual(status, 0, err)
-        self.assertIn("warning: couldn't pull app:1; using the local copy", err)
-        self.assertIn(("run", "--rm", "--no-deps", "app", "echo", "hi"), self.compose_calls)
-
-    def with_images(self, ids, tags):
-        """docker image inspect gives the ids in turn for the service's image, and <tags> for an
-        image id."""
-        ids = list(ids)
-
-        def fake_docker(argv, **kwargs):
-            self.docker_calls.append(argv[1:])
-            if argv[1:5] == ["image", "inspect", "-f", "{{.Id}}"]:
-                image_id = ids.pop(0)
-                return done(image_id) if image_id else done(returncode=1)
-            if argv[1:3] == ["image", "inspect"]:
-                return done(tags.get(argv[-1], ""))
-            return done()
-        self.fake_docker = fake_docker
-
-    def removed(self):
-        return [c[2:] for c in self.docker_calls if c[:2] == ["image", "rm"]]
-
-    def test_the_image_a_pull_replaced_is_removed_once_untagged(self):
-        self.with_images(["sha256:a", "sha256:b"], {"sha256:a": ""})
-        status, _, err = self.run_service("app", "echo", "hi")
-        self.assertEqual(status, 0, err)
-        self.assertEqual(self.removed(), [["sha256:a"]])
-        self.assertIn("Removed the replaced image a", err)
-
-    def test_an_image_the_pull_left_alone_or_still_tagged_is_kept(self):
-        for ids, tags in ((["sha256:a", "sha256:a"], {}),
-                          (["sha256:a", "sha256:b"], {"sha256:a": "app:0"}),
-                          (["", "sha256:b"], {})):
-            self.docker_calls.clear()
-            self.with_images(ids, tags)
-            self.assertEqual(self.run_service("app", "echo", "hi")[0], 0)
-            self.assertEqual(self.removed(), [], ids)
-
-    def test_an_option_in_place_of_the_service_is_refused(self):
-        status, _, err = self.run_service("--other", "app")
-        self.assertEqual(status, 2)
-        self.assertIn("run-service [--no-pull] <service>", err)
 
     def test_a_service_that_runs_with_the_instance_is_refused(self):
         status, _, err = self.run_service("db", "sh")

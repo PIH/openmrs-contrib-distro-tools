@@ -2,7 +2,7 @@
 
 [petl](https://github.com/PIH/petl), the ETL pipeline, run against the instance's `openmrs-db`,
 writing to SQL Server. It's a job (`job: true` in its manifest): `pihx <name> start` doesn't bring it
-up, and `pihx <name> run-service petl` runs it. Its image is an ETL project's (e.g.
+up, and `pihx <name> run-service --pull petl` runs it. Its image is an ETL project's (e.g.
 `partnersinhealth/ces-etl`, `partnersinhealth/apzu-etl`), built on `partnersinhealth/petl` with that
 project's jobs, datasources and `application.yml`; it runs `PETL_FULL_REFRESH_JOBS`, retrying up to
 `PETL_MAX_RETRIES` times, then exits. Settings are in `petl.env`; defaults are in
@@ -26,7 +26,7 @@ export SQLSERVER_SA_PASSWORD=<pick-a-password>
 export PETL_SQLSERVER_DATABASE=openmrs_ces_ci
 openmrs-docker <name> create --services=openmrs-db,openmrs,petl,sqlserver
 openmrs-docker <name> start
-openmrs-docker <name> run-service petl
+openmrs-docker <name> run-service --pull petl
 ```
 
 - **Configuration:** the petl container gets the whole of `petl.env` and the service's defaults, so

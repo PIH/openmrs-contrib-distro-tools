@@ -20,12 +20,7 @@ setup() {
         create_instance "$NAME" --services=openmrs-db,petl
     DIR="$PIHX_HOME/$NAME"
 }
-teardown() {
-    [ -z "${REGISTRY_CONTAINER:-}" ] || docker rm -f "$REGISTRY_CONTAINER" >/dev/null 2>&1 || true
-    [ -z "${REGISTRY:-}" ] || remove_images "$REGISTRY/$NAME-"
-    [ -z "${SMOKE:-}" ] || remove_test_instance "$SMOKE"
-    remove_test_instance "$NAME"; remove_images "$NAME-"; common_teardown
-}
+teardown() { remove_test_instance "$NAME"; remove_images "$NAME-"; common_teardown; }
 
 running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.project=$NAME" | sort; }
 
@@ -125,54 +120,4 @@ petl_container() { docker ps -aq --filter "name=^$NAME-petl$"; }
     assert_output --partial "Removed the replaced image ${old_id#sha256:}"
     run docker image inspect "$old_id"
     assert_failure
-}
-
-# Builds <ref>, an image whose command prints <marker>.
-build_printing_image() { # <ref> <marker>
-    printf 'FROM alpine:3.21\nCMD ["echo", "%s"]\n' "$2" | docker build -q -t "$1" - >/dev/null
-}
-
-@test "run-service pulls a newer image than the copy here, unless --no-pull, and removes the copy it replaced" {
-    REGISTRY_CONTAINER="$(res registry)"
-    start_registry "$REGISTRY_CONTAINER"
-    local ref="$REGISTRY/$NAME-job:latest" old_id
-    # The registry has NEW; the copy here, under the same name, is OLD.
-    build_printing_image "$ref" "$NAME-NEW" && docker push -q "$ref" >/dev/null
-    build_printing_image "$ref" "$NAME-OLD"
-    old_id=$(image_id "$ref")
-    printf 'services:\n  job:\n    image: %s\n    profiles: ["job"]\n' "$ref" > "$DIR/openmrs-db.override.yaml"
-    run "$BIN/openmrs-docker" "$NAME" run-service --no-pull job
-    assert_success
-    assert_output --partial "$NAME-OLD"
-    run "$BIN/openmrs-docker" "$NAME" run-service job
-    assert_success
-    assert_output --partial "$NAME-NEW"
-    assert_output --partial "Removed the replaced image ${old_id#sha256:}"
-}
-
-@test "run-service runs the copy here, with a warning, when the pull fails" {
-    # Built here only, in no registry.
-    build_printing_image "$NAME-local:latest" "$NAME-LOCAL"
-    printf 'services:\n  job:\n    image: %s\n    profiles: ["job"]\n' "$NAME-local:latest" > "$DIR/openmrs-db.override.yaml"
-    run "$BIN/openmrs-docker" "$NAME" run-service job
-    assert_success
-    assert_output --partial "warning: couldn't pull $NAME-local:latest"
-    assert_output --partial "$NAME-LOCAL"
-}
-
-@test "each smoke-test run starts with an empty output directory, and the screenshots are kept" {
-    SMOKE="$(instance smoke)"
-    printf 'FROM alpine:3.21\nWORKDIR /smoketests\n' | docker build -q -t "$NAME-smoke:latest" - >/dev/null
-    OPENMRS_IMAGE_NAME=alpine OPENMRS_IMAGE_TAG=3.21 \
-        create_instance "$SMOKE" --services=openmrs-db,openmrs,openmrs-smoke-tests
-    set_env_value "$SMOKE" openmrs-smoke-tests SMOKE_TESTS_IMAGE_NAME "$NAME-smoke"
-    local dir="$PIHX_HOME/$SMOKE" n
-    for n in 1 2; do
-        run "$BIN/openmrs-docker" "$SMOKE" run-service --no-pull openmrs-smoke-tests sh -c \
-            "echo \"LEFT:[\$(ls -A target)]\"; mkdir target/classes; touch target/run-$n screenshots/shot-$n"
-        assert_success
-        assert_output --partial "LEFT:[]"
-    done
-    assert_equal "$(ls -A "$dir/smoke-test-output" | paste -sd' ' -)" "classes run-2"
-    assert_equal "$(ls -A "$dir/smoke-test-screenshots" | paste -sd' ' -)" "shot-1 shot-2"
 }

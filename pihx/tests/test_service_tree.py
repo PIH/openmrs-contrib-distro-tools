@@ -172,6 +172,14 @@ class ServiceTreeTest(unittest.TestCase):
                 for container in added:
                     self.assertIn(container, compose(SERVICES[other])["services"], f"{f}: {container}")
 
+    def test_smoke_tests_clean_their_mounted_output_directory(self):
+        """Maven's clean empties target/ (the output directory's mount), so a run doesn't reuse an
+        older image's ChromeDriver; failing to remove the mount point itself mustn't fail the run."""
+        spec = compose(SERVICES["openmrs-smoke-tests"])["services"]["openmrs-smoke-tests"]
+        self.assertEqual(spec["environment"]["MAVEN_GOALS"].split(),
+                         ["clean", "verify", "-Dmaven.clean.failOnError=false"])
+        self.assertIn("${SMOKE_TESTS_OUTPUT_DIR}:/smoketests/target", spec["volumes"])
+
     def test_openmrs_waits_for_health_and_fails_on_unhealthy(self):
         labels = compose(SERVICES["openmrs"])["services"]["openmrs"]["labels"]
         self.assertEqual(labels["pihx.wait"], "fail-on-unhealthy")

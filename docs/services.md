@@ -34,12 +34,8 @@ without `openhim`), changing nothing. `remove-service` removes that service's co
 volumes (naming them) and deletes its env file. Deleting the file by hand and running
 `pihx <name> update` does the same, since the files present are the instance's services.
 
-A job (PETL) isn't brought up by `start`: run it with `pihx <name> run-service [--no-pull] <svc>
-[command...]`. It pulls the service's image first (a plain `pull` skips a profiled service's), so a
-copy left on the host by an earlier run doesn't stand in for a newer one, and removes the copy the
-pull replaced once no tag points to it. If the pull fails (offline, or an image built only on this
-host) it runs the copy on the host, with a warning; `--no-pull` skips the pull. (`--pull`, once
-needed to pull, is still accepted.) `run-service` runs only a
+A job (PETL) isn't brought up by `start`: run it with `pihx <name> run-service [--pull] <svc>
+[command...]` (`--pull` pulls its image first; a plain `pull` skips it). `run-service` runs only a
 job or a service behind a Compose profile (e.g. `openmrs-smoke-tests`), and refuses one that runs
 with the instance (`openmrs`, `openmrs-db`, ...): a second copy on the same volumes could damage
 them. It never starts or recreates what the service depends on (`--no-deps`), so start the instance

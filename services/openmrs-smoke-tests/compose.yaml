@@ -2,13 +2,6 @@ services:
   openmrs-smoke-tests:
     image: ${SMOKE_TESTS_IMAGE_NAME}:${SMOKE_TESTS_IMAGE_TAG}
     profiles: ["openmrs-smoke-tests"]
-    # Empties the output directory (mounted over Maven's target/) before each run: what a previous
-    # run left, e.g. its compiled classes and the ChromeDriver copied from an older image, would be
-    # reused. Maven's `clean` can't do it: it fails removing target/ itself, a mount point. The
-    # screenshots directory is a separate mount, left alone. Setting an entrypoint drops the image's
-    # CMD, so `command` restores it for a run-service without a command.
-    entrypoint: ["/bin/sh", "-c", "find /smoketests/target -mindepth 1 -delete && exec \"$$@\"", "sh"]
-    command: ["/bin/bash"]
     depends_on:
       openmrs:
         condition: service_healthy
@@ -23,7 +16,10 @@ services:
       DATABASE_USERNAME: ${OPENMRS_DB_USER}
       DATABASE_PASSWORD: ${OPENMRS_DB_PASSWORD}
       ADMIN_USER_PASSWORD: ${SMOKE_TESTS_ADMIN_PASSWORD}
-      MAVEN_GOALS: verify
+      # clean empties the output directory (mounted over target/), so a run doesn't reuse what the
+      # last one left, e.g. a ChromeDriver from an older image. Removing target/ itself, a mount
+      # point, fails after its contents are gone: failOnError=false lets the build go on.
+      MAVEN_GOALS: clean verify -Dmaven.clean.failOnError=false
       TZ: ${TZ}
     shm_size: 512m
     volumes:
