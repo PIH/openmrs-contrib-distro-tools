@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import subprocess
 from pathlib import Path
@@ -399,6 +401,101 @@ class ExternalVolumesTest(InitializeCommandTest):
         self.assertIn("couldn't create the volume kz_petl-data", err)
         self.assertEqual(self.removed_volumes(), [["kz_db-data"]])
         self.assertEqual(self.up_calls(), [])
+
+
+class SeedPullTest(InitializeTest):
+    """--from-image pulls the seed first, so a copy here from an earlier run doesn't stand in for a
+    newer one; the restore itself is faked."""
+
+    def setUp(self):
+        super().setUp()
+        self.docker_calls = []
+        self.pull_returncode = 0
+
+    def restore(self, ids, tags=None, pull=True):
+        """restore_image with `image inspect -f {{.Id}} seed` giving <ids> in turn ("" for no image)
+        and <tags> for an image id. Returns (error or None, stderr)."""
+        ids, tags = list(ids), tags or {}
+
+        def fake_docker(argv, **kwargs):
+            self.docker_calls.append(argv[1:])
+            if argv[1:5] == ["image", "inspect", "-f", "{{.Id}}"]:
+                image_id = ids.pop(0)
+                return done(image_id) if image_id else done(returncode=1)
+            if argv[1:3] == ["image", "inspect"]:
+                return done(tags.get(argv[-1], ""))
+            if argv[1] == "pull":
+                return done(returncode=self.pull_returncode)
+            return done()
+        folder = self.home / "kz" / ".seed-x"
+        folder.mkdir(parents=True, exist_ok=True)
+        error, err = None, io.StringIO()
+        with mock.patch.object(initialize.subprocess, "run", fake_docker), \
+                mock.patch.object(initialize, "_copy_seed", return_value=folder), \
+                mock.patch.object(initialize, "restore_folder"), contextlib.redirect_stderr(err):
+            try:
+                initialize.restore_image(self.inst, "seed", pull=pull)
+            except CliError as e:
+                error = e
+        return error, err.getvalue()
+
+    def pulls(self):
+        return [c[1:] for c in self.docker_calls if c[0] == "pull"]
+
+    def removed(self):
+        return [c[2:] for c in self.docker_calls if c[:2] == ["image", "rm"]]
+
+    def test_a_seed_here_is_pulled_and_the_copy_it_replaced_removed(self):
+        error, err = self.restore(["sha256:old", "sha256:new"], {"sha256:old": ""})
+        self.assertIsNone(error)
+        self.assertEqual(self.pulls(), [["-q", "seed"]])
+        self.assertEqual(self.removed(), [["sha256:old"]])
+        self.assertIn("Removed the replaced copy of seed (old)", err)
+
+    def test_a_replaced_copy_still_tagged_and_the_new_one_are_kept(self):
+        self.assertIsNone(self.restore(["sha256:old", "sha256:new"], {"sha256:old": "seed:1"})[0])
+        self.assertEqual(self.removed(), [])
+        self.docker_calls.clear()
+        self.assertIsNone(self.restore(["sha256:old", "sha256:old"])[0])
+        self.assertEqual(self.removed(), [])
+
+    def test_a_seed_not_here_is_pulled_and_removed_after(self):
+        error, err = self.restore([""])
+        self.assertIsNone(error)
+        self.assertEqual(self.removed(), [["seed"]])
+        self.assertIn("Removed seed, pulled for this command", err)
+
+    def test_a_failed_pull_uses_the_copy_here_with_a_warning_and_keeps_it(self):
+        self.pull_returncode = 1
+        error, err = self.restore(["sha256:old"])
+        self.assertIsNone(error)
+        self.assertIn("warning: couldn't pull seed", err)
+        self.assertIn("using the copy here", err)
+        self.assertEqual(self.removed(), [])
+
+    def test_a_failed_pull_of_a_seed_not_here_is_an_error(self):
+        self.pull_returncode = 1
+        error, _ = self.restore([""])
+        self.assertIn("couldn't pull seed", str(error))
+
+    def test_no_pull_uses_the_copy_here_and_needs_one(self):
+        error, _ = self.restore(["sha256:old"], pull=False)
+        self.assertIsNone(error)
+        self.assertEqual(self.pulls(), [])
+        self.assertEqual(self.removed(), [])
+        error, _ = self.restore([""], pull=False)
+        self.assertIn("seed isn't here, and --no-pull doesn't pull it", str(error))
+
+    def test_no_pull_is_parsed_only_with_from_image(self):
+        self.assertEqual(initialize._parse_args("kz", ["--from-image", "s", "--no-pull"]),
+                         ("--from-image", "s", False))
+        self.assertEqual(initialize._parse_args("kz", ["--no-pull", "--from-image=s"]),
+                         ("--from-image", "s", False))
+        self.assertEqual(initialize._parse_args("kz", ["--from-image", "s"]),
+                         ("--from-image", "s", True))
+        with self.assertRaises(CliError) as raised:
+            initialize._parse_args("kz", ["--from", "d", "--no-pull"])
+        self.assertIn("--no-pull is for --from-image", str(raised.exception))
 
 
 # InitializeCommandTest's own tests run there, not again here.

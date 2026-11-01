@@ -356,8 +356,8 @@ instance's `openmrs-smoke-tests.env`), or edit that file afterwards.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SMOKE_TESTS_OUTPUT_DIR` | `./smoke-test-output` (in the instance directory) | Host directory bind-mounted onto the container's Maven `target/` (build output, failsafe/surefire reports) |
-| `SMOKE_TESTS_SCREENSHOTS_DIR` | `./smoke-test-screenshots` | Host directory bind-mounted onto the container's Selenium screenshot directory |
+| `SMOKE_TESTS_OUTPUT_DIR` | `./smoke-test-output` (in the instance directory) | Host directory bind-mounted onto the container's Maven `target/` (build output, failsafe/surefire reports), emptied at the start of each run |
+| `SMOKE_TESTS_SCREENSHOTS_DIR` | `./smoke-test-screenshots` | Host directory bind-mounted onto the container's Selenium screenshot directory (not emptied between runs) |
 | `SMOKE_TESTS_ADMIN_PASSWORD` | image default (`Admin123`) | Admin password baked into this site's seed data |
 | `SMOKE_TESTS_IMAGE_NAME`, `SMOKE_TESTS_IMAGE_TAG` | `partnersinhealth/pihemr-smoke-tests`, `latest` | Smoke-tests image to run |
 

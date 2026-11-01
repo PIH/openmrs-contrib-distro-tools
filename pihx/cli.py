@@ -40,9 +40,10 @@ Commands:
   pull                       Pull its images
   update                     Pull, bring up (removing containers of removed services), and remove
                              the images replaced
-  run-service [--pull] <service> [command...]
-                             Run a job or profiled service once (a job holds the lock), never
-                             its dependencies: start the instance first; exits with its exit code
+  run-service [--no-pull] <service> [command...]
+                             Pull its image (unless --no-pull), then run a job or profiled service
+                             once (a job holds the lock), never its dependencies: start the
+                             instance first; exits with its exit code
   wait                       Wait until its containers with a healthcheck are healthy (a container
                              labelled pihx.wait=fail-on-unhealthy fails it at once; PIHX_WAIT_TIMEOUT,
                              default 3600 s)
@@ -51,7 +52,7 @@ Commands:
   <service>                  List a service's commands
   <service> <command> [args...]
                              Run one of a service's commands (e.g. openmrs-db reset-accounts)
-  initialize --from <dir> | --from-image <image>
+  initialize --from <dir> | --from-image <image> [--no-pull]
                              Fill a new instance's volumes from a directory with an entry per service
                              (or an image's /seed directory), before its first start
   archive [--to=<dir>]       Archive the stopped instance: one <volume>.tar.gz per volume (those

@@ -30,6 +30,8 @@ setup() {
     mkdir run
 }
 teardown() {
+    [ -z "${REGISTRY_CONTAINER:-}" ] || docker rm -f "$REGISTRY_CONTAINER" >/dev/null 2>&1 || true
+    [ -z "${REGISTRY:-}" ] || remove_images "$REGISTRY/$NAME-"
     remove_test_instance "$NAME"
     common_teardown
 }
@@ -181,6 +183,39 @@ RESTORED_TREE="${FIXTURE_TREE/.\/openmrs-runtime.properties/./openmrs-runtime.pr
     assert_output "$(printf '%s\n' ./complex_obs ./complex_obs/seed-only.txt ./openmrs-runtime.properties.restored)"
     # The copy of the seed's directory is gone; a seed image that was here before is kept.
     assert_equal "$(find "$PIHX_HOME" "$PIHX_HOME/$NAME" -maxdepth 1 -name "*seed-*")" ""
+    [ -n "$(image_id "$SEED_IMAGE")" ] || fail "the seed image, here before initialize, was removed"
+}
+
+@test "--from-image pulls a newer seed than the copy here, and removes the copy it replaced" {
+    # The registry has the current seed; the copy here, under the same name, is an old-format one.
+    REGISTRY_CONTAINER="$(res registry)"
+    start_registry "$REGISTRY_CONTAINER"
+    local image="$REGISTRY/$NAME-seed:latest" ctx="$BATS_TEST_TMPDIR/old-seed" old_id
+    docker tag "$SEED_IMAGE" "$image" && docker push -q "$image" >/dev/null
+    mkdir -p "$ctx" && touch "$ctx/dump.sql.gz"
+    printf 'FROM alpine:3.21\nCOPY dump.sql.gz /seed/\n' > "$ctx/Dockerfile"
+    docker build -q -t "$image" "$ctx" >/dev/null
+    old_id=$(image_id "$image")
+    create openmrs-db,openmrs
+    initialize --from-image "$image"
+    assert_success
+    run db_marker_in_volume "${NAME}_db-data"
+    assert_output 7
+    run docker image inspect "$old_id"
+    assert_failure
+}
+
+@test "--from-image uses the copy here when the pull fails, and --no-pull doesn't pull" {
+    create openmrs-db,openmrs
+    # In no registry: built here only.
+    initialize --from-image "$SEED_IMAGE"
+    assert_success
+    assert_output --partial "warning: couldn't pull $SEED_IMAGE"
+    remove_test_instance "$NAME"
+    create openmrs-db,openmrs
+    initialize --from-image "$SEED_IMAGE" --no-pull
+    assert_success
+    refute_output --partial "Pulling"
     [ -n "$(image_id "$SEED_IMAGE")" ] || fail "the seed image, here before initialize, was removed"
 }
 
