@@ -173,12 +173,16 @@ class CommandsTest(LifecycleTest):
         self.assertFalse([c for c in self.compose_calls if c[:1] == ("up",)])
 
     def test_arguments_are_checked(self):
-        for argv in (["start", "--build"], ["stop", "x"], ["logs", "-f"], ["logs", "a", "b"],
+        for argv in (["start", "--build"], ["stop", "x"], ["restart", "-t", "5"], ["logs", "-f"], ["logs", "a", "b"],
                      ["destroy", "--forced"], ["run-service"], ["run-service", "--pull"]):
             with self.subTest(argv=argv):
                 status, _, err = self.run_pihx("kz", *argv)
                 self.assertEqual(status, 2, err)
                 self.assertEqual(self.compose_calls, [])
+
+    def test_restart_restarts_only_the_named_services(self):
+        self.assertEqual(self.run_pihx("kz", "restart", "modality-simulator")[0], 0)
+        self.assertEqual(self.compose_calls, [("restart", "modality-simulator")])
 
     def test_changing_commands_refuse_while_the_lock_is_held(self):
         with lock.hold(self.inst(), 0, command="run-service"):

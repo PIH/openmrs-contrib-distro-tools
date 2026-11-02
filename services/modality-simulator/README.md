@@ -24,8 +24,8 @@ Other settings are in `modality-simulator.env`:
 | Variable | Default | |
 |---|---|---|
 | `MODALITY_SIMULATOR_CONFIG_DIR` | `./modality-simulator-config` | holds `stations.yaml`; relative to the instance directory |
-| `MODALITY_SIMULATOR_HOST_PORT` | `8095` | the console's port on the host |
-| `MODALITY_SIMULATOR_IMAGE_DIR` | `./modality-simulator-images` | DICOM files to send instead of generated images; relative to the instance directory |
+| `MODALITY_SIMULATOR_HOST_PORT` | `8095` | the console's port on the host, or `<ip>:<port>` to publish it on one address only. The console has no login, so on a shared server give it a private address (e.g. the host's VPN address), unlike the other services' ports |
+| `MODALITY_SIMULATOR_MEMORY_LIMIT` | `512m` | the container's memory limit |
 | `MODALITY_SIMULATOR_IMAGE_NAME`, `MODALITY_SIMULATOR_IMAGE_TAG` | `partnersinhealth/modality-simulator`, `latest` | |
 
 In AdvaPACS, add each station as a Remote AE (Configuration > Remote AEs) whose AE title exactly
@@ -33,9 +33,9 @@ matches its `calling_ae`, and let it query the worklist. Until then, its tab say
 rejected the association.
 
 It doesn't depend on the `advapacs-gateway` service, so it also works with a gateway elsewhere
-(set `gateway.host` in `stations.yaml`). With no files in its image directory it generates
-images; any files you add there must be de-identified. After changing `stations.yaml`, restart
-the simulator's container (`docker restart <name>-modality-simulator`).
+(set `gateway.host` in `stations.yaml`). It sends images it generates: the image's `/images`
+directory (DICOM files to send instead) isn't mounted, as CI hasn't needed it. After changing
+`stations.yaml`, restart the simulator (`pihx <name> restart modality-simulator`).
 
 ```bash
 pihx <name> add-service modality-simulator

@@ -103,7 +103,8 @@ pihx <name> config           # the merged values, secrets masked
 ```
 
 `restart` restarts the containers in place, so it doesn't pick up changes to the env files; `start`
-does.
+does. `restart <service>...` restarts only those services' containers (by their compose names, e.g.
+`modality-simulator`), e.g. for a service that reads a mounted config file only at startup.
 
 Each container's log is Docker's, kept and rotated as the host's Docker is set up to (Docker's own
 default, `json-file`, doesn't rotate; servers set the `local` driver, which does). It lasts as long as

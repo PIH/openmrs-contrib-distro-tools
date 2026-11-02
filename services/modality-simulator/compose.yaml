@@ -13,6 +13,9 @@ services:
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # The console has no login: anyone who reaches it can send images as any station. Unlike the
+    # other services' ports, publish it on a private address only, with MODALITY_SIMULATOR_HOST_PORT
+    # as <ip>:<port> (e.g. the host's VPN address), not on every interface.
     ports:
       - "${MODALITY_SIMULATOR_HOST_PORT}:8080"
     env_file:
@@ -25,8 +28,11 @@ services:
       - modality-simulator-data:/data
       # stations.yaml: the gateway and the stations. A directory holding that file.
       - ${MODALITY_SIMULATOR_CONFIG_DIR}:/config:ro
-      # De-identified DICOM files to send instead of generated images; with none, it generates them.
-      - ${MODALITY_SIMULATOR_IMAGE_DIR}:/images:ro
+    # The healthcheck is the image's own.
+    deploy:
+      resources:
+        limits:
+          memory: ${MODALITY_SIMULATOR_MEMORY_LIMIT}
 
 # External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
 # <instance> destroy` removes them, so no `docker compose down -v` can delete them.

@@ -5,6 +5,17 @@
 # gateway, not set here, so it uses the host's network, as AdvaPACS recommends: there's nothing to
 # publish, and a port configured in AdvaPACS works without changing this instance.
 #
+# It's the one service outside the instance's Docker network, by design. What that costs: its ports
+# are the host's, so two gateways on one host clash unless their Local AEs and HL7 services are given
+# different ports in AdvaPACS; the host's firewall, not a published port, decides who reaches them;
+# and the instance's other containers reach it through the host (host.docker.internal), not by its
+# service name. Record the ports each instance's gateway is configured with where the instance is
+# defined (e.g. puppet's site.pp).
+#
+# No healthcheck: the gateway has no HTTP endpoint, and opens no port until AdvaPACS has sent it its
+# configuration (and then the ports AdvaPACS says), so there's nothing fixed to check. AdvaPACS
+# shows whether it's Online (Configuration > Gateways).
+#
 # The data directory (received studies, the upload queue, the embedded database) is the image's
 # default, /opt/AdvaHealthSolutions/AdvaPACSGateway. Leave the gateway's Data Directory in AdvaPACS
 # at that path, or the data lands outside the volume.
@@ -20,6 +31,7 @@ services:
         required: false
     environment:
       TZ: ${TZ}
+      JAVA_OPTS: ${ADVAPACS_GATEWAY_JAVA_OPTS}
       # Prefixed ADVAPACS_GATEWAY_* in the instance's env, passed to the gateway under the names it
       # reads. No defaults: the instance must set them, from AdvaPACS (Configuration > Gateways).
       ADVAPACS_REGION: "${ADVAPACS_GATEWAY_REGION:?must be set: the region of the gateway, from AdvaPACS (Configuration > Gateways)}"
@@ -27,6 +39,10 @@ services:
       ADVAPACS_ACCESS_KEY_SECRET: "${ADVAPACS_GATEWAY_ACCESS_KEY_SECRET:?must be set: the access key secret of the gateway, from AdvaPACS (Configuration > Gateways)}"
     volumes:
       - advapacs-gateway-data:/opt/AdvaHealthSolutions/AdvaPACSGateway
+    deploy:
+      resources:
+        limits:
+          memory: ${ADVAPACS_GATEWAY_MEMORY_LIMIT}
 
 # External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
 # <instance> destroy` removes them, so no `docker compose down -v` can delete them.

@@ -34,18 +34,31 @@
 services:
   mongo-db:
     container_name: ${SERVICE_NAME}-mongo-db
-    image: mongo:${OPENHIM_MONGO_IMAGE_TAG}
+    image: ${OPENHIM_MONGO_IMAGE_NAME}:${OPENHIM_MONGO_IMAGE_TAG}
     env_file:
       - path: ${PIHX_TOOLS}/services/openhim/env.defaults
       - path: ${PIHX_INSTANCE_DIR}/openhim.env
         required: false
+    # WiredTiger's cache is set to fit inside the container's memory limit: left to itself, MongoDB
+    # sizes it from the memory it sees (half of it, less 1 GB), which can be the host's.
+    command: ["--wiredTigerCacheSizeGB", "${OPENHIM_MONGO_CACHE_SIZE_GB}"]
     volumes:
       - mongo-data:/data/db
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand('ping').ok ? 0 : 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: ${OPENHIM_MONGO_MEMORY_LIMIT}
 
   openhim-core:
     container_name: ${SERVICE_NAME}-openhim-core
-    image: jembi/openhim-core:${OPENHIM_CORE_IMAGE_TAG}
+    image: ${OPENHIM_CORE_IMAGE_NAME}:${OPENHIM_CORE_IMAGE_TAG}
     restart: unless-stopped
     # PID 1 is otherwise Node, which never reaps orphaned processes. 
     # init: true runs tini as PID 1 to reap them; see
@@ -66,9 +79,9 @@ services:
       api_trustProxy: "true"
       api_authenticationTypes: '["token", "basic", "openid", "local"]'
       authentication_enableCustomTokenAuthentication: "true"
-      # JWT authentication stays off by leaving authentication_enableJWTAuthentication unset
-      # From Claude: Never set it -- or any other openhim-core flag -- to "false": core reads env
-      # vars as strings and tests them for truthiness, so "false" turns the flag on.
+      # JWT authentication stays off by leaving authentication_enableJWTAuthentication unset.
+      # Never set it -- or any other openhim-core flag -- to "false": core reads env vars as
+      # strings and tests them for truthiness, so "false" turns the flag on.
       # The console's address for links openhim-core generates (e.g. in emails).
       openhimConsoleBaseUrl: ${OPENHIM_CONSOLE_URL:-http://localhost:${OPENHIM_CONSOLE_HOST_PORT}}
     ports:
@@ -79,6 +92,10 @@ services:
       interval: 30s
       timeout: 30s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: ${OPENHIM_CORE_MEMORY_LIMIT}
 
   openhim-setup:
     container_name: ${SERVICE_NAME}-openhim-setup
@@ -92,7 +109,7 @@ services:
       - path: ${PIHX_INSTANCE_DIR}/openhim.env
         required: false
     environment:
-      OPENHIM_PASSWORD: ${OPENHIM_PASSWORD}
+      OPENHIM_PASSWORD: "${OPENHIM_PASSWORD:?must be set: the password for OpenHIM's admin account (OPENHIM_USERNAME)}"
     entrypoint: ["/bin/sh", "-c"]
     # $$-escaped throughout: Compose interpolates any unescaped $var in a compose
     # file itself (against its own host-side variable context) before this string
@@ -108,9 +125,7 @@ services:
         # A " or \ in it is escaped, for curl's config and for JSON alike.
         esc() { printf '%s' "$$1" | sed 's/[\\"]/\\&/g'; }
         auth() { printf 'user = "%s:%s"\n' "$$email" "$$(esc "$$1")" > /tmp/auth; }
-        # Already matches -- either a prior run of this same job already changed
-        # it, or OPENHIM_PASSWORD was left at its own default. Either way, nothing
-        # to do.
+        # Already matches: a prior run of this same job already changed it.
         auth "$$OPENHIM_PASSWORD"
         code=$$(curl -s -K /tmp/auth -o /dev/null -w '%{http_code}' "$$base/users")
         if [ "$$code" = "200" ]; then
@@ -130,7 +145,7 @@ services:
 
   openhim-console:
     container_name: ${SERVICE_NAME}-openhim-console
-    image: jembi/openhim-console:${OPENHIM_CONSOLE_IMAGE_TAG}
+    image: ${OPENHIM_CONSOLE_IMAGE_NAME}:${OPENHIM_CONSOLE_IMAGE_TAG}
     restart: unless-stopped
     # Where the console, running in the admin's browser, finds the admin API: as the browser sees
     # it (e.g. https, the console's own host behind the proxy, and a path the proxy forwards to the
@@ -151,6 +166,10 @@ services:
       interval: 30s
       timeout: 30s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: ${OPENHIM_CONSOLE_MEMORY_LIMIT}
 
 # External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
 # <instance> destroy` removes them, so no `docker compose down -v` can delete them.
