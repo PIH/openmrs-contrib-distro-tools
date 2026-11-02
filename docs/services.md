@@ -8,7 +8,8 @@ means removing it.
 |---|---|---|
 | `openmrs-db` | The OpenMRS database (MySQL or MariaDB), and the setup that keeps its declared accounts in place | [README](../services/openmrs-db/README.md) |
 | `openmrs` | The OpenMRS application (requires `openmrs-db`) | [README](../services/openmrs/README.md) |
-| `openhim` | OpenHIM: core, console and MongoDB. Also the AdvaPACS mediator, `openhim-advapacs-mediator` | [README](../services/openhim/README.md) |
+| `openhim` | OpenHIM: core, console and MongoDB | [README](../services/openhim/README.md) |
+| `openhim-advapacs-mediator` | The AdvaPACS radiology-order mediator (requires `openhim`) | [README](../services/openhim-advapacs-mediator/README.md) |
 | `advapacs-gateway` | AdvaPACS's on-premises gateway for DICOM from local modalities | [README](../services/advapacs-gateway/README.md) |
 | `modality-simulator` | A fake CR, US and CT modality, for testing the gateway | [README](../services/modality-simulator/README.md) |
 | `biometrics` | The pih-biometrics fingerprint server | [README](../services/biometrics/README.md) |

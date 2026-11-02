@@ -29,6 +29,8 @@ export OPENMRS_IMAGE_NAME=placeholder/openmrs
 export OPENMRS_DB_PORT=0
 export OPENMRS_HTTP_PORT=0
 export OPENMRS_DB_OPT_innodb_buffer_pool_size=256M
+# openhim has no default admin password.
+export OPENHIM_PASSWORD=Placeholder-1
 # initialize would otherwise run the (placeholder) OpenMRS image to find the owner for a restored
 # openmrs-data. The test runner's own ids keep restored fixtures readable by the tests.
 OPENMRS_DATA_OWNER="$(id -u):$(id -g)"

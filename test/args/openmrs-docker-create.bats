@@ -255,6 +255,17 @@ assert_env_files_unchanged() {
     assert_output 1
 }
 
+@test "openhim needs OPENHIM_PASSWORD: add-service refuses without it, changing nothing" {
+    NAME="$(instance)"
+    "$BIN/openmrs-docker" "$NAME" create --services=openmrs-db >/dev/null 2>&1
+    snapshot_env_files
+    run env -u OPENHIM_PASSWORD "$BIN/openmrs-docker" "$NAME" add-service openhim
+    assert_failure
+    assert_output --regexp 'OPENHIM_PASSWORD( is missing a value)?: must be set'
+    assert [ ! -e "$(env_file_of "$NAME" openhim)" ]
+    assert_env_files_unchanged
+}
+
 @test "advapacs-gateway needs its region and access key: add-service refuses without them, changing nothing" {
     NAME="$(instance)"
     "$BIN/openmrs-docker" "$NAME" create --services=openmrs-db >/dev/null 2>&1

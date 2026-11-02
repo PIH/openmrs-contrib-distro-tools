@@ -28,7 +28,6 @@ setup() {
     unset OPENMRS_IMAGE_NAME
     export MODALITY_SIMULATOR_IMAGE_NAME=alpine MODALITY_SIMULATOR_IMAGE_TAG=3.21 \
         MODALITY_SIMULATOR_HOST_PORT=0 \
-        MODALITY_SIMULATOR_IMAGE_DIR=/tmp \
         BIOMETRICS_IMAGE_NAME=alpine BIOMETRICS_IMAGE_TAG=3.21 BIOMETRICS_LICENSE_BASE64=eA== \
         PETL_IMAGE_NAME=alpine PETL_IMAGE_TAG=3.21 PETL_MYSQL_PASSWORD=Pw-1
 }
@@ -69,6 +68,12 @@ running() { docker ps --format '{{.Names}}' --filter "label=com.docker.compose.p
     refute_output --partial Busy
     run "$BIN/pihx" "$NAME" restart
     assert_success
+    # Only the named service's containers.
+    run "$BIN/pihx" "$NAME" restart modality-simulator
+    assert_success
+    assert_equal "$(running)" "$NAME-modality-simulator"
+    run "$BIN/pihx" "$NAME" restart no-such-service
+    assert_failure
     run "$BIN/pihx" "$NAME" stop
     assert_success
     assert_equal "$(running)" ""
@@ -538,18 +543,16 @@ assert_owned_by_caller() { # <dir>...
 }
 
 @test "everything start, stop, archive and destroy make on the host is the caller's" {
-    # Its own PIHX_HOME, so only this test's instance is in it. modality-simulator's config and
-    # image directories default to bind sources in the instance directory.
+    # Its own PIHX_HOME, so only this test's instance is in it. modality-simulator's config
+    # directory defaults to a bind source in the instance directory.
     export PIHX_HOME="$BATS_TEST_TMPDIR/home"
     DIR="$PIHX_HOME/$NAME"
     mkdir "$PIHX_HOME"
-    unset MODALITY_SIMULATOR_IMAGE_DIR
     create modality-simulator biometrics
     assert_owned_by_caller "$PIHX_HOME"
     run "$BIN/pihx" "$NAME" start
     assert_success
     assert [ -d "$DIR/modality-simulator-config" ]
-    assert [ -d "$DIR/modality-simulator-images" ]
     assert_owned_by_caller "$PIHX_HOME"
     run "$BIN/pihx" "$NAME" stop
     assert_success

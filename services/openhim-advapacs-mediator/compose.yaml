@@ -18,8 +18,8 @@ services:
       - path: ${PIHX_INSTANCE_DIR}/openhim-advapacs-mediator.env
         required: false
     extra_hosts:
-      # For an OpenMRS running on the host rather than in this instance (OPENMRS_BASE_URL
-      # http://host.docker.internal:8080/openmrs): see the mediator's README.
+      # For an OpenMRS running on the host rather than in this instance
+      # (ADVAPACS_MEDIATOR_OPENMRS_BASE_URL=http://host.docker.internal:8080/openmrs).
       - "host.docker.internal:host-gateway"
     environment:
       # openhim-core by service name, over plain HTTP (see openhim.yaml).
@@ -29,15 +29,40 @@ services:
       MEDIATOR_PORT: "3500"
       # OpenHIM's own, which the openhim service owns.
       OPENHIM_USERNAME: ${OPENHIM_USERNAME}
-      OPENHIM_PASSWORD: ${OPENHIM_PASSWORD}
-      # OPENMRS_BASE_URL, OPENMRS_FHIR_PATH, OPENMRS_USERNAME, OPENMRS_PASSWORD and the ADVAPACS_*
-      # settings reach the mediator from its env files, under the names it reads.
-      # TODO: Do we want to namespace the openmrs ones in some way? Would this be at the OpenHIM or AdvaPACS level?
-      # Prefixed ADVAPACS_MEDIATOR_* in the instance's env, passed to the mediator under the names it
-      # reads.
+      OPENHIM_PASSWORD: "${OPENHIM_PASSWORD:?must be set: the password for OpenHIM's admin account (the openhim service's)}"
+      # The rest are the mediator's own, all prefixed ADVAPACS_MEDIATOR_* in the instance's env (so
+      # none looks like another service's, e.g. openmrs's OPENMRS_*), passed to the mediator under the
+      # names it reads.
       LOG_LEVEL: ${ADVAPACS_MEDIATOR_LOG_LEVEL}
-      MEDIATOR_INBOUND_SECRET: ${ADVAPACS_MEDIATOR_INBOUND_SECRET}
+      MEDIATOR_INBOUND_SECRET: "${ADVAPACS_MEDIATOR_INBOUND_SECRET:?must be set: the shared secret on the order requests the mediator's poller sends it through OpenHIM}"
       ORDER_INGESTION_MODE: ${ADVAPACS_MEDIATOR_ORDER_INGESTION_MODE}
       ORDER_POLL_INTERVAL_MS: ${ADVAPACS_MEDIATOR_ORDER_POLL_INTERVAL_MS}
       OPENHIM_INBOUND_CLIENT_ID: ${ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_ID}
-      OPENHIM_INBOUND_CLIENT_PASSWORD: ${ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD}
+      OPENHIM_INBOUND_CLIENT_PASSWORD: "${ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD:?must be set: the password of the OpenHIM client the mediator's order poller uses}"
+      # OpenMRS's FHIR API, which the mediator polls for orders and writes results to.
+      OPENMRS_BASE_URL: ${ADVAPACS_MEDIATOR_OPENMRS_BASE_URL}
+      OPENMRS_FHIR_PATH: ${ADVAPACS_MEDIATOR_OPENMRS_FHIR_PATH}
+      OPENMRS_USERNAME: "${ADVAPACS_MEDIATOR_OPENMRS_USERNAME:?must be set: the OpenMRS account the mediator uses}"
+      OPENMRS_PASSWORD: "${ADVAPACS_MEDIATOR_OPENMRS_PASSWORD:?must be set: the password of the OpenMRS account the mediator uses}"
+      # AdvaPACS's FHIR API. The mediator reaches it through OpenHIM (ADVAPACS_CHANNEL_URL); the base URL
+      # is the real host, which the mediator sets as its channel's route when it registers.
+      ADVAPACS_BASE_URL: ${ADVAPACS_MEDIATOR_ADVAPACS_BASE_URL}
+      ADVAPACS_CLIENT_ID: "${ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_ID:?must be set: the mediator's AdvaPACS API client ID}"
+      ADVAPACS_CLIENT_SECRET: "${ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_SECRET:?must be set: the mediator's AdvaPACS API client secret}"
+      # For AdvaPACS's result webhook, which the mediator doesn't serve yet (disabled in its
+      # src/index.js), so it isn't required. Make it required (:?) when the webhook is turned on.
+      ADVAPACS_WEBHOOK_SECRET: ${ADVAPACS_MEDIATOR_ADVAPACS_WEBHOOK_SECRET}
+      # The FHIR identifier systems for OpenMRS's patient and provider identifiers, as AdvaPACS gets them.
+      ADVAPACS_PATIENT_IDENTIFIER_SYSTEM: "${ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_SYSTEM:?must be set: the FHIR identifier system of the patient identifier sent to AdvaPACS}"
+      ADVAPACS_PRACTITIONER_IDENTIFIER_SYSTEM: ${ADVAPACS_MEDIATOR_PRACTITIONER_IDENTIFIER_SYSTEM}
+    healthcheck:
+      # The mediator's own HTTP server, on MEDIATOR_PORT.
+      test: ["CMD", "wget", "-qO-", "http://localhost:3500/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: ${ADVAPACS_MEDIATOR_MEMORY_LIMIT}

@@ -12,6 +12,20 @@ transaction log, audit events, metrics and anything changed by hand in the conso
 over. The old database stays in the `mongo-data` volume, to copy with `mongodump` / `mongorestore
 --nsFrom 'openhim-development.*' --nsTo 'openhim.*'` or drop.
 
+MongoDB is 7.0 (it was 4.0, end-of-life since 2022, before TASKS-655). MongoDB 7.0 can't open a 4.0
+data directory, so an instance created before fails to start `mongo-db` until its volume is replaced.
+To start OpenHIM on an empty database (with the same losses as above):
+
+```bash
+pihx <name> stop
+docker volume rm <name>_mongo-data
+pihx <name> start    # creates the volume again
+```
+
+To keep the data instead, upgrade it one major version at a time (4.2, 4.4, 5.0, 6.0, 7.0, setting
+`featureCompatibilityVersion` after each), or `mongodump` it with 4.0 and `mongorestore` it into 7.0.
+MongoDB 5.0 and later need a CPU with AVX (`grep -c avx /proc/cpuinfo` is more than 0).
+
 OpenHIM's clients authenticate with Basic auth or custom tokens; its JWT authentication is off,
 since nothing uses it and it would otherwise accept a token signed with a shared secret for any
 client.
@@ -26,10 +40,18 @@ publishes only what's used from outside, and its [`compose.yaml`](compose.yaml) 
 | `OPENHIM_ADMIN_API_HOST_PORT` | `8081` | the admin API, which the console (running in the admin's browser) calls directly |
 | `OPENHIM_ROUTER_HTTP_HOST_PORT` | `5001` | the router, for external systems calling a channel. A proxy in front should forward only those channels' paths: some channels are public |
 
-Other variables: `OPENHIM_CORE_IMAGE_TAG`, `OPENHIM_CONSOLE_IMAGE_TAG` and `OPENHIM_MONGO_IMAGE_TAG`
-(release tags, not `latest`, so an upgrade is a deliberate change to `env.defaults`, checked with
-this setup), and `OPENHIM_USERNAME` / `OPENHIM_PASSWORD` (the admin login, which the mediators use
-too; set the password in `openhim.env`).
+Other variables: the images, `OPENHIM_CORE_IMAGE_NAME` / `_TAG`, `OPENHIM_CONSOLE_IMAGE_NAME` / `_TAG`
+and `OPENHIM_MONGO_IMAGE_NAME` / `_TAG` (release tags, not `latest`, so an upgrade is a deliberate
+change to `env.defaults`, checked with this setup), and `OPENHIM_USERNAME` / `OPENHIM_PASSWORD` (the admin login, which the mediators use
+too). `OPENHIM_PASSWORD` has no default: an instance that doesn't set it fails to start.
+
+| Variable | Default | |
+|---|---|---|
+| `OPENHIM_MONGO_MEMORY_LIMIT`, `OPENHIM_CORE_MEMORY_LIMIT`, `OPENHIM_CONSOLE_MEMORY_LIMIT` | `1g`, `1g`, `128m` | the containers' memory limits |
+| `OPENHIM_MONGO_CACHE_SIZE_GB` | `0.25` | MongoDB's WiredTiger cache. Left to itself MongoDB sizes it from the memory it sees, which can be the host's, so it's set; keep it well under `OPENHIM_MONGO_MEMORY_LIMIT` |
+
+MongoDB, openhim-core, openhim-console and the mediator each have a healthcheck, so `pihx <name>
+wait` waits for them.
 
 Behind a proxy, tell the console where the browser finds the admin API, and set the console's own
 address for links openhim-core generates. The defaults are for a browser on the same machine:
@@ -50,29 +72,8 @@ HTTPS. Caddy sends it by default; behind nginx, add `proxy_set_header X-Forwarde
 Without it, or with the browser going straight to the published port, every login fails, and
 openhim-core logs "Cannot send secure cookie over unencrypted connection".
 
-## The AdvaPACS mediator
+## Mediators
 
-`openhim-advapacs-mediator` carries radiology orders between OpenMRS and AdvaPACS. Its
-[`env.defaults`](../openhim-advapacs-mediator/env.defaults) lists its variables; the secrets and
-identifiers it has no default for are set in `openhim-advapacs-mediator.env`. It needs `OPENMRS_USERNAME`
-and `OPENMRS_PASSWORD` (an OpenMRS account for the mediator), `ADVAPACS_CLIENT_ID` and
-`ADVAPACS_CLIENT_SECRET`, `ADVAPACS_PATIENT_IDENTIFIER_SYSTEM`, and the inbound secret and client
-password. An instance for Lesotho, with OpenHIM and the mediator, is created like this:
-
-```bash
-export OPENMRS_IMAGE_NAME=partnersinhealth/lesotho-emr
-export OPENMRS_PIH_CONFIG=lesotho,lesotho-kol-ci
-export OPENHIM_PASSWORD=<pick-a-password>
-export ADVAPACS_MEDIATOR_INBOUND_SECRET=<pick-a-secret>
-export ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD=<pick-a-password>
-export ADVAPACS_CLIENT_ID=<advapacs-client-id>
-export ADVAPACS_CLIENT_SECRET=<advapacs-client-secret>
-export OPENMRS_USERNAME=<username-for-mediator-access-to-openmrs>
-export OPENMRS_PASSWORD=<password-for-mediator-access-to-openmrs>
-export ADVAPACS_PATIENT_IDENTIFIER_SYSTEM="http://www.pih.org/identifiers/lesotho/emr-id"
-openmrs-docker <name> create --services=openmrs-db,openmrs,openhim,openhim-advapacs-mediator
-openmrs-docker <name> initialize --from-image partnersinhealth/lesotho-emr-seed-lesotho
-openmrs-docker <name> start
-```
-
-`create` writes each value to the file of the service whose defaults or compose file name it.
+Each mediator is its own service, which requires `openhim`. For now there's one,
+[`openhim-advapacs-mediator`](../openhim-advapacs-mediator/README.md), which carries radiology orders
+between OpenMRS and AdvaPACS.

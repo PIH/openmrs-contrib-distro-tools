@@ -15,14 +15,19 @@ key; the secret is shown only once. Settings are in `advapacs-gateway.env`.
 | `ADVAPACS_GATEWAY_REGION` | must be set | the gateway's region |
 | `ADVAPACS_GATEWAY_ACCESS_KEY_ID` | must be set | the gateway's access key ID |
 | `ADVAPACS_GATEWAY_ACCESS_KEY_SECRET` | must be set | the gateway's access key secret |
+| `ADVAPACS_GATEWAY_MEMORY_LIMIT` | `4g` | the container's memory limit, AdvaPACS's minimum |
+| `ADVAPACS_GATEWAY_JAVA_OPTS` | `-XX:MaxRAMPercentage=75` | the JVM's options; by default the heap is three quarters of the limit |
 | `ADVAPACS_GATEWAY_IMAGE_NAME`, `ADVAPACS_GATEWAY_IMAGE_TAG` | `advahealthsolutions/advapacs-gateway`, `1.22.1` | to upgrade, change the tag in `advapacs-gateway.env` and run `update` |
 
 Everything else is configured in AdvaPACS, and the gateway picks it up within a few minutes of
 starting, when it shows as Online:
 
 - **Ports.** Each Local AE (Configuration > Local AEs) and each gateway HL7 inbound service has its
-  own port, which the gateway opens. The gateway uses the host's network, so these are the host's
-  ports: nothing is published, but the host's firewall must let the modalities reach them. Give
+  own port, which the gateway opens. The gateway uses the host's network, as AdvaPACS's install
+  guide does, so these are the host's ports: nothing is published, but the host's firewall must let
+  the modalities reach them. That makes it the one service outside the instance's Docker network
+  (see [`compose.yaml`](compose.yaml)). It also follows (the guide doesn't cover it) that a second
+  gateway on the same host needs different ports in AdvaPACS, or the two clash. Give
   modalities the host's IP address, with the Local AE's AE title and port, and check with a C-ECHO.
 - **Modalities.** Each one is a Remote AE (Configuration > Remote AEs), whose AE title must match the
   modality's exactly, case included. Its worklist and query settings are there too.
@@ -31,6 +36,9 @@ starting, when it shows as Online:
 
 AdvaPACS asks for 4 GB of memory (8 GB recommended) and 50 GB of disk (200 GB recommended) for the
 gateway, and an accurate clock (NTP): its authentication fails if the host's clock drifts.
+
+It has no healthcheck: it has no HTTP endpoint, and opens no port until AdvaPACS has sent it its
+configuration, so `pihx status` shows it only as Up. AdvaPACS shows whether it's Online.
 
 ```bash
 export ADVAPACS_GATEWAY_REGION=<region>

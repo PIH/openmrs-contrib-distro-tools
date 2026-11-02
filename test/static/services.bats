@@ -25,6 +25,13 @@ ENV
     echo "PETL_MYSQL_PASSWORD=Placeholder-1" > "$dir/petl.env"
     echo "SQLSERVER_SA_PASSWORD=Placeholder-1" > "$dir/sqlserver.env"
     echo "BIOMETRICS_LICENSE_BASE64=cGxhY2Vob2xkZXI=" > "$dir/biometrics.env"
+    echo "OPENHIM_PASSWORD=Placeholder-1" > "$dir/openhim.env"
+    printf '%s\n' ADVAPACS_MEDIATOR_INBOUND_SECRET=placeholder-secret \
+        ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD=Placeholder-1 \
+        ADVAPACS_MEDIATOR_OPENMRS_USERNAME=placeholder-user ADVAPACS_MEDIATOR_OPENMRS_PASSWORD=Placeholder-1 \
+        ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_ID=placeholder-id ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_SECRET=placeholder-secret \
+        ADVAPACS_MEDIATOR_ADVAPACS_WEBHOOK_SECRET=placeholder-webhook \
+        ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_SYSTEM=urn:placeholder > "$dir/openhim-advapacs-mediator.env"
     printf '%s\n' ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret > "$dir/advapacs-gateway.env"
 }
@@ -87,7 +94,10 @@ assert_valid() {
     make_instance "$dir"
     for pair in openmrs:OPENMRS_IMAGE_NAME petl:PETL_MYSQL_PASSWORD sqlserver:SQLSERVER_SA_PASSWORD \
             biometrics:BIOMETRICS_LICENSE_BASE64 \
-            advapacs-gateway:ADVAPACS_GATEWAY_REGION; do
+            advapacs-gateway:ADVAPACS_GATEWAY_REGION openhim:OPENHIM_PASSWORD \
+            openhim-advapacs-mediator:ADVAPACS_MEDIATOR_INBOUND_SECRET \
+            openhim-advapacs-mediator:ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD \
+            openhim-advapacs-mediator:ADVAPACS_MEDIATOR_OPENMRS_PASSWORD; do
         svc=${pair%%:*} var=${pair#*:}
         cp "$dir/$svc.env" "$dir/$svc.env.saved"
         grep -v "^$var=" "$dir/$svc.env.saved" > "$dir/$svc.env" || true
@@ -291,7 +301,7 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     local dir="$BATS_TEST_TMPDIR/instance"
     EXTRA_ENV=()
     make_instance "$dir"
-    printf 'OPENHIM_CONSOLE_HOST_PORT=9100\nOPENHIM_ADMIN_API_HOST_PORT=8181\n' > "$dir/openhim.env"
+    printf 'OPENHIM_CONSOLE_HOST_PORT=9100\nOPENHIM_ADMIN_API_HOST_PORT=8181\n' >> "$dir/openhim.env"
     run instance_compose "$dir" openhim -- config --format json
     assert_success
     run jq -r '.services["openhim-core"].environment.openhimConsoleBaseUrl, .services["openhim-console"].environment.OPENHIM_MEDIATOR_API_PORT' <<< "$output"
@@ -310,6 +320,40 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_output openmrs-db
     run jq -r '.services.petl.volumes[] | "\(.source):\(.target)"' <<< "$json"
     assert_output "petl-data:/home/petl/data"
+}
+
+@test "the openhim, mediator, gateway and simulator containers each have a memory limit, and all but the gateway a healthcheck" {
+    local config svc
+    EXTRA_ENV=()
+    run make_and_run --format json
+    assert_success
+    config=$output
+    for svc in mongo-db openhim-core openhim-console openhim-advapacs-mediator advapacs-gateway modality-simulator; do
+        run jq -r --arg s "$svc" '.services[$s].deploy.resources.limits.memory // empty' <<< "$config"
+        [ -n "$output" ] || fail "$svc: no memory limit"
+    done
+    # the simulator's healthcheck is its image's; the gateway has nothing fixed to check (compose.yaml)
+    for svc in mongo-db openhim-core openhim-console openhim-advapacs-mediator; do
+        run jq -r --arg s "$svc" '.services[$s].healthcheck.test // empty' <<< "$config"
+        [ -n "$output" ] || fail "$svc: no healthcheck"
+    done
+    # left to itself, MongoDB sizes its cache from the memory it sees, which can be the host's
+    run jq -r '.services["mongo-db"].command | join(" ")' <<< "$config"
+    assert_output '--wiredTigerCacheSizeGB 0.25'
+}
+
+@test "the mediator gets its prefixed ADVAPACS_MEDIATOR_* settings under the names it reads, and no unprefixed OPENMRS_* ones" {
+    local config
+    EXTRA_ENV=()
+    run make_and_run --format json
+    assert_success
+    config=$output
+    run jq -r '.services["openhim-advapacs-mediator"].environment
+        | .OPENMRS_BASE_URL, .OPENMRS_USERNAME, .ADVAPACS_CLIENT_ID, .ADVAPACS_WEBHOOK_SECRET, .ADVAPACS_PATIENT_IDENTIFIER_SYSTEM' <<< "$config"
+    assert_output $'http://openmrs:8080/openmrs\nplaceholder-user\nplaceholder-id\nplaceholder-webhook\nurn:placeholder'
+    # nothing in its files looks like openmrs's own variables
+    run grep -E '^(OPENMRS|ADVAPACS_(CLIENT|WEBHOOK|BASE|PATIENT|PRACTITIONER))_' "$REPO_ROOT/services/openhim-advapacs-mediator/env.defaults"
+    assert_failure
 }
 
 @test "advapacs-gateway uses the host's network, publishes nothing, and keeps its data directory in a volume" {
@@ -333,7 +377,7 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_output /opt/AdvaHealthSolutions/AdvaPACSGateway
 }
 
-@test "modality-simulator reaches the gateway through the host, keeps its log in a volume, and mounts its stations file and image library read-only" {
+@test "modality-simulator reaches the gateway through the host, keeps its log in a volume, and mounts its stations file read-only" {
     local config
     EXTRA_ENV=()
     run make_and_run --format json
@@ -352,13 +396,10 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     run jq -r '.services["modality-simulator"].environment | has("MODALITY_SIMULATOR_GATEWAY_AE")' <<< "$config"
     assert_output false
     run jq -r '.services["modality-simulator"].volumes[] | "\(.type) \(.target) \(.read_only // false)"' <<< "$config"
-    assert_output $'volume /data false\nbind /config true\nbind /images true'
+    assert_output $'volume /data false\nbind /config true'
     # the stations file's directory defaults to one in the instance
     run jq -r '.services["modality-simulator"].volumes[] | select(.target == "/config") | .source' <<< "$config"
     assert_output "$BATS_TEST_TMPDIR/instance/modality-simulator-config"
-    # the image library defaults to a directory in the instance
-    run jq -r '.services["modality-simulator"].volumes[] | select(.target == "/images") | .source' <<< "$config"
-    assert_output "$BATS_TEST_TMPDIR/instance/modality-simulator-images"
 }
 
 @test "biometrics publishes nothing, keeps a stable hostname and its data and license identity in volumes, and passes its settings under the image's names" {

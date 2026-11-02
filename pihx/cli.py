@@ -30,7 +30,8 @@ Commands:
   use-tools <dir>            Run the instance from another tools directory
   start                      Bring the instance up and check its setup containers
   stop                       Remove its containers (not its volumes)
-  restart                    Restart its containers
+  restart [service...]       Restart its containers, or only the named services' (compose's
+                             service names, e.g. modality-simulator or openhim-core)
   status                     Show its containers, and what holds its lock
   logs [service]             Follow the logs
   compose <subcommand> [args...]

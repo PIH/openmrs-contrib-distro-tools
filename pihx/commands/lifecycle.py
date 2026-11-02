@@ -227,10 +227,13 @@ def cmd_stop(name, args):
 
 
 def cmd_restart(name, args):
-    _no_arguments(args, "restart")
+    # Its containers, or only those of the named compose services (e.g. modality-simulator, to reread
+    # a mounted config file without restarting the rest of the instance).
+    if any(a.startswith("-") for a in args):
+        raise CliError(f"usage: pihx {name} restart [service...]", status=2)
     inst = _open(name)
     with lock.hold(inst, lock.wait_seconds(), command="restart"):
-        compose_module.Compose(inst).run("restart")
+        compose_module.Compose(inst).run("restart", *args)
     return 0
 
 
