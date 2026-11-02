@@ -23,10 +23,11 @@ Everything else is configured in AdvaPACS, and the gateway picks it up within a 
 starting, when it shows as Online:
 
 - **Ports.** Each Local AE (Configuration > Local AEs) and each gateway HL7 inbound service has its
-  own port, which the gateway opens. The gateway uses the host's network, so these are the host's
-  ports: nothing is published, but the host's firewall must let the modalities reach them. This is
-  the one service outside the instance's Docker network (see [`compose.yaml`](compose.yaml)): a
-  second gateway on the same host needs different ports in AdvaPACS, or the two clash. Give
+  own port, which the gateway opens. The gateway uses the host's network, as AdvaPACS's install
+  guide does, so these are the host's ports: nothing is published, but the host's firewall must let
+  the modalities reach them. That makes it the one service outside the instance's Docker network
+  (see [`compose.yaml`](compose.yaml)). It also follows (the guide doesn't cover it) that a second
+  gateway on the same host needs different ports in AdvaPACS, or the two clash. Give
   modalities the host's IP address, with the Local AE's AE title and port, and check with a C-ECHO.
 - **Modalities.** Each one is a Remote AE (Configuration > Remote AEs), whose AE title must match the
   modality's exactly, case included. Its worklist and query settings are there too.

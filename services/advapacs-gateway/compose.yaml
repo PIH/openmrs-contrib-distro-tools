@@ -1,15 +1,20 @@
 # AdvaPACS's on-premises gateway: receives DICOM (and optionally HL7) from local modalities and
 # uploads it to the AdvaPACS cloud, over outbound HTTPS only. Independent of openhim.
 #
-# Its listening ports (Local AEs, HL7 inbound services) are set in the AdvaPACS UI and pushed to the
-# gateway, not set here, so it uses the host's network, as AdvaPACS recommends: there's nothing to
-# publish, and a port configured in AdvaPACS works without changing this instance.
+# It uses the host's network, as AdvaPACS's Docker install guide does
+# (https://docs.advapacs.com/getting-started/connect-modalities/install-the-gateway/docker): "Using
+# host networking allows any Local AEs created on the Gateway to be directly accessible from other
+# devices on your network without additional Docker port mappings." Its listening ports (Local AEs,
+# HL7 inbound services) are set in the AdvaPACS UI and pushed to the gateway, so a port configured
+# there works without changing this instance. The guide allows bridge networking instead, publishing
+# the DICOM ports by hand; we don't, since each port would then also have to be set here.
 #
-# It's the one service outside the instance's Docker network, by design. What that costs: its ports
-# are the host's, so two gateways on one host clash unless their Local AEs and HL7 services are given
-# different ports in AdvaPACS; the host's firewall, not a published port, decides who reaches them;
-# and the instance's other containers reach it through the host (host.docker.internal), not by its
-# service name. Record the ports each instance's gateway is configured with where the instance is
+# That makes it the one service outside the instance's Docker network, by our choice. What follows
+# from host networking (not from the guide, which doesn't cover these): its ports are the host's, so
+# two gateways on one host clash unless their Local AEs and HL7 services are given different ports in
+# AdvaPACS; the host's firewall, not a published port, decides who reaches them; and the instance's
+# other containers reach it through the host (host.docker.internal), not by its service name. Our
+# convention: record the ports each instance's gateway is configured with where the instance is
 # defined (e.g. puppet's site.pp).
 #
 # No healthcheck: the gateway has no HTTP endpoint, and opens no port until AdvaPACS has sent it its
