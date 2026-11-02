@@ -55,6 +55,10 @@ services:
       # The FHIR identifier systems for OpenMRS's patient and provider identifiers, as AdvaPACS gets them.
       ADVAPACS_PATIENT_IDENTIFIER_SYSTEM: "${ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_SYSTEM:?must be set: the FHIR identifier system of the patient identifier sent to AdvaPACS}"
       ADVAPACS_PRACTITIONER_IDENTIFIER_SYSTEM: ${ADVAPACS_MEDIATOR_PRACTITIONER_IDENTIFIER_SYSTEM}
+      # Optional: OpenMRS Visit Location uuid -> AdvaPACS Site identifier, and the AdvaPACS Organisation
+      # those Sites must belong to (see the mediator's .env.example). Empty, orders are sent without a Site.
+      ADVAPACS_SITE_MAP: ${ADVAPACS_MEDIATOR_SITE_MAP}
+      ADVAPACS_ORGANIZATION: ${ADVAPACS_MEDIATOR_ORGANIZATION}
     healthcheck:
       # The mediator's own HTTP server, on MEDIATOR_PORT.
       test: ["CMD", "wget", "-qO-", "http://localhost:3500/health"]

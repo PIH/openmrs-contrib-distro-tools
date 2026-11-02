@@ -31,12 +31,18 @@ defaults ([`env.defaults`](env.defaults)):
 | `ADVAPACS_MEDIATOR_OPENMRS_BASE_URL`, `ADVAPACS_MEDIATOR_OPENMRS_FHIR_PATH` | `http://openmrs:8080/openmrs`, `/ws/fhir2/R4` | the instance's own OpenMRS; for one on the host, `http://host.docker.internal:8080/openmrs` |
 | `ADVAPACS_MEDIATOR_ADVAPACS_BASE_URL` | `https://usa1.api.integration.advapacs.com/fhir/R5` | AdvaPACS's FHIR API: the real host, which the mediator sets as its OpenHIM channel's route |
 | `ADVAPACS_MEDIATOR_PRACTITIONER_IDENTIFIER_SYSTEM` | empty | the FHIR identifier system of the ordering provider's identifier |
+| `ADVAPACS_MEDIATOR_SITE_MAP` | empty | the AdvaPACS Site each order is sent to: `<visit-location-uuid>=<site-identifier>,...`, mapping OpenMRS Visit Locations to the identifiers of AdvaPACS Sites (see below) |
+| `ADVAPACS_MEDIATOR_ORGANIZATION` | empty | the identifier of the AdvaPACS Organisation the Sites in `ADVAPACS_MEDIATOR_SITE_MAP` must belong to |
 | `ADVAPACS_MEDIATOR_ADVAPACS_WEBHOOK_SECRET` | empty | the bearer token for AdvaPACS's result webhook. The mediator doesn't serve the webhook yet; set it, and make it required in `compose.yaml`, when it does |
 | `ADVAPACS_MEDIATOR_ORDER_INGESTION_MODE`, `ADVAPACS_MEDIATOR_ORDER_POLL_INTERVAL_MS` | `poll`, `15000` | how it gets orders from OpenMRS |
 | `ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_ID` | `openmrs` | the OpenHIM client the poller uses |
 | `ADVAPACS_MEDIATOR_LOG_LEVEL` | `info` | |
 | `ADVAPACS_MEDIATOR_MEMORY_LIMIT` | `256m` | the container's memory limit |
 | `ADVAPACS_MEDIATOR_IMAGE_NAME`, `ADVAPACS_MEDIATOR_IMAGE_TAG` | `partnersinhealth/openhim-advapacs-mediator`, `latest` | |
+
+With `ADVAPACS_MEDIATOR_SITE_MAP` empty, orders are sent without a Site. Once it's set, an order
+whose Site can't be determined fails in OpenHIM rather than being sent without one. The Site
+identifiers differ between AdvaPACS setups (e.g. `LS-DM-BOTS` on demo, `LS-BOTS` on production).
 
 Its healthcheck is its own `/health` endpoint, so `pihx <name> wait` waits for it. It publishes no
 port: openhim-core reaches it on the instance's network.
