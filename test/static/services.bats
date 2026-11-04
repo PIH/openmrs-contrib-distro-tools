@@ -356,6 +356,24 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_failure
 }
 
+@test "the mediator gets the AdvaPACS Site settings, which are optional" {
+    local dir="$BATS_TEST_TMPDIR/instance"
+    EXTRA_ENV=()
+    make_instance "$dir"
+    run instance_compose "$dir" "$(closure openhim-advapacs-mediator | paste -sd, -)" -- config --format json
+    assert_success
+    run jq -c '.services["openhim-advapacs-mediator"].environment
+        | [.ADVAPACS_SITE_MAP, .ADVAPACS_ORGANIZATION]' <<< "$output"
+    assert_output '["",""]'
+    printf '%s\n' ADVAPACS_MEDIATOR_SITE_MAP=vl-bots=LS-DM-BOTS ADVAPACS_MEDIATOR_ORGANIZATION=LS-DM \
+        >> "$dir/openhim-advapacs-mediator.env"
+    run instance_compose "$dir" "$(closure openhim-advapacs-mediator | paste -sd, -)" -- config --format json
+    assert_success
+    run jq -c '.services["openhim-advapacs-mediator"].environment
+        | [.ADVAPACS_SITE_MAP, .ADVAPACS_ORGANIZATION]' <<< "$output"
+    assert_output '["vl-bots=LS-DM-BOTS","LS-DM"]'
+}
+
 @test "advapacs-gateway uses the host's network, publishes nothing, and keeps its data directory in a volume" {
     local config
     EXTRA_ENV=()
