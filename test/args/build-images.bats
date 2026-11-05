@@ -33,14 +33,15 @@ printf '%s' "${STUB_REPO_CODE:-200}"
 STUB
     chmod +x "$BATS_TEST_TMPDIR/bin/curl"
     export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
-    script="$(python3 -c 'import sys, yaml
-w = yaml.safe_load(open(sys.argv[1]))
-print(next(s["run"] for s in w["jobs"]["build"]["steps"] if s.get("id") == "images"))' \
-        "$REPO_ROOT/.github/workflows/build-images.yml")"
+}
+
+# The build step's script, read from the workflow once per file.
+setup_file() {
+    workflow_step_script build-images.yml build images > "$BATS_FILE_TMPDIR/build-images.sh"
 }
 
 tag() { utils/hash-directory.sh "$1"; }
-build() { run bash -c "$script"; }
+build() { run bash "$BATS_FILE_TMPDIR/build-images.sh"; }
 
 @test "build-images never overwrites a tag: an existing tag is neither built nor pushed" {
     PUSH=true STUB_EXISTING="partnersinhealth/a:$(tag images/a)" build

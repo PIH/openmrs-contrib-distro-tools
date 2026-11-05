@@ -43,14 +43,14 @@ Pass the `--reset-db` flag to reset an already-existing database instead of keep
 The most common scenario is that one has their own MySQL Docker container running on their local
 machine, where they managed their own databases, and do not have the SDK create these directly.  In
 this case, one needs to specify the `DB_CONTAINER` environment variable to point to the container,
-and any other thoe other `DB_*` variables if the defaults do not match one's setup.
+and any other `DB_*` variables if the defaults do not match one's setup.
 
-Running from the root of this the distribution repository:
+Running from the root of the distribution repository:
 
 ```bash
 PIH_CONFIG=<specific-pih-config-setting-to-use> \
 DB_CONTAINER=<my-mysql-container-name> \
-DB_PORT=<my-mysql-container-port> \> \
+DB_PORT=<my-mysql-container-port> \
 DB_USER=root \
 DB_PASSWORD=<my-mysql-root-password> \
 openmrs-sdk create <server-id>

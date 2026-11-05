@@ -36,6 +36,25 @@ export OPENHIM_PASSWORD=Placeholder-1
 OPENMRS_DATA_OWNER="$(id -u):$(id -g)"
 export OPENMRS_DATA_OWNER
 
+# pihx-runtime at this checkout's content tag, as bin/pihx runs it (test/run makes sure it's here and
+# exports it).
+PIHX_RUNTIME_IMAGE="${PIHX_RUNTIME_IMAGE:-partnersinhealth/pihx-runtime:$("$REPO_ROOT/utils/hash-directory.sh" "$REPO_ROOT/images/pihx-runtime")}"
+
+# Runs `python3 <args...>` in pihx-runtime from the checkout's root (mounted read-only at its own path),
+# so no test needs Python on the host. stdin is passed through, for `runtime_python - <<'PYTHON'`.
+runtime_python() {
+    docker run --rm -i -u "$(id -u):$(id -g)" -v "$REPO_ROOT:$REPO_ROOT:ro" -w "$REPO_ROOT" \
+        -e PYTHONDONTWRITEBYTECODE=1 "$PIHX_RUNTIME_IMAGE" python3 "$@"
+}
+
+# Prints the run: script of step <id> in job <job> of .github/workflows/<file>.
+workflow_step_script() { # <file> <job> <id>
+    runtime_python -c 'import sys, yaml
+w = yaml.safe_load(open(sys.argv[1]))
+print(next(s["run"] for s in w["jobs"][sys.argv[2]]["steps"] if s.get("id") == sys.argv[3]))' \
+        "$REPO_ROOT/.github/workflows/$1" "$2" "$3"
+}
+
 # A name for a Docker resource owned by the current test, e.g. `res db` -> pihxtest1234-t7-db.
 res() { echo "$RUN_PREFIX-t${BATS_SUITE_TEST_NUMBER}-$1"; }
 

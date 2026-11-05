@@ -18,4 +18,4 @@ MYSQL_ROOT_PASSWORD="$OPENMRS_DB_ROOT_PASSWORD" MYSQL_PASSWORD="$OPENMRS_DB_PASS
     --image="$OPENMRS_DB_IMAGE_NAME:$OPENMRS_DB_IMAGE_TAG" --user="$OPENMRS_DB_USER"
 # pihx's own start (without the lock, which this command holds): brings the instance up and checks
 # every service's setup containers.
-PYTHONPATH="$PIHX_TOOLS" PYTHONDONTWRITEBYTECODE=1 python3 -m pihx "$PIHX_INSTANCE" _start
+python3 -m pihx "$PIHX_INSTANCE" _start

@@ -25,12 +25,17 @@ load ../helpers
     done
 }
 
+@test "pihx-runtime installs only the packages the dependency policy allows" {
+    # docs/development.md#dependencies: adding a package is a team decision, and an allowed import in
+    # pihx/tests/test_imports.py. Never pip.
+    run grep -xF 'RUN apk add --no-cache python3 py3-yaml docker-cli-compose bash' \
+        "$REPO_ROOT/images/pihx-runtime/Dockerfile"
+    assert_success
+    run grep -iE 'pip|ensurepip|venv' "$REPO_ROOT/images/pihx-runtime/Dockerfile"
+    assert_failure
+}
+
 @test "build-images pushes only on a push to main" {
-    local script
-    script=$(python3 -c 'import sys, yaml
-w = yaml.safe_load(open(sys.argv[1]))
-print(next(s["run"] for s in w["jobs"]["build"]["steps"] if s.get("id") == "images"))' \
-        "$REPO_ROOT/.github/workflows/build-images.yml")
     run grep -F "PUSH: \${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}" \
         "$REPO_ROOT/.github/workflows/build-images.yml"
     assert_success

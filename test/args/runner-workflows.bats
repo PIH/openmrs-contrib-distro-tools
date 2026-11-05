@@ -5,6 +5,12 @@
 
 load ../helpers
 
+# The two gate scripts, read from the workflows once per file.
+setup_file() {
+    workflow_step_script deploy-via-runner.yml deploy gate > "$BATS_FILE_TMPDIR/deploy-gate.sh"
+    workflow_step_script run-petl-via-runner.yml run-petl gate > "$BATS_FILE_TMPDIR/petl-gate.sh"
+}
+
 setup() {
     export PUPPET_DIR="$BATS_TEST_TMPDIR/puppet" GITHUB_OUTPUT="$BATS_TEST_TMPDIR/output"
     mkdir -p "$PUPPET_DIR"
@@ -12,18 +18,11 @@ setup() {
     export RUNNER_LABEL=appclstr-01 MANIFEST=site
 }
 
-# Prints the run: script of step <id> in job <job> of workflow <file>.
-step_script() { # <file> <job> <id>
-    python3 -c 'import sys, yaml
-w = yaml.safe_load(open(sys.argv[1]))
-print(next(s["run"] for s in w["jobs"][sys.argv[2]]["steps"] if s.get("id") == sys.argv[3]))' \
-        "$REPO_ROOT/.github/workflows/$1" "$2" "$3"
-}
 deploy_gate() { # env INSTANCES, HOST
-    run bash -c "$(step_script deploy-via-runner.yml deploy gate)"
+    run bash "$BATS_FILE_TMPDIR/deploy-gate.sh"
 }
 petl_gate() { # env INSTANCE
-    run bash -c "$(step_script run-petl-via-runner.yml run-petl gate)"
+    run bash "$BATS_FILE_TMPDIR/petl-gate.sh"
 }
 outputs() { cat "$GITHUB_OUTPUT"; }
 

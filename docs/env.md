@@ -94,7 +94,7 @@ a stable branch:
 
 ```bash
 pihx <name> use-tools <dir>
-pihx list        # the instances, their services and their tools directorys
+pihx list        # the instances, their services and their tools directories
 ```
 
 ## Variables

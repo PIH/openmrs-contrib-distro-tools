@@ -3,7 +3,7 @@
 ## Code layout
 
 - `bin/pihx` is a short POSIX-sh launcher. It runs the `pihx` Python package from the checkout inside
-  the `pihx-runtime` image (Python, the Docker CLI and the Compose plugin), with the checkout and
+  the `pihx-runtime` image (Python with PyYAML, the Docker CLI, the Compose plugin and bash), with the checkout and
   `PIHX_HOME` mounted at their own paths so bind mounts resolve on the host, the Docker socket, and
   the caller's uid and terminal. `pihx <instance> ...` hands off to the instance's own `tools`
   directory. The host needs only Docker and a shell. The runtime image is pulled by its content tag
@@ -44,9 +44,25 @@ builds the new image locally (CI publishes it when the change reaches `main`).
 
 `.github/workflows/build-images.yml` publishes them: [Helper images](ci-workflows.md#helper-images).
 
+## Dependencies
+
+The Python code (`pihx/`, `openmrs/`) uses the standard library and PyYAML, nothing else, and runs
+only in `pihx-runtime`, which provides both (Alpine's `python3` and `py3-yaml`). There is no
+`requirements.txt`, `pyproject.toml` or virtual environment, by design: the image is the environment,
+so every machine, CI run and server runs the same code against the same Python. Nothing runs it with
+the host's Python, and the tests don't need Python on the host.
+
+- **Adding a package** is a team decision, since every instance's tools then depend on it. When agreed,
+  add the Alpine `py3-*` package to the `apk add` line in `images/pihx-runtime/Dockerfile` (never pip)
+  and to the allowed imports in `pihx/tests/test_imports.py`, which fails on any other import. The
+  image gets a new tag ([Image tags](#image-tags)).
+- **Python version:** the code targets the image's Python (3.12 as of `docker:28-cli` on Alpine 3.22).
+  Don't use newer language features without moving the image first.
+
 ## Testing this project
 
-There are three layers, each run by `test/run`, which needs Docker, git, jq, curl and perl: it fetches
+There are three layers, each run by `test/run`, which needs Docker, git, jq, curl and perl (not
+Python: the tests that need it run it in `pihx-runtime`): it fetches
 pinned versions of [bats](https://github.com/bats-core/bats-core) and GNU parallel into `test/.deps/`
 on first use, and falls back to the `koalaman/shellcheck-alpine` image if `shellcheck` isn't installed.
 
@@ -62,7 +78,7 @@ test/run integration/dump.bats -f '7z'   # one file, filtered by test name
 - **unit** tests the Python code, and checks every manifest and the conventions of the whole services
   tree (`pihx/tests/test_service_tree.py`). It runs in the `pihx-runtime` image, so it needs only Docker.
 - **static** and **args** are bats tests of the scripts and the command line that don't need
-  real containers: `static` includes `docs.bats`, which checks that every relative link in the README,
+  real containers: `static` includes `docs.bats`, which checks that every relative link in `CLAUDE.md`, the README,
   `docs/`, `openmrs/README.md` and every service's README resolves, headings included; `args` includes the
   launcher (`pihx-launcher.bats`) and the build step of `build-images.yml` run with a stub `docker`.
 - **integration** drives `pihx` and `openmrs-docker` as a user would, against real Docker, and the
