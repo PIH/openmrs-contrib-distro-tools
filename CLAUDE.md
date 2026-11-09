@@ -11,8 +11,9 @@ idioms, docstrings that say why, and the style of the file you are in. Start wit
 - pihx runs only through `bin/pihx` (and `bin/openmrs-docker`), which start it in the
   `partnersinhealth/pihx-runtime` image (`images/pihx-runtime/Dockerfile`). The tests run through
   `test/run`, which uses the same image. The host needs only Docker and a shell.
-- Never run pihx code with the host's `python3`, never `pip install` anything, and never create a
-  venv. If something seems to need one, it belongs in the image (below) or is a bug.
+- Never run pihx code with the host's `python3`, never `pip install` anything outside the image's
+  Dockerfile, and never create a venv. If something seems to need one, it belongs in the image
+  (below) or is a bug.
 - `PIHX_DEBUG=1` echoes every docker command and shows Python tracebacks.
 
 ## Dependencies
@@ -21,8 +22,9 @@ The policy, and how to change it, is in [Dependencies](docs/development.md#depen
 
 - Python's standard library plus PyYAML, both from the image (Alpine's `python3` and `py3-yaml`).
   There is no `requirements.txt` or `pyproject.toml`, by design.
-- Adding a package is a team decision: ask before doing it. It is an Alpine `py3-*` package added to
-  the image's `apk add` line, never pip, and `pihx/tests/test_imports.py` must allow it.
+- Adding a package is a team decision: ask before doing it. Prefer the Alpine `py3-*` package on the
+  image's `apk add` line; if Alpine doesn't package it, `pip install` it in the Dockerfile, pinned to
+  an exact version (`name==1.2.3`). Either way, `pihx/tests/test_imports.py` must allow it.
 - Any change under `images/pihx-runtime/` is a new image tag ([Image tags](docs/development.md#image-tags)),
   so don't add files there that the image doesn't need.
 

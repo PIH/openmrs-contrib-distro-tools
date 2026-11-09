@@ -53,9 +53,15 @@ so every machine, CI run and server runs the same code against the same Python. 
 the host's Python, and the tests don't need Python on the host.
 
 - **Adding a package** is a team decision, since every instance's tools then depend on it. When agreed,
-  add the Alpine `py3-*` package to the `apk add` line in `images/pihx-runtime/Dockerfile` (never pip)
-  and to the allowed imports in `pihx/tests/test_imports.py`, which fails on any other import. The
-  image gets a new tag ([Image tags](#image-tags)).
+  install it in `images/pihx-runtime/Dockerfile` and add it to the allowed imports in
+  `pihx/tests/test_imports.py`, which fails on any other import. The image gets a new tag
+  ([Image tags](#image-tags)).
+  - Prefer the Alpine `py3-*` package, on the `apk add` line.
+  - If Alpine doesn't package it, `pip install` it in the Dockerfile, pinned to an exact version
+    (`name==1.2.3`). Alpine's Python is externally managed (PEP 668), so this needs `py3-pip` on the
+    `apk add` line and `pip install --no-cache-dir --break-system-packages`.
+    `test/static/images.bats` fails on an unpinned package.
+  - pip is used only there: never on a host, in a script, or at runtime.
 - **Python version:** the code targets the image's Python (3.12 as of `docker:28-cli` on Alpine 3.22).
   Don't use newer language features without moving the image first.
 

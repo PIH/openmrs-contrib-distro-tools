@@ -27,12 +27,20 @@ load ../helpers
 
 @test "pihx-runtime installs only the packages the dependency policy allows" {
     # docs/development.md#dependencies: adding a package is a team decision, and an allowed import in
-    # pihx/tests/test_imports.py. Never pip.
+    # pihx/tests/test_imports.py.
     run grep -xF 'RUN apk add --no-cache python3 py3-yaml docker-cli-compose bash' \
         "$REPO_ROOT/images/pihx-runtime/Dockerfile"
     assert_success
-    run grep -iE 'pip|ensurepip|venv' "$REPO_ROOT/images/pihx-runtime/Dockerfile"
-    assert_failure
+}
+
+@test "pip in pihx-runtime installs only exact versions" {
+    # docs/development.md#dependencies: pip only in this Dockerfile, each package as name==version
+    # (so no requirements files or other indexes either). Continued lines are joined first.
+    local unpinned
+    unpinned=$(awk '{ if (sub(/\\$/, "")) printf "%s", $0; else print }' "$REPO_ROOT/images/pihx-runtime/Dockerfile" \
+        | grep -oE 'pip3? install[^&;|]*' | tr ' \t' '\n\n' | grep . \
+        | grep -vxE 'pip3?|install|--no-cache-dir|--break-system-packages' | grep -vF '==' || true)
+    [ -z "$unpinned" ] || fail "pip installs without an exact version: $unpinned"
 }
 
 @test "build-images pushes only on a push to main" {

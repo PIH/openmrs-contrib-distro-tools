@@ -2,7 +2,7 @@
 policy in docs/development.md#dependencies. pihx runs only in pihx-runtime, which provides those and
 nothing else, so an import outside this list would fail on every machine that hasn't installed it by
 hand. Adding a package is a team decision; when agreed, it goes in images/pihx-runtime/Dockerfile
-(an Alpine py3-* package, never pip) and in ALLOWED below."""
+(an Alpine py3-* package, or pip there pinned to an exact version) and in ALLOWED below."""
 
 import ast
 import sys
