@@ -59,6 +59,11 @@ services:
       # those Sites must belong to (see the mediator's .env.example). Empty, orders are sent without a Site.
       ADVAPACS_SITE_MAP: ${ADVAPACS_MEDIATOR_SITE_MAP}
       ADVAPACS_ORGANIZATION: ${ADVAPACS_MEDIATOR_ORGANIZATION}
+      # The modality map (concept -> DICOM modality, loaded from OpenMRS's REST API): the concept source
+      # it's built from, and how often it's reloaded (see the mediator's .env.example).
+      MODALITY_SOURCE: ${ADVAPACS_MEDIATOR_MODALITY_SOURCE}
+      MODALITY_MAP_REFRESH_MS: ${ADVAPACS_MEDIATOR_MODALITY_MAP_REFRESH_MS}
+      MODALITY_MAP_RETRY_MS: ${ADVAPACS_MEDIATOR_MODALITY_MAP_RETRY_MS}
     healthcheck:
       # The mediator's own HTTP server, on MEDIATOR_PORT.
       test: ["CMD", "wget", "-qO-", "http://localhost:3500/health"]
