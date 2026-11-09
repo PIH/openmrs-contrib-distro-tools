@@ -4,7 +4,8 @@
 #   test/run unit [extra unittest args...]
 #
 # unit runs the Python unit tests (pihx's and openmrs/'s) inside pihx-runtime, so needs only docker;
-# all runs it first. The other layers need docker, git, jq, curl and perl: bats and GNU parallel are
+# all runs it first. The other layers need docker, git, jq, curl and perl, not Python (the tests that use
+# it run it in pihx-runtime): bats and GNU parallel are
 # fetched at pinned versions into test/.deps on first run. Tests run TEST_JOBS at a time (default:
 # the number of CPUs, up to 8; TEST_JOBS=1 runs them one at a time). Every test names its Docker
 # resources after its own suite-wide number, so they don't collide. All of them start with this run's
@@ -56,13 +57,20 @@ kill_tree() {
 # Only runs when executed, so the functions above can be sourced to try them by hand.
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 
-# Runs the Python unit tests (pihx's, and the openmrs-docker extension's) in pihx-runtime, the image pihx
-# itself runs in, building it if missing.
-run_unit() {
-    local image dir status=0
+# Prints pihx-runtime's name at this checkout's content tag (the image pihx itself runs in), pulling it, or
+# building it if it isn't published yet.
+runtime_image() {
+    local image
     image="partnersinhealth/pihx-runtime:$("$REPO_ROOT/utils/hash-directory.sh" "$REPO_ROOT/images/pihx-runtime")"
     docker image inspect "$image" >/dev/null 2>&1 || docker pull -q "$image" >/dev/null 2>&1 \
         || docker build -q -t "$image" "$REPO_ROOT/images/pihx-runtime" >/dev/null
+    echo "$image"
+}
+
+# Runs the Python unit tests (pihx's, and the openmrs-docker extension's) in pihx-runtime.
+run_unit() {
+    local image dir status=0
+    image=$(runtime_image)
     for dir in pihx/tests openmrs/tests; do
         docker run --rm -u "$(id -u):$(id -g)" -v "$REPO_ROOT:$REPO_ROOT:ro" -w "$REPO_ROOT" \
             -e PYTHONDONTWRITEBYTECODE=1 "$image" python3 -m unittest discover -s "$dir" -t . "$@" \
@@ -127,6 +135,9 @@ for image in "$ALPINE_IMAGE" "$P7ZIP_IMAGE" "$PERCONA_IMAGE" mysql:5.6 mysql:8.0
         mcr.microsoft.com/mssql/server:2025-latest; do
     docker image inspect "$image" >/dev/null 2>&1 || docker pull -q "$image" >/dev/null
 done
+# The tests that need Python run it in pihx-runtime (helpers.bash runtime_python), never on the host.
+PIHX_RUNTIME_IMAGE=$(runtime_image)
+export PIHX_RUNTIME_IMAGE
 
 if [ -z "${TEST_JOBS:-}" ]; then
     TEST_JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)

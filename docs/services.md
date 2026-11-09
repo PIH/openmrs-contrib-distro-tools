@@ -193,6 +193,7 @@ merged values as environment variables (the defaults, the `<svc>.env` files and 
 | `PIHX_SERVICE` | the script's own service |
 | `SERVICE_NAME` | the instance's name, as compose files interpolate it |
 | `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE`, `COMPOSE_ENV_FILES` | so a plain `docker compose ...` targets the instance |
+| `PYTHONPATH`, `PYTHONDONTWRITEBYTECODE` | the tools directory, so `python3 -m pihx...` (e.g. `pihx.envfile`) runs from anywhere |
 
 Compose has no variable for the project directory, so pass `--project-directory "$PIHX_INSTANCE_DIR"`
 to resolve the compose files' paths as `pihx` does.

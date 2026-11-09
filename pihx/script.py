@@ -3,7 +3,9 @@
 A script's environment is the instance's merged values, then what Compose runs with: PIHX_INSTANCE,
 PIHX_INSTANCE_DIR, PIHX_TOOLS, PIHX_HOME, PIHX_SERVICE (the script's own service), SERVICE_NAME (the
 instance's name, as compose files interpolate it) and COMPOSE_PROJECT_NAME, COMPOSE_FILE and
-COMPOSE_ENV_FILES, so a plain `docker compose ...` targets the instance. Compose 2.40 has no environment variable for the project directory, so a
+COMPOSE_ENV_FILES, so a plain `docker compose ...` targets the instance, and PYTHONPATH (the tools
+directory) with PYTHONDONTWRITEBYTECODE, so a script can run `python3 -m pihx...` from anywhere.
+Compose 2.40 has no environment variable for the project directory, so a
 script that runs Compose passes `--project-directory "$PIHX_INSTANCE_DIR"` itself (relative paths in
 the compose files resolve against it).
 
@@ -19,10 +21,14 @@ def environment(inst, extra_env=None, service=None, extra_files=()):
     """The environment for a script of <inst> (of <service>, named in PIHX_SERVICE); <extra_env>
     (e.g. a restore's values) wins, and <extra_files> are in its COMPOSE_FILE."""
     compose = compose_module.Compose(inst, extra_files=extra_files, extra_env=extra_env)
+    env = {**inst.config(), **compose.environment()}
     own = {"PIHX_SERVICE": service.name} if service else {}
-    # PIHX_HOME, so a script can run pihx itself (see lifecycle._start).
+    # PIHX_HOME and PYTHONPATH, so a script can run pihx itself (see lifecycle._start) or one of its
+    # modules (python3 -m pihx.envfile); no bytecode, since the tools directory may be read-only.
     own["PIHX_HOME"] = str(inst.dir.parent)
-    return {**inst.config(), **compose.environment(), **own}
+    own["PYTHONPATH"] = env["PIHX_TOOLS"]
+    own["PYTHONDONTWRITEBYTECODE"] = "1"
+    return {**env, **own}
 
 
 def run(inst, path, args=(), extra_env=None, service=None, label=None, extra_files=(), **kwargs):

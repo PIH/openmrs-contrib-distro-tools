@@ -73,6 +73,9 @@ class CommandsTest(ServiceCommandTest):
         self.assertEqual(found["COMPOSE_PROJECT_NAME"], "kz")
         self.assertEqual(found["PIHX_INSTANCE_DIR"], str(self.home / "kz"))
         self.assertEqual(found["PIHX_TOOLS"], str(self.tools))
+        # So `python3 -m pihx...` works from a script, whatever its working directory.
+        self.assertEqual(found["PYTHONPATH"], str(self.tools))
+        self.assertEqual(found["PYTHONDONTWRITEBYTECODE"], "1")
         self.assertEqual(found["APP_PORT"], "9090")
         self.assertEqual(found["TZ"], "Africa/Kigali")
         self.assertIn(str(self.app / "compose.yaml"), found["COMPOSE_FILE"])
