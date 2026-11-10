@@ -17,7 +17,7 @@ key; the secret is shown only once. Settings are in `advapacs-gateway.env`.
 | `ADVAPACS_GATEWAY_ACCESS_KEY_SECRET` | must be set | the gateway's access key secret |
 | `ADVAPACS_GATEWAY_MEMORY_LIMIT` | `4g` | the container's memory limit, AdvaPACS's minimum |
 | `ADVAPACS_GATEWAY_JAVA_OPTS` | `-XX:MaxRAMPercentage=75` | the JVM's options; by default the heap is three quarters of the limit |
-| `ADVAPACS_GATEWAY_IMAGE_NAME`, `ADVAPACS_GATEWAY_IMAGE_TAG` | `advahealthsolutions/advapacs-gateway`, `1.22.1` | to upgrade, change the tag in `advapacs-gateway.env` and run `update` |
+| `ADVAPACS_GATEWAY_IMAGE_NAME`, `ADVAPACS_GATEWAY_IMAGE_TAG` | `advahealthsolutions/advapacs-gateway`, `1.23.0` | to upgrade, change the tag in `advapacs-gateway.env` and run `update` |
 
 Everything else is configured in AdvaPACS, and the gateway picks it up within a few minutes of
 starting, when it shows as Online:
