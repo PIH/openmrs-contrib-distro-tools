@@ -31,7 +31,9 @@ ENV
         ADVAPACS_MEDIATOR_OPENMRS_USERNAME=placeholder-user ADVAPACS_MEDIATOR_OPENMRS_PASSWORD=Placeholder-1 \
         ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_ID=placeholder-id ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_SECRET=placeholder-secret \
         ADVAPACS_MEDIATOR_ADVAPACS_WEBHOOK_SECRET=placeholder-webhook \
-        ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_SYSTEM=urn:placeholder > "$dir/openhim-advapacs-mediator.env"
+        ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_SYSTEM=urn:placeholder \
+        ADVAPACS_MEDIATOR_ACCESSION_NUMBER_SYSTEM=urn:placeholder-accession \
+        ADVAPACS_MEDIATOR_PLACER_ORDER_NUMBER_SYSTEM=urn:placeholder-placer > "$dir/openhim-advapacs-mediator.env"
     printf '%s\n' ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret > "$dir/advapacs-gateway.env"
 }
