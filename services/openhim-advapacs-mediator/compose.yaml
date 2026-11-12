@@ -61,10 +61,10 @@ services:
       # The uuid of the OpenMRS patient identifier type that ADVAPACS_PATIENT_IDENTIFIER_SYSTEM stands
       # for, used to check a result's patient against the order's.
       OPENMRS_PATIENT_IDENTIFIER_TYPE_UUID: ${ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_TYPE_UUID}
-      # Optional: the identifier systems of the accession number and the placer order number. Empty,
-      # the mediator's defaults are used (see its .env.example).
-      ADVAPACS_ACCESSION_NUMBER_SYSTEM: ${ADVAPACS_MEDIATOR_ACCESSION_NUMBER_SYSTEM}
-      ADVAPACS_PLACER_ORDER_NUMBER_SYSTEM: ${ADVAPACS_MEDIATOR_PLACER_ORDER_NUMBER_SYSTEM}
+      # The FHIR identifier systems of the accession number and the placer order number on orders sent
+      # to AdvaPACS (and of the accession number on its results). No default: they're the site's.
+      ADVAPACS_ACCESSION_NUMBER_SYSTEM: "${ADVAPACS_MEDIATOR_ACCESSION_NUMBER_SYSTEM:?must be set: the FHIR identifier system of the accession number on orders and results}"
+      ADVAPACS_PLACER_ORDER_NUMBER_SYSTEM: "${ADVAPACS_MEDIATOR_PLACER_ORDER_NUMBER_SYSTEM:?must be set: the FHIR identifier system of the placer order number on orders sent to AdvaPACS}"
       # The FHIR identifier systems for OpenMRS's patient and provider identifiers, as AdvaPACS gets them.
       ADVAPACS_PATIENT_IDENTIFIER_SYSTEM: "${ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_SYSTEM:?must be set: the FHIR identifier system of the patient identifier sent to AdvaPACS}"
       ADVAPACS_PRACTITIONER_IDENTIFIER_SYSTEM: ${ADVAPACS_MEDIATOR_PRACTITIONER_IDENTIFIER_SYSTEM}
