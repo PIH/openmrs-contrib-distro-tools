@@ -20,6 +20,7 @@ Settings are in `openhim-advapacs-mediator.env`. These have no default, so the i
 | `ADVAPACS_MEDIATOR_OPENMRS_USERNAME`, `ADVAPACS_MEDIATOR_OPENMRS_PASSWORD` | the OpenMRS account the mediator uses with OpenMRS's FHIR API |
 | `ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_ID`, `ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_SECRET` | its AdvaPACS API client |
 | `ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_SYSTEM` | the FHIR identifier system of the patient identifier sent to AdvaPACS |
+| `ADVAPACS_MEDIATOR_ACCESSION_NUMBER_SYSTEM`, `ADVAPACS_MEDIATOR_PLACER_ORDER_NUMBER_SYSTEM` | the FHIR identifier systems of the accession number (on orders and results) and the placer order number (on orders) |
 | `ADVAPACS_MEDIATOR_INBOUND_SECRET` | the shared secret on the order requests the mediator's poller sends it through OpenHIM |
 | `ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD` | the password of the OpenHIM client the poller uses |
 
@@ -33,7 +34,9 @@ defaults ([`env.defaults`](env.defaults)):
 | `ADVAPACS_MEDIATOR_PRACTITIONER_IDENTIFIER_SYSTEM` | empty | the FHIR identifier system of the ordering provider's identifier |
 | `ADVAPACS_MEDIATOR_SITE_MAP` | empty | the AdvaPACS Site each order is sent to: `<visit-location-uuid>=<site-identifier>,...`, mapping OpenMRS Visit Locations to the identifiers of AdvaPACS Sites (see below) |
 | `ADVAPACS_MEDIATOR_ORGANIZATION` | empty | the identifier of the AdvaPACS Organisation the Sites in `ADVAPACS_MEDIATOR_SITE_MAP` must belong to |
-| `ADVAPACS_MEDIATOR_ADVAPACS_WEBHOOK_SECRET` | empty | the bearer token for AdvaPACS's result webhook. The mediator doesn't serve the webhook yet; set it, and make it required in `compose.yaml`, when it does |
+| `ADVAPACS_MEDIATOR_ADVAPACS_WEBHOOK_SECRET` | empty | the password of the OpenHIM client AdvaPACS calls the study and report webhook as. Empty, the webhook accepts no one |
+| `ADVAPACS_MEDIATOR_OPENHIM_RESULTS_CLIENT_PASSWORD` | empty | the password of the mediator's own OpenHIM client for results (`advapacs-mediator`), which hands webhook events to OpenHIM and calls OpenMRS's radiologyapp. Empty, webhook events get a 503 and no results are written |
+| `ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_TYPE_UUID` | empty | the uuid of the OpenMRS patient identifier type that `ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_SYSTEM` stands for; needed for results |
 | `ADVAPACS_MEDIATOR_ORDER_INGESTION_MODE`, `ADVAPACS_MEDIATOR_ORDER_POLL_INTERVAL_MS` | `poll`, `15000` | how it gets orders from OpenMRS |
 | `ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_ID` | `openmrs` | the OpenHIM client the poller uses |
 | `ADVAPACS_MEDIATOR_LOG_LEVEL` | `info` | |
@@ -60,6 +63,8 @@ export ADVAPACS_MEDIATOR_OPENMRS_PASSWORD=<password-for-mediator-access-to-openm
 export ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_ID=<advapacs-client-id>
 export ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_SECRET=<advapacs-client-secret>
 export ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_SYSTEM="http://www.pih.org/identifiers/lesotho/emr-id"
+export ADVAPACS_MEDIATOR_ACCESSION_NUMBER_SYSTEM="http://www.pih.org/identifiers/lesotho/radiology-accession-number"
+export ADVAPACS_MEDIATOR_PLACER_ORDER_NUMBER_SYSTEM="http://www.pih.org/identifiers/lesotho/radiology-order-number"
 pihx <name> create --services=openmrs-db,openmrs,openhim,openhim-advapacs-mediator
 pihx <name> initialize --from-image partnersinhealth/lesotho-emr-seed-lesotho
 pihx <name> start

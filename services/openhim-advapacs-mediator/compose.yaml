@@ -49,9 +49,19 @@ services:
       ADVAPACS_BASE_URL: ${ADVAPACS_MEDIATOR_ADVAPACS_BASE_URL}
       ADVAPACS_CLIENT_ID: "${ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_ID:?must be set: the mediator's AdvaPACS API client ID}"
       ADVAPACS_CLIENT_SECRET: "${ADVAPACS_MEDIATOR_ADVAPACS_CLIENT_SECRET:?must be set: the mediator's AdvaPACS API client secret}"
-      # For AdvaPACS's result webhook, which the mediator doesn't serve yet (disabled in its
-      # src/index.js), so it isn't required. Make it required (:?) when the webhook is turned on.
+      # AdvaPACS's study and report webhook: the password of the OpenHIM client AdvaPACS calls it as.
+      # Unset, the webhook accepts no one.
       ADVAPACS_WEBHOOK_SECRET: ${ADVAPACS_MEDIATOR_ADVAPACS_WEBHOOK_SECRET}
+      # For sending results to OpenMRS. Without the password, no results are written.
+      OPENMRS_RESULTS_CHANNEL_URL: http://openhim-core:5001/openmrs
+      OPENHIM_RESULTS_CLIENT_PASSWORD: ${ADVAPACS_MEDIATOR_OPENHIM_RESULTS_CLIENT_PASSWORD}
+      # The uuid of the OpenMRS patient identifier type that ADVAPACS_PATIENT_IDENTIFIER_SYSTEM stands
+      # for, used to check a result's patient against the order's.
+      OPENMRS_PATIENT_IDENTIFIER_TYPE_UUID: ${ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_TYPE_UUID}
+      # The FHIR identifier systems of the accession number and the placer order number on orders sent
+      # to AdvaPACS (and of the accession number on its results). No default: they're the site's.
+      ADVAPACS_ACCESSION_NUMBER_SYSTEM: "${ADVAPACS_MEDIATOR_ACCESSION_NUMBER_SYSTEM:?must be set: the FHIR identifier system of the accession number on orders and results}"
+      ADVAPACS_PLACER_ORDER_NUMBER_SYSTEM: "${ADVAPACS_MEDIATOR_PLACER_ORDER_NUMBER_SYSTEM:?must be set: the FHIR identifier system of the placer order number on orders sent to AdvaPACS}"
       # The FHIR identifier systems for OpenMRS's patient and provider identifiers, as AdvaPACS gets them.
       ADVAPACS_PATIENT_IDENTIFIER_SYSTEM: "${ADVAPACS_MEDIATOR_PATIENT_IDENTIFIER_SYSTEM:?must be set: the FHIR identifier system of the patient identifier sent to AdvaPACS}"
       ADVAPACS_PRACTITIONER_IDENTIFIER_SYSTEM: ${ADVAPACS_MEDIATOR_PRACTITIONER_IDENTIFIER_SYSTEM}
