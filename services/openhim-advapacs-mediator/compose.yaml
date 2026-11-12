@@ -52,10 +52,7 @@ services:
       # AdvaPACS's study and report webhook: the password of the OpenHIM client AdvaPACS calls it as.
       # Unset, the webhook accepts no one.
       ADVAPACS_WEBHOOK_SECRET: ${ADVAPACS_MEDIATOR_ADVAPACS_WEBHOOK_SECRET}
-      # Results to OpenMRS (radiologyapp studies and reports). The mediator hands each webhook event to
-      # OpenHIM, which retries it, and calls radiologyapp through its own private OpenHIM channel,
-      # both on openhim-core like the others. Without the results client password, webhook events get
-      # a 503 and no results are written.
+      # For sending results to OpenMRS. Without the password, no results are written.
       OPENMRS_RESULTS_CHANNEL_URL: http://openhim-core:5001/openmrs
       OPENHIM_RESULTS_CLIENT_PASSWORD: ${ADVAPACS_MEDIATOR_OPENHIM_RESULTS_CLIENT_PASSWORD}
       # The uuid of the OpenMRS patient identifier type that ADVAPACS_PATIENT_IDENTIFIER_SYSTEM stands
