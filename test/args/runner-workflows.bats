@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # The gate steps of deploy-via-runner.yml and run-petl-via-runner.yml: the host pause, instance holds, and the
-# puppet-apply.sh options a deploy passes. Runs each step's script from the workflow file, with PUPPET_DIR pointing at
+# puppet-apply.sh options a deploy passes; and which run-petl the PETL step runs. Runs each step's script from the workflow file, with PUPPET_DIR pointing at
 # a temporary directory instead of /etc/puppet.
 
 load ../helpers
@@ -9,6 +9,7 @@ load ../helpers
 setup_file() {
     workflow_step_script deploy-via-runner.yml deploy gate > "$BATS_FILE_TMPDIR/deploy-gate.sh"
     workflow_step_script run-petl-via-runner.yml run-petl gate > "$BATS_FILE_TMPDIR/petl-gate.sh"
+    workflow_step_script run-petl-via-runner.yml run-petl run > "$BATS_FILE_TMPDIR/petl-run.sh"
 }
 
 setup() {
@@ -153,4 +154,32 @@ outputs() { cat "$GITHUB_OUTPUT"; }
 @test "PETL run rejects a bad instance name" {
     INSTANCE='x; id' petl_gate
     assert_failure
+}
+
+# Stand-ins for getent (instance a in /srv, c in /home as on a host not yet moved) and sudo (prints what it'd run).
+petl_run() { # env INSTANCE
+    local bin=$BATS_TEST_TMPDIR/bin
+    mkdir -p "$bin"
+    printf '#!/bin/sh\ncase $2 in a) echo "a:x:990:990::/srv/a:/bin/bash" ;; c) echo "c:x:1001:1001::/home/c:/bin/bash" ;; *) exit 2 ;; esac\n' > "$bin/getent"
+    printf '#!/bin/sh\necho "sudo $*" > "%s/sudo-ran"\n' "$BATS_TEST_TMPDIR" > "$bin/sudo"
+    chmod +x "$bin/getent" "$bin/sudo"
+    PATH="$bin:$PATH" run bash "$BATS_FILE_TMPDIR/petl-run.sh"
+}
+
+@test "PETL run uses run-petl in the instance user's home" {
+    INSTANCE=a petl_run
+    assert_success
+    run cat "$BATS_TEST_TMPDIR/sudo-ran"
+    assert_output "sudo -n -u a /srv/a/bin/run-petl"
+    INSTANCE=c petl_run
+    assert_success
+    run cat "$BATS_TEST_TMPDIR/sudo-ran"
+    assert_output "sudo -n -u c /home/c/bin/run-petl"
+}
+
+@test "PETL run fails for an instance with no user" {
+    INSTANCE=nope petl_run
+    assert_failure
+    assert_output --partial "::error::no user nope on this host"
+    [ ! -e "$BATS_TEST_TMPDIR/sudo-ran" ]
 }

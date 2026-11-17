@@ -1,7 +1,8 @@
 name: Run PETL via self-hosted runner
 
-# Runs PETL for an openmrs_docker instance on the runner's host (/home/<instance>/bin/run-petl,
-# installed by puppet's openmrs_docker::service::petl). No use of the GitHub API or GITHUB_TOKEN.
+# Runs PETL for an openmrs_docker instance on the runner's host (bin/run-petl in the instance user's home,
+# /srv/<instance> or, on a host not yet moved, /home/<instance>; installed by puppet's openmrs_docker::service::petl).
+# No use of the GitHub API or GITHUB_TOKEN.
 permissions: {}
 
 on:
@@ -63,6 +64,7 @@ jobs:
       # context (often public). The full output builds up in the instance's petl container log on the
       # host (`pihx <instance> logs petl`), and each run's exit code goes to syslog (tag run-petl).
       - name: Run PETL
+        id: run
         if: steps.gate.outputs.disabled != 'true'
         # Above run-petl's own wait (for another pihx command to release the instance lock), so a run
         # that waits too long fails with run-petl's message rather than a kill.
@@ -72,7 +74,9 @@ jobs:
         run: |
           [[ "$INSTANCE" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "::error::bad instance name"; exit 1; }
           MSG="PETL's log is in its container on the host, docker logs $INSTANCE-petl (VPN access required); not shown here since it may contain data."
-          if sudo -n -u "$INSTANCE" "/home/$INSTANCE/bin/run-petl" > /dev/null 2>&1; then
+          INSTANCE_HOME=$(getent passwd "$INSTANCE" | cut -d: -f6)
+          [ -n "$INSTANCE_HOME" ] || { echo "::error::no user $INSTANCE on this host"; exit 1; }
+          if sudo -n -u "$INSTANCE" "$INSTANCE_HOME/bin/run-petl" > /dev/null 2>&1; then
             echo "Succeeded. ${MSG}"
           else
             echo "::error::Failed. ${MSG}"
