@@ -1,8 +1,7 @@
 name: Run PETL via self-hosted runner
 
 # Runs PETL for an openmrs_docker instance on the runner's host (bin/run-petl in the instance user's home,
-# /srv/<instance> or, on a host not yet moved, /home/<instance>; installed by puppet's openmrs_docker::service::petl).
-# No use of the GitHub API or GITHUB_TOKEN.
+# installed by puppet's openmrs_docker::service::petl). No use of the GitHub API or GITHUB_TOKEN.
 permissions: {}
 
 on:

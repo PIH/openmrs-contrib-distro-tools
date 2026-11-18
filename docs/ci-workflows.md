@@ -384,8 +384,7 @@ a time, so jobs for the same host queue whichever repo they come from.
   puppet runs `pihx <instance> update`. With `run-etl`, the legacy host-installed PETL
   (`/opt/petl/bin/execute-full.sh`).
 - **`run-petl-via-runner.yml`** (`runner-label`, `instance`): runs PETL for an `openmrs_docker`
-  instance, as `sudo -u <instance> <instance's home>/bin/run-petl` (its home is `/srv/<instance>`, or
-  `/home/<instance>` on a host not yet moved). Puppet's
+  instance, as `sudo -u <instance> <instance's home>/bin/run-petl`. Puppet's
   `openmrs_docker::service::petl` installs that script and, with `ci_runner => true`, the one sudoers
   rule allowing it. The script runs `pihx <instance> run-service --pull petl`, which holds
   the instance's lock (a deploy waits for it). PETL's output, which may contain data, isn't in the
