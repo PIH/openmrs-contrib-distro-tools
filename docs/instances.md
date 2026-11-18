@@ -79,7 +79,7 @@ big, and asks you to type `delete`. Only then does it remove exactly the volumes
 instance directory (keeping a real `tools` directory, and the instance directory with it). Any
 other answer, or no input, stops it: before the archive with nothing changed, after it with the
 instance stopped and its archive and volumes kept. There's no `--force`. It needs `PIHX_HOME` to be
-writable, so it refuses on a Puppet host, whose `/home` isn't; and it refuses a directory without
+writable, so it refuses on a Puppet host, whose `PIHX_HOME` isn't; and it refuses a directory without
 `instance.env`.
 
 ## Starting, stopping and logs
