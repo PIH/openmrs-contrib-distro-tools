@@ -121,7 +121,9 @@ pihx <name> update    # pulls the latest images, and recreates the containers th
 checks that each service's setup containers succeeded, and then removes the images the recreated
 containers were made from, so repeated deploys don't pile them up: one a pull of the same tag
 replaced (left untagged), or one a registry has (it can be pulled again), e.g. the previous version
-after a tag change. Never a local build still tagged, which no registry may have, nor an image
+after a tag change. pihx asks the registry by pulling the image by its digest, which fetches only
+its manifest; no answer within a minute, or no access, counts as not having it. Never a local build
+still tagged, which no registry has, nor an image
 another container is made from (another instance on the same version): Docker refuses those, and
 they're left quietly. `start` removes them too.
 

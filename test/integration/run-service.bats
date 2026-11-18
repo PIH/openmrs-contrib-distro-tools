@@ -105,7 +105,9 @@ petl_container() { docker ps -aq --filter "name=^$NAME-petl$"; }
     assert_equal "$(petl_container)" ""
 }
 
-@test "a petl run on a new image under the same tag removes the one it replaced" {
+# pihx removes the replaced image on Docker's classic image store; on the containerd image store
+# Docker has already removed it, so only that it's gone is checked.
+@test "a petl run on a new image under the same tag leaves the one it replaced gone" {
     local ref="$NAME-etl:latest" old_id
     printf 'FROM alpine:3.21\nRUN echo %s > /marker\nCMD ["true"]\n' "$NAME-one" | docker build -q -t "$ref" - >/dev/null
     set_env_value "$NAME" petl PETL_IMAGE_NAME "$NAME-etl"
@@ -117,7 +119,6 @@ petl_container() { docker ps -aq --filter "name=^$NAME-petl$"; }
     printf 'FROM alpine:3.21\nRUN echo %s > /marker\nCMD ["true"]\n' "$NAME-two" | docker build -q -t "$ref" - >/dev/null
     run "$BIN/openmrs-docker" "$NAME" run-service petl
     assert_success
-    assert_output --partial "Removed the replaced image ${old_id#sha256:}"
     run docker image inspect "$old_id"
     assert_failure
 }

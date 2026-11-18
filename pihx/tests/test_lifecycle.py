@@ -230,7 +230,9 @@ class SetupChecksTest(LifecycleTest):
 
 
 class ReplacedImagesTest(LifecycleTest):
-    def remove_replaced(self, before, after, tags, digests):
+    def remove_replaced(self, before, after, tags, digests, pullable=()):
+        """<pullable>: the digest refs a registry has; pulling any other fails. A pullable of
+        None makes every pull time out."""
         def fake(argv, **kwargs):
             self.docker_calls.append(argv[1:])
             if argv[1:3] == ["ps", "-aq"]:
@@ -239,6 +241,10 @@ class ReplacedImagesTest(LifecycleTest):
                 return done("\n".join(after))
             if argv[1:3] == ["image", "inspect"]:
                 return done(tags if "RepoTags" in argv[4] else digests)
+            if argv[1] == "pull":
+                if pullable is None:
+                    raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+                return done(returncode=0 if argv[-1] in pullable else 1)
             return done()
         with mock.patch.object(lifecycle.subprocess, "run", fake):
             lifecycle.remove_replaced_images(self.inst(), compose.Compose(self.inst()), before)
@@ -251,11 +257,23 @@ class ReplacedImagesTest(LifecycleTest):
         self.assertEqual(self.remove_replaced({"sha256:a"}, ["sha256:b"], "", ""),
                          [["image", "rm", "sha256:a"]])
 
-    def test_a_pulled_image_is_removed_and_a_tagged_local_build_kept(self):
-        self.assertEqual(self.remove_replaced({"sha256:a"}, ["sha256:b"], "x:1", "x@sha256:1"),
+    def test_a_tagged_image_a_registry_has_is_removed(self):
+        self.assertEqual(self.remove_replaced({"sha256:a"}, ["sha256:b"], "r/x:1",
+                                              "r/x@sha256:1", pullable={"r/x@sha256:1"}),
                          [["image", "rm", "sha256:a"]])
-        self.docker_calls.clear()
+
+    def test_a_tagged_local_build_with_no_digest_is_kept_without_asking_a_registry(self):
+        # Docker's classic image store.
         self.assertEqual(self.remove_replaced({"sha256:a"}, ["sha256:b"], "x:1", ""), [])
+        self.assertFalse([c for c in self.docker_calls if c[0] == "pull"])
+
+    def test_a_tagged_local_build_whose_digest_no_registry_has_is_kept(self):
+        # The containerd image store, which gives a local build a digest too.
+        self.assertEqual(self.remove_replaced({"sha256:a"}, ["sha256:b"], "x:1", "x@sha256:1"), [])
+
+    def test_a_registry_that_doesnt_answer_keeps_the_image(self):
+        self.assertEqual(self.remove_replaced({"sha256:a"}, ["sha256:b"], "r/x:1",
+                                              "r/x@sha256:1", pullable=None), [])
 
 
 class RunServiceTest(LifecycleTest):
