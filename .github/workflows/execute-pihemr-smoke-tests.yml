@@ -41,6 +41,9 @@ on:
     secrets:
       DOCKERHUB_PASSWORD:
         required: true
+      ANTHROPIC_API_KEY:
+        description: Optional. When set, a failed smoke-test job is triaged by Claude (see the triage-failure job). Without it, that job does nothing.
+        required: false
 
 jobs:
   smoke-test:
@@ -107,6 +110,103 @@ jobs:
             ${{ github.workspace }}/smoke-test-output
             ${{ github.workspace }}/smoke-test-screenshots
           if-no-files-found: ignore
+
+  # When smoke-test fails, Claude reads its log and results and writes to this job's summary
+  # whether it looks like a real test failure or an infrastructure glitch (e.g. a Docker Hub pull or
+  # artifact upload timing out) that a re-run should clear. Report-only: it changes nothing, and it
+  # can't re-run smoke-test itself, because GitHub only re-runs a workflow run once it has finished.
+  # It skips itself when no ANTHROPIC_API_KEY secret is available.
+  triage-failure:
+    needs: smoke-test
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    env:
+      HAS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+    steps:
+      - name: No ANTHROPIC_API_KEY secret, so no triage
+        if: env.HAS_ANTHROPIC_API_KEY != 'true'
+        run: echo "Smoke tests failed. Set an ANTHROPIC_API_KEY secret to have Claude triage failures."
+
+      # The caller's job id is the instance name in every distro (e.g. "zl-ci"), so the job shows up
+      # as "zl-ci / smoke-test", or "smoke-tests / zl-ci / smoke-test" when nested one level deeper.
+      - name: Download the smoke-test job's log
+        if: env.HAS_ANTHROPIC_API_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSTANCE_NAME: ${{ inputs.instance_name }}
+        run: |
+          mkdir -p triage-input
+          JOB_ID=$(gh api --paginate \
+            "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs" \
+            --jq ".jobs[] | select(.conclusion == \"failure\") | select(.name | test(\"(^|/ )${INSTANCE_NAME} / smoke-test\$\")) | .id" \
+            | head -1)
+          if [ -z "$JOB_ID" ]; then
+            echo "Could not find the failed smoke-test job for ${INSTANCE_NAME}" >&2
+            exit 1
+          fi
+          gh api "repos/${{ github.repository }}/actions/jobs/${JOB_ID}/logs" > triage-input/smoke-test-job.log
+          echo "JOB_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/job/${JOB_ID}" >> "$GITHUB_ENV"
+
+      # Missing when the upload is what failed, or the job failed before the tests ran.
+      - name: Download smoke test results
+        if: env.HAS_ANTHROPIC_API_KEY == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v7
+        with:
+          name: smoke-test-results-${{ inputs.instance_name }}
+          path: triage-input/results
+
+      - name: Triage with Claude
+        if: env.HAS_ANTHROPIC_API_KEY == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          display_report: false
+          claude_args: >-
+            --model claude-sonnet-5-5
+            --max-turns 30
+            --allowedTools "Read,Grep,Glob,Write,Bash(grep:*),Bash(tail:*),Bash(head:*),Bash(wc:*),Bash(ls:*),Bash(find:*)"
+          prompt: |
+            A PIH EMR smoke-test job failed in GitHub Actions. Work out why, for the developer who will
+            decide whether to re-run it or fix something.
+
+            - triage-input/smoke-test-job.log is the failed job's full log. Each step starts at a
+              "##[group]Run ..." line; failures show as "##[error]" lines.
+            - triage-input/results/, if present, holds the Maven/Surefire output and Selenium
+              screenshots (PNG) from the test run.
+            - Job: ${{ env.JOB_URL }} (instance ${{ inputs.instance_name }}, suite ${{ inputs.suite }},
+              image ${{ inputs.image_name }}, config ${{ inputs.pih_config }}).
+
+            Write triage.md (GitHub Markdown, under 300 words) with exactly these sections:
+
+            ## Verdict
+            One of: **Infrastructure glitch, re-run should clear it** / **Real test failure** /
+            **Environment or setup problem** / **Unclear**. Then one sentence on why.
+
+            ## What failed
+            The failing step, and for test failures each failed test with its assertion or exception,
+            quoting the decisive log lines (at most a few, in a code block).
+
+            ## Evidence and next step
+            What points to your verdict (e.g. "Tests run: 41, Failures: 0" before the failing upload),
+            and the one thing to do next: re-run, which test/page to look at, or what to check.
+
+            State only what the files show. If they don't settle it, say Unclear and what's missing.
+            Don't modify anything except writing triage.md.
+
+      - name: Publish triage
+        if: always() && env.HAS_ANTHROPIC_API_KEY == 'true'
+        run: |
+          if [ -f triage.md ]; then
+            { echo "# Smoke-test failure triage: ${{ inputs.instance_name }}"; echo; cat triage.md; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Claude did not produce a triage; see the Triage with Claude step's log." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   notify-ci-dashboard:
     needs: smoke-test
