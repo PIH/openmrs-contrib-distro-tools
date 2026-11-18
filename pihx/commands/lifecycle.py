@@ -83,17 +83,38 @@ def _inspect_image(compose, image_id, template):
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+# How long to wait for a registry to answer whether it has an image, before keeping the image.
+REGISTRY_CHECK_TIMEOUT = 60
+
+
+def _registry_has(compose, image_id):
+    """Whether a registry has the image: a pull by one of its digests (repo@sha256:...) succeeds.
+    The image is here, so the pull only fetches its manifest. The daemon pulls, so it reaches
+    what the host reaches, with the caller's credentials. A local build has no digest on Docker's
+    classic image store; on the containerd image store (Docker 29's default) every image has one,
+    and a local build's is one no registry has. No answer, or no access, counts as no."""
+    for ref in _inspect_image(compose, image_id, '{{join .RepoDigests " "}}').split():
+        try:
+            if _docker(compose, "pull", "-q", ref, timeout=REGISTRY_CHECK_TIMEOUT).returncode == 0:
+                return True
+        except subprocess.TimeoutExpired:
+            pass
+    return False
+
+
 def remove_replaced_images(inst, compose, before):
     """After containers were recreated: removes the images in <before> (instance_images from
     before) that none of the instance's containers is made from any more, so a deploy doesn't leave
     the image it replaced behind. Only images that can't be lost: one no tag points to any more (a
-    pull of the same tag replaced it) or one a registry has (pulled), never a local build still
-    tagged. docker image rm refuses an image any other container is made from (another instance on
-    the same version), or that has more than one tag; either is left, quietly."""
+    pull of the same tag replaced it) or one a registry has (_registry_has), never a local build
+    still tagged. docker image rm refuses an image any other container is made from (another
+    instance on the same version), or that has more than one tag; either is left, quietly. On the
+    containerd image store, Docker itself removes an image a pull or build of the same tag
+    replaced, so there's nothing left to remove."""
     after = instance_images(inst, compose)
     for image_id in sorted(before - after):
         if _inspect_image(compose, image_id, '{{join .RepoTags " "}}') \
-                and not _inspect_image(compose, image_id, '{{join .RepoDigests " "}}'):
+                and not _registry_has(compose, image_id):
             continue
         if _docker(compose, "image", "rm", image_id).returncode == 0:
             note(f"Removed the replaced image {image_id.removeprefix('sha256:')}")
