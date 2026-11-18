@@ -296,7 +296,8 @@ seed image (for fast startup), waits for OpenMRS to be ready, then runs the smok
 against it over the instance's own Compose network, uploads the results as a
 `smoke-test-results-<instance>` artifact (Maven's build/report output plus Selenium screenshots),
 and tears everything down. It validates the built image/config in isolation, not any persistent
-deployed server — no external network access or secrets beyond Docker Hub credentials are required.
+deployed server — no external network access or secrets beyond Docker Hub credentials are required
+(an `ANTHROPIC_API_KEY` is optional; see [Failure triage](#failure-triage)).
 A distro repo consumes it with a thin caller workflow, one job per site:
 
 ```yaml
@@ -329,6 +330,25 @@ jobs:
 | `tools_ref` | Optional | Ref of `openmrs-contrib-distro-tools` to check out. Defaults to its default branch — only needed to validate a change to this workflow, or to `bin/openmrs-docker`, `openmrs/` or `services/`, from a branch before merging |
 
 Requires a `DOCKERHUB_PASSWORD` secret available to the caller (passed via `secrets: inherit`).
+
+### Failure triage
+
+When the `smoke-test` job fails and an `ANTHROPIC_API_KEY` secret is available to the caller, a
+`triage-failure` job has Claude ([claude-code-action](https://github.com/anthropics/claude-code-action))
+read the failed job's log and the results artifact, and write a short verdict to that job's summary:
+an infrastructure glitch that a re-run should clear (e.g. Docker Hub or the artifact upload timing
+out), a real test failure (which tests, and the decisive log lines), a setup problem, or unclear.
+It is report-only: it changes nothing, and it can't re-run `smoke-test`, because GitHub re-runs a
+workflow run only once it has finished. Without the secret, `triage-failure` just prints a note.
+
+The key is an Anthropic API key from the [Claude Console](https://console.anthropic.com) (API usage
+is billed there, per token), stored as a GitHub **organization** secret named `ANTHROPIC_API_KEY`
+with access to the distro repos; `secrets: inherit` passes it through. Use a key that belongs to the
+organization (ideally in its own Console workspace with a spend limit), not a personal
+`claude setup-token` OAuth token, which is tied to whoever generated it.
+
+The job logs and results it sends come from the seed images' test data and the patients the smoke
+tests create. Don't point it at a job that runs against real patient data.
 
 ### Running smoke tests locally
 
