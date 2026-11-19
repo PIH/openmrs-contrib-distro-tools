@@ -528,8 +528,11 @@ def restore_folder(inst, folder, label=None):
         try:
             made |= restore.project_volumes() - before
         except CliError as listing:
+            # Not `destroy`: it refuses on a Puppet host, and would also remove the instance
+            # directory and volumes this run didn't make.
             note(f"warning: {listing}; removing only the restore's staging volumes, so "
-                 f"others it made may be left ('pihx {inst.name} destroy' removes them).")
+                 "others it made may be left ('docker volume ls --filter "
+                 f"label={volumes_module.LABEL}={inst.name}' lists the instance's volumes).")
         left = restore.remove_volumes(sorted(made))
         # A finish hook may have written to an env file before a later one failed.
         for path in inst.dir.glob("*.env"):
@@ -542,7 +545,7 @@ def restore_folder(inst, folder, label=None):
             raise
         if left:
             raise CliError(f"initialize failed: {e}. Couldn't remove {_leftovers(left)}: run "
-                           f"'pihx {inst.name} destroy' before retrying.") from None
+                           f"'docker volume rm {' '.join(left)}' before retrying.") from None
         raise CliError(f"initialize failed: {e}. The containers and volumes it made are "
                        "removed.") from None
 
