@@ -29,6 +29,12 @@ scripts() {
     assert_success
 }
 
+@test "the completion script passes shellcheck" {
+    cd "$REPO_ROOT"
+    run run_shellcheck -S warning -s bash completion/pihx.bash
+    assert_success
+}
+
 @test "test helpers pass shellcheck" {
     cd "$REPO_ROOT"
     run run_shellcheck -S warning -s bash test/helpers.bash

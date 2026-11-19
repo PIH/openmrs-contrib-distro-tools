@@ -34,4 +34,8 @@ sudo usermod -aG docker "$USER"
 line="export PATH=\"$DISTRO_TOOLS_HOME/bin:\$PATH\""
 grep -qxF "$line" ~/.bashrc 2>/dev/null || echo "$line" >> ~/.bashrc
 
+# Tab completion for pihx and openmrs-docker.
+line="[ -f \"$DISTRO_TOOLS_HOME/completion/pihx.bash\" ] && . \"$DISTRO_TOOLS_HOME/completion/pihx.bash\""
+grep -qxF "$line" ~/.bashrc 2>/dev/null || echo "$line" >> ~/.bashrc
+
 echo -e "\nDone! Please close this terminal window and start a new session."

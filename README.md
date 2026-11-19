@@ -31,6 +31,24 @@ echo "export PATH=\"$DISTRO_TOOLS_HOME/bin:\$PATH\"" >> ~/.bashrc   # ~/.zshrc f
 Open a new terminal, and `pihx`, `openmrs-docker`, `openmrs-utils` and `openmrs-sdk` are available. You
 need Docker with the Compose plugin, 2.20 or later. To update the tool, `git pull` in it.
 
+For Tab completion of `pihx` and `openmrs-docker` (instances, commands, services and their
+commands), load `completion/pihx.bash` from your shell's startup file:
+
+```bash
+echo ". \"$DISTRO_TOOLS_HOME/completion/pihx.bash\"" >> ~/.bashrc
+```
+
+In zsh, load bash's completion support first, in `~/.zshrc`:
+
+```zsh
+autoload -U +X compinit && compinit
+autoload -U +X bashcompinit && bashcompinit
+. "$DISTRO_TOOLS_HOME/completion/pihx.bash"
+```
+
+It reads only the filesystem (`PIHX_HOME` and the instance's tools directory), so it never starts a
+container.
+
 ### On Windows
 
 **Step 1 — Install Windows Subsystem for Linux if not already installed**
