@@ -25,6 +25,10 @@
   and `build` (`modes/`) and the seed image's Dockerfile.
 - `setup.sh` installs the tools on a Windows laptop's Ubuntu (WSL) or another Ubuntu machine, for
   people new to the terminal ([README](../README.md)). The tools never run it.
+- `completion/pihx.bash` is Tab completion for `pihx` and `openmrs-docker`, which `setup.sh` loads
+  from `~/.bashrc`. It works its candidates out from the filesystem and never runs `pihx` (each run
+  starts a container). Its command lists copy `pihx/cli.py`'s and `openmrs/extension.py`'s, and
+  `test/args/completion.bats` fails when they differ: a new command goes in both.
 - `bin/openmrs-utils` and `utils/` are the standalone Bash utilities, which run on the host and also
   work against legacy servers; `utils/lib/` holds their shared helpers and `utils/lib/in-container/`
   the scripts that run inside a container. `bin/openmrs-sdk` wraps the OpenMRS SDK.
