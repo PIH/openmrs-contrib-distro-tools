@@ -248,7 +248,7 @@ class InitializeCommandTest(InitializeTest):
         self.assertFalse((self.home / "kz" / "new.env").exists())
         self.assertIn(("down",), self.compose_calls)
 
-    def test_a_volume_left_after_a_failure_is_named_with_destroy(self):
+    def test_a_volume_left_after_a_failure_is_named_with_the_command_to_remove_it(self):
         write(self.tools / "services" / "db" / "restore" / "finish", "")
 
         def finish():
@@ -260,7 +260,8 @@ class InitializeCommandTest(InitializeTest):
         status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
         self.assertEqual(status, 1)
         self.assertIn("Couldn't remove kz_db-init (db-init holds a full copy", err)
-        self.assertIn("'pihx kz destroy'", err)
+        self.assertIn("'docker volume rm kz_db-init' before retrying", err)
+        self.assertNotIn("destroy", err)
 
     def removed_volumes(self):
         return [c[2:] for c in self.docker_calls if c[:2] == ["volume", "rm"]]
@@ -308,6 +309,8 @@ class InitializeCommandTest(InitializeTest):
         status, _, err = self.run_pihx("kz", "initialize", "--from", str(self.folder))
         self.assertEqual(status, 1)
         self.assertIn("removing only the restore's staging volumes", err)
+        self.assertIn("'docker volume ls --filter label=pihx.instance=kz'", err)
+        self.assertNotIn("destroy", err)
         self.assertEqual(self.removed_volumes(), [["kz_db-init"]])
 
     def test_a_failed_listing_refuses_before_anything_is_made(self):
