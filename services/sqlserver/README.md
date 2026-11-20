@@ -62,3 +62,6 @@ backup of each, `<db>.bak`, into `sqlserver.7z`. SQL Server writes each `.bak` i
 deleted. `initialize --from` restores each `.bak` as the database it's named after, and on the first
 start `sqlserver-setup` creates the declared logins and remaps the restored databases' users to them
 ([Backups](../../docs/backups.md)). With none chosen, each run names `sqlserver` as not backed up.
+`pihx <name> summary` prints `[sqlserver]`, each table's row count in the chosen databases, to
+compare a restore with its source (stopped, it starts a throwaway server on the volume, which takes a
+minute or so).

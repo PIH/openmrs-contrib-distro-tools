@@ -15,6 +15,8 @@ if [ ! -f "$DB" ]; then
     exit 0
 fi
 echo "biometrics: dumping $DB" >&2
-# -bail stops at the first error; sqlite3's exit status then fails the pipe (pipefail).
-sqlite3 -bail "$DB" .dump |
+# -bail stops at the first error; sqlite3's exit status then fails the pipe (pipefail). As the
+# database's owner, so a file SQLite creates beside it (its WAL index) stays the server's.
+setpriv --reuid="$(stat -c %u "$DB")" --regid="$(stat -c %g "$DB")" --clear-groups \
+    sqlite3 -bail "file:$DB?mode=ro" .dump |
     7z a -si"biometrics.sql" -p"$ARCHIVE_PASSWORD" -mx5 -t7z "$BACKUP_RUN_DIR/biometrics.sql.7z" >/dev/null

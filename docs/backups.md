@@ -138,6 +138,13 @@ azcopy copy "<BACKUP_AZURE_URL>/<BACKUP_AZURE_PATH>/<run>/?<SAS with read and li
 ARCHIVE_PASSWORD=<the archive password> pihx <name> initialize --from /tmp/<run>
 ```
 
+`pihx <name> summary` covers every backed-up service, so a source summarized after its backup and
+the restored instance summarized before its first start compare with one `diff`: `[biometrics]`
+(each table's rows), `[openhim]` (each collection's documents and the newest transaction) and
+`[sqlserver]` (each table's rows in the databases in `SQLSERVER_BACKUP_DATABASES`), beside
+`openmrs-db`'s and `openmrs`'s sections. For a stopped instance, `openhim`'s and `sqlserver`'s start
+a throwaway server of the instance's image on the volume (a minute or so for SQL Server).
+
 `initialize` refuses a restored service's volumes that exist (`openmrs-db`'s `db-data`, `openmrs`'s
 `openmrs-data`, `biometrics`' `biometrics-data`, `openhim`'s `mongo-data`, `sqlserver`'s
 `sqlserver-data`), and leaves the others alone. What each restore does beyond filling its volume:
@@ -159,8 +166,6 @@ for good.
 
 - Monitoring and alerting from `status.json` (TASKS-603).
 - Percona backups (`percona/percona.7z`) for the sites whose data warehouse refresh reads them.
-- Checking a restore of `biometrics`, `openhim` or `sqlserver` with `summary` (it covers `openmrs-db`
-  and `openmrs`).
 - Upload destinations other than `azure`.
 - What happens when the disk fills during a long outage, beyond failing the run and recording it;
   a retention rule in Azure.

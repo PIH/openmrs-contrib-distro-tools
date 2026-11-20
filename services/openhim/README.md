@@ -81,7 +81,9 @@ hand in the console, which would be lost otherwise). With the [backups](../backu
 service, each run dumps the `openhim` database into `openhim.archive.7z`, and `initialize --from`
 restores it into a new instance ([Backups](../../docs/backups.md)). The restored database has the
 source's admin account, so give the new instance the source's `OPENHIM_PASSWORD`, or
-`openhim-setup` fails on the first start.
+`openhim-setup` fails on the first start. `pihx <name> summary` prints `[openhim]`, each
+collection's document count and the newest transaction's time, to compare a restore with its source
+(stopped, it starts a throwaway `mongod` on the volume).
 
 ## Mediators
 

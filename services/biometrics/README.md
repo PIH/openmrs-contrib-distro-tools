@@ -31,7 +31,8 @@ patient data. With the [backups](../backups/README.md) service, each run dumps i
 `biometrics.sql.7z`, and `initialize --from` restores that into a new instance
 ([Backups](../../docs/backups.md)); `biometrics-licensing` isn't backed up, so a restored instance
 activates the license as a new machine. `BIOMETRICS_DATA_OWNER` (default `9000:9000`, the image's
-user) owns the restored files. To check the server can enroll and match:
+user) owns the restored files. `pihx <name> summary` prints `[biometrics]`, each table's row count,
+to compare a restore with its source. To check the server can enroll and match:
 `docker exec <name>-biometrics pih-biometrics-selftest`.
 
 ```bash

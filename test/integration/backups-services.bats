@@ -35,13 +35,17 @@ run_files() { ls "$1"; }
 # --- biometrics -------------------------------------------------------------------------------------
 
 @test "biometrics: the SQLite database is dumped consistently, even in WAL mode, and restores with initialize" {
-    local vol run_dir
-    vol="$(res biometrics-data)"
+    # The source: an instance with biometrics, whose volume holds a database in WAL mode (as
+    # Neurotechnology's library may keep it), owned by the image's user, with a blob like a template.
+    BIOMETRICS_LICENSE_BASE64=QUJDRA== "$BIN/pihx" "$NAME" create --services=biometrics >/dev/null
+    local vol="${NAME}_biometrics-data"
     docker volume create "$vol" >/dev/null
-    # A database in WAL mode, as Neurotechnology's library may keep it, with a blob like a template.
-    docker run --rm -v "$vol:/d" --entrypoint sqlite3 "$IMAGE" /d/biometrics.db \
-        "PRAGMA journal_mode=WAL; CREATE TABLE subjects(id TEXT PRIMARY KEY, template BLOB);
-         INSERT INTO subjects VALUES ('p1', x'00ff10'), ('p2', randomblob(64));" >/dev/null
+    docker run --rm -v "$vol:/d" --entrypoint bash "$IMAGE" -c \
+        "sqlite3 /d/biometrics.db \"PRAGMA journal_mode=WAL; CREATE TABLE subjects(id TEXT PRIMARY KEY, template BLOB);
+         INSERT INTO subjects VALUES ('p1', x'00ff10'), ('p2', randomblob(64));\" >/dev/null; chown -R 9000:9000 /d"
+    "$BIN/pihx" "$NAME" summary --output=before.txt
+    run cat before.txt
+    assert_output $'[biometrics]\nrows subjects 2'
     mkdir out
     # As the backups container runs it (with-backups.yaml): the volume read-write, the script mounted.
     run docker run --rm -v "$vol:/sources/biometrics-data" -v "$BATS_TEST_TMPDIR/out:/run-dir" \
@@ -63,6 +67,13 @@ run_files() { ls "$1"; }
     assert_line --index 0 'p1|00FF10|3'
     assert_line --index 1 --regexp '^p2\|[0-9A-F]{128}\|64$'
     refute_output --partial '.restore'
+    # The restored instance summarizes as the source did.
+    "$BIN/pihx" "$RESTORED" summary --output=after.txt
+    run diff before.txt after.txt
+    assert_success
+    # Nothing the backup or the summaries read was left owned by root.
+    run docker run --rm -v "$vol:/d" --entrypoint find "$IMAGE" /d -not -user 9000
+    assert_output ''
 }
 
 @test "biometrics: a server that hasn't created its database writes nothing" {
@@ -91,7 +102,9 @@ mongo_eval() { # <name> <javascript>
     start_openhim "$NAME" openhim,backups
     timeout 600 "$BIN/pihx" "$NAME" start >/dev/null 2>&1
     timeout 300 "$BIN/pihx" "$NAME" wait >/dev/null 2>&1
-    mongo_eval "$NAME" 'db.transactions.insertOne({_id: "drill-1", status: "Successful"})' >/dev/null
+    mongo_eval "$NAME" 'db.transactions.insertOne({_id: "drill-1", status: "Successful", request: {timestamp: new Date("2026-01-02T03:04:05Z")}})' >/dev/null
+    # Nothing writes to the database between the backup and the summary (openhim-core records metrics).
+    docker stop "$NAME-openhim-core" >/dev/null
 
     run "$BIN/pihx" "$NAME" backup
     assert_success
@@ -101,11 +114,23 @@ mongo_eval() { # <name> <javascript>
     assert_success
     run run_files out
     assert_output $'backup.log\nopenhim.archive.7z'
+    # From the running mongo-db.
+    "$BIN/pihx" "$NAME" summary --output=before.txt
+    run cat before.txt
+    assert_line '[openhim]'
+    assert_line 'documents transactions 1'
+    assert_line 'newest transaction 2026-01-02T03:04:05.000Z'
 
     start_openhim "$RESTORED" openhim
     ARCHIVE_PASSWORD="$PW" run timeout 600 "$BIN/pihx" "$RESTORED" initialize --from out
     assert_success
     assert_output --partial 'openhim: loading openhim.archive.7z into mongo-db'
+    # Stopped: from a throwaway mongod on the restored volume, which it removes again.
+    "$BIN/pihx" "$RESTORED" summary --output=after.txt
+    run diff before.txt after.txt
+    assert_success
+    run docker ps -aq --filter "name=^$RESTORED-summary-"
+    assert_output ''
 
     # The same admin password as the source's, so openhim-setup finds it set.
     timeout 600 "$BIN/pihx" "$RESTORED" start >/dev/null 2>&1
@@ -157,11 +182,23 @@ create_sqlserver() { # <name> <services>
     assert_success
     run run_files out
     assert_output $'backup.log\nsqlserver.7z'
+    # From the running server: only the chosen database.
+    "$BIN/pihx" "$NAME" summary --output=before.txt
+    run cat before.txt
+    assert_output $'[sqlserver]\nrows d1.dbo.t 1'
 
     create_sqlserver "$RESTORED" sqlserver
+    set_env_value "$RESTORED" sqlserver SQLSERVER_BACKUP_DATABASES d1
     ARCHIVE_PASSWORD="$PW" run timeout 600 "$BIN/pihx" "$RESTORED" initialize --from out
     assert_success
     assert_output --partial 'sqlserver: restoring d1'
+    # Stopped: from a throwaway server on the restored volume, which it removes again.
+    run timeout 300 "$BIN/pihx" "$RESTORED" summary --output=after.txt
+    assert_success
+    run diff before.txt after.txt
+    assert_success
+    run docker ps -aq --filter "name=^$RESTORED-summary-"
+    assert_output ''
     timeout 600 "$BIN/pihx" "$RESTORED" start >/dev/null 2>&1
     timeout 300 "$BIN/pihx" "$RESTORED" wait >/dev/null 2>&1
     run sqlcmd_in "$RESTORED" "SELECT name FROM d1.dbo.t WHERE id = 1"

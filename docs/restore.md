@@ -227,6 +227,10 @@ pihx <name> summary --output=after.txt
 diff before.txt after.txt
 ```
 
+Other services add their own sections (`[biometrics]`, `[openhim]`, `[sqlserver]`;
+[Backups](backups.md#restoring)), which `openmrs-utils fingerprint` doesn't print: compare those
+with the source instance's own `pihx <name> summary`.
+
 `summary` leaves out what the distribution supplies (modules, owa, configuration, frontend) from
 the `[data-dir]` section by default; `--include-distribution-artifacts` keeps it.
 
