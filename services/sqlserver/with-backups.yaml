@@ -1,0 +1,16 @@
+# Added when the instance has the backups service: sqlserver's backup script, and what it needs. It
+# backs up only the databases in SQLSERVER_BACKUP_DATABASES (none by default).
+services:
+  backups:
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      SQLSERVER_BACKUP_DATABASES: ${SQLSERVER_BACKUP_DATABASES}
+      # sa's password, for sqlcmd (which reads SQLCMDPASSWORD), so it's on no command line.
+      SQLCMDPASSWORD: ${SQLSERVER_SA_PASSWORD}
+    volumes:
+      - ${PIHX_TOOLS}/services/sqlserver/scripts/backup.sh:/opt/backup/services/sqlserver.sh:ro
+      # Read-write: SQL Server writes each backup into the volume, and the script deletes it once
+      # it's archived (scripts/backup.sh).
+      - sqlserver-data:/sources/sqlserver-data

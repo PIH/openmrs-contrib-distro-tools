@@ -35,6 +35,29 @@ RUN curl -fsSL -o /supercronic \
  && echo "${SUPERCRONIC_SHA1}  /supercronic" | sha1sum -c - \
  && chmod +x /supercronic
 
+# MongoDB's database tools (mongodump, mongorestore), for openhim's MongoDB. The SHA-256 is the one MongoDB
+# publishes for the release (https://downloads.mongodb.org/tools/db/release.json). Built for Ubuntu 24.04,
+# which runs on 26.04 (the tools are Go binaries).
+ARG MONGO_TOOLS_VERSION=100.20.1
+ARG MONGO_TOOLS_SHA256=20f43dcaa37f5a4841ac5a91da685a488a5ebbd81113c018e25a6b544cc350ea
+RUN curl -fsSL -o /tmp/mongo-tools.tgz \
+      "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2404-x86_64-${MONGO_TOOLS_VERSION}.tgz" \
+ && echo "${MONGO_TOOLS_SHA256}  /tmp/mongo-tools.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/mongo-tools.tgz -C / --no-same-owner --strip-components=2 \
+      "mongodb-database-tools-ubuntu2404-x86_64-${MONGO_TOOLS_VERSION}/bin/mongodump" \
+      "mongodb-database-tools-ubuntu2404-x86_64-${MONGO_TOOLS_VERSION}/bin/mongorestore"
+
+# Microsoft's sqlcmd (go-sqlcmd), for sqlserver: one static binary, where mssql-tools18 needs Microsoft's
+# apt repository, which has no Ubuntu 26.04. Microsoft publishes no checksum, so the SHA-256 below was
+# computed from the tarball downloaded from the GitHub release page.
+ARG SQLCMD_VERSION=v1.11.0
+ARG SQLCMD_SHA256=2e41111d2e00782d50b9f8887bf603890af1e85e308708703e4ce27dc3c410e7
+RUN apt-get update && apt-get install -y --no-install-recommends bzip2 && rm -rf /var/lib/apt/lists/* \
+ && curl -fsSL -o /tmp/sqlcmd.tar.bz2 \
+      "https://github.com/microsoft/go-sqlcmd/releases/download/${SQLCMD_VERSION}/sqlcmd-linux-amd64.tar.bz2" \
+ && echo "${SQLCMD_SHA256}  /tmp/sqlcmd.tar.bz2" | sha256sum -c - \
+ && tar -xjf /tmp/sqlcmd.tar.bz2 -C / --no-same-owner sqlcmd
+
 FROM ${UBUNTU_IMAGE}
 
 LABEL authors="Michael Seaton <mseaton@pih.org>"
@@ -42,8 +65,9 @@ LABEL authors="Michael Seaton <mseaton@pih.org>"
 # Tools for the backups service (services/backups). Holds tools only; the backup logic lives in this
 # repo (services/backups/scripts/, each service's scripts/backup.sh) and is mounted into the container.
 # amd64 only (platforms): Oracle publishes its MySQL apt repository for amd64 only. On PATH: bash, tar,
-# 7z (7-Zip), mysqldump and mysql, jq, GNU coreutils (df/du/stat), flock (util-linux), azcopy and
-# supercronic. tzdata supplies /usr/share/zoneinfo so TZ is honored by date and supercronic.
+# 7z (7-Zip), mysqldump and mysql, sqlite3, mongodump and mongorestore, sqlcmd, jq, GNU coreutils
+# (df/du/stat), flock (util-linux), azcopy and supercronic. tzdata supplies /usr/share/zoneinfo so TZ is
+# honored by date and supercronic.
 # Ubuntu 26.04 ships uutils' Rust coreutils as the default; coreutils-from-gnu switches back to GNU's, which
 # the scripts were written and tested against (the swap removes an essential package, hence the flag).
 # mysqldump is Oracle's MySQL 8.4 LTS client, from Oracle's apt repository (signed by the key above). It
@@ -53,13 +77,13 @@ COPY --from=fetch /mysql.gpg /usr/share/keyrings/mysql.gpg
 RUN apt-get update \
  && apt-get install -y --no-install-recommends --allow-remove-essential \
       coreutils-from-gnu coreutils-from-uutils- rust-coreutils- \
- && apt-get install -y --no-install-recommends ca-certificates 7zip jq tzdata \
+ && apt-get install -y --no-install-recommends ca-certificates 7zip jq sqlite3 tzdata \
  && echo "deb [signed-by=/usr/share/keyrings/mysql.gpg] https://repo.mysql.com/apt/ubuntu resolute mysql-8.4-lts" \
       > /etc/apt/sources.list.d/mysql.list \
  && apt-get update \
  && apt-get install -y --no-install-recommends "mysql-community-client=${MYSQL_CLIENT_VERSION}" \
  && rm -rf /var/lib/apt/lists/*
 
-COPY --from=fetch /azcopy /supercronic /usr/local/bin/
+COPY --from=fetch /azcopy /supercronic /mongodump /mongorestore /sqlcmd /usr/local/bin/
 
 CMD ["/bin/sh"]

@@ -21,6 +21,7 @@ import tempfile
 from pathlib import Path
 
 from pihx import compose as compose_module, envfile, instance as instance_module, lock, script
+from pihx import images as images_module
 from pihx import volumes as volumes_module
 from pihx import services as services_module
 from pihx.commands import CliError
@@ -507,6 +508,9 @@ def restore_folder(inst, folder, label=None):
     # service's volumes (e.g. petl-data) for new ones.
     before = restore.project_volumes()
     env_files = {p: p.read_bytes() for p in inst.dir.glob("*.env")}
+    # An overlay may run one of this repo's images (e.g. backup-tools): here, or built, before anything
+    # is created.
+    images_module.ensure(restore.compose)
     # The instance's external volumes this run creates (those of the restored services, refused
     # above if they existed, and any other service's still missing), recorded as each is made.
     created = []

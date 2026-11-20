@@ -1,2 +1,9 @@
 description: The pih-biometrics fingerprint server, for OpenMRS
-# No 'backup': not backed up yet (backups name it in each run's log and status).
+# The fingerprint templates' SQLite database in biometrics-data, as SQL (scripts/backup.sh). Not
+# biometrics-licensing: the license's machine identity, which belongs to the host it was made on.
+backup: scripts/backup.sh
+# initialize: biometrics.db from its backup's dump (restore/dump.yaml). biometrics-licensing starts
+# new, so the license activates as a new machine (README).
+restore:
+  - names: [biometrics.sql.7z, biometrics.sql]
+    overlay: restore/dump.yaml

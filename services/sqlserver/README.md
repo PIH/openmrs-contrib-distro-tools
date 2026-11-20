@@ -41,6 +41,7 @@ variable and the rule broken (never the password), and exits non-zero.
 | `SQLSERVER_SA_PASSWORD` | must be set | the `sa` password: at least 8 characters, with 3 of upper case, lower case, digits and symbols (policy above) |
 | `SQLSERVER_PUBLISHED_PORT` | `1433` | where it's reachable from outside Docker (e.g. for reporting tools): the port, or `<address>:<port>`. The instance's services reach it on 1433 |
 | `SQLSERVER_DATABASES` | empty | databases to create |
+| `SQLSERVER_BACKUP_DATABASES` | empty | databases the [backups](../backups/README.md) service backs up (below) |
 | `SQLSERVER_MEMORY_MB`, `SQLSERVER_MEMORY_LIMIT` | `2048`, `3g` | SQL Server's max server memory, and the container's memory limit |
 | `SQLSERVER_TEMPDB_FILES` | `4` | |
 | `SQLSERVER_IMAGE_TAG` | `2025-latest` | |
@@ -50,3 +51,14 @@ keeps PETL values that no longer fit: set `PETL_SQLSERVER_USER` and `PETL_MYSQL_
 instances had `sa` and the OpenMRS account there, and `sa` can't be a declared login) and
 `PETL_SQLSERVER_HOST` to `sqlserver` ([PETL](../petl/README.md)). Run PETL again to rebuild the
 data (or copy it from the `petl-sqlserver-data` volume yourself).
+
+## Backups
+
+What an instance keeps in SQL Server is usually rebuilt (PETL's output, a warehouse re-synced from its
+source), so nothing is backed up unless the instance chooses: `SQLSERVER_BACKUP_DATABASES` lists the
+databases, and with the [backups](../backups/README.md) service each run puts a full `COPY_ONLY`
+backup of each, `<db>.bak`, into `sqlserver.7z`. SQL Server writes each `.bak` into `sqlserver-data`
+(`.backup-staging`), unencrypted beside the database's own files, until it's archived, then it's
+deleted. `initialize --from` restores each `.bak` as the database it's named after, and on the first
+start `sqlserver-setup` creates the declared logins and remaps the restored databases' users to them
+([Backups](../../docs/backups.md)). With none chosen, each run names `sqlserver` as not backed up.

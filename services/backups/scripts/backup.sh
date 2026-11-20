@@ -7,7 +7,8 @@
 #   BACKUP_ARCHIVE_PASSWORD   required; reaches each script as ARCHIVE_PASSWORD
 #   BACKUP_PLAN               <svc>=script|none|unset for each of the instance's services, in order:
 #                             script runs BACKUP_SERVICES_DIR/<svc>.sh; none has nothing to back up;
-#                             unset is recorded as not backed up
+#                             unset is recorded as not backed up, and so is a script that writes
+#                             nothing named after its service (<svc>.* or <svc>/)
 #   BACKUP_SERVICES_DIR       default /opt/backup/services
 #   BACKUP_MIN_FREE           free space left after the run: bytes, or with a K, M or G suffix (default 2G)
 #   BACKUP_KEEP_LOCAL, BACKUP_UPLOAD  with no upload destination, cleanup runs at the end (cleanup.sh --local-only)
@@ -102,7 +103,12 @@ else
         # stdout joins stderr: a script's output all goes to the container log and backup.log.
         bash "$script" 2>&1 >&2 | tee -a "$RUN_LOG" >&2
         code=${PIPESTATUS[0]}
-        if [ "$code" -eq 0 ]; then
+        if [ "$code" -eq 0 ] && [ -z "$(find "$RUN_DIR" -mindepth 1 -maxdepth 1 \( -name "$svc.*" -o -name "$svc" \) -print -quit)" ]; then
+            # A script that writes nothing has nothing to back up on this instance (e.g. sqlserver
+            # with no databases chosen): recorded like a service without a script.
+            log "$svc: not backed up (its script wrote nothing)"
+            not_backed_up+=("$svc")
+        elif [ "$code" -eq 0 ]; then
             log "$svc: done"
         else
             log "error: $svc failed (exit $code)"

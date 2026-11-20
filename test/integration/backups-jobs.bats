@@ -18,10 +18,12 @@ setup() {
     docker volume create "$VOL" >/dev/null
     FIX="$BATS_TEST_TMPDIR/fixtures"
     mkdir -p "$FIX"
-    # Fixture service scripts: write a file into the run folder, or fail.
-    printf '#!/bin/bash\necho a > "$BACKUP_RUN_DIR/a.txt"\n' > "$FIX/ok-a.sh"
-    printf '#!/bin/bash\necho b > "$BACKUP_RUN_DIR/b.txt"\n' > "$FIX/ok-b.sh"
+    # Fixture service scripts: write a file named after the service into the run folder, write nothing,
+    # or fail.
+    printf '#!/bin/bash\necho a > "$BACKUP_RUN_DIR/ok-a.txt"\n' > "$FIX/ok-a.sh"
+    printf '#!/bin/bash\necho b > "$BACKUP_RUN_DIR/ok-b.txt"\n' > "$FIX/ok-b.sh"
     printf '#!/bin/bash\necho "boom" >&2\nexit 3\n' > "$FIX/fails.sh"
+    printf '#!/bin/bash\necho "nothing chosen"\n' > "$FIX/writes-nothing.sh"
     printf '#!/bin/bash\necho z > "$BACKUP_RUN_DIR/half.7z"\nexit 2\n' > "$FIX/half.sh"
 }
 teardown() { common_teardown; }
@@ -51,7 +53,7 @@ runs() { in_image -- -c 'ls /backups' | grep -v -e status.json; }
     assert_output --regexp '^p_[0-9]{8}T[0-9]{6}Z$'
     local run_name="$output"
     run in_image -- -c "ls /backups/$run_name"
-    assert_output "$(printf 'a.txt\nb.txt\nbackup.log')"
+    assert_output "$(printf 'backup.log\nok-a.txt\nok-b.txt')"
     run in_image -- -c 'jq -r .backup.last_result /backups/status.json'
     assert_output success
     run in_image -- -c 'jq -r ".backup | [.last_run, .last_error, (.last_success | length), (.last_attempt | length)] | @tsv" /backups/status.json'
@@ -104,6 +106,18 @@ runs() { in_image -- -c 'ls /backups' | grep -v -e status.json; }
     run in_image -- -c 'cat /backups/p_*/backup.log'
     assert_output --partial 'nope: not backed up (it has no backup script)'
     assert_output --partial 'quiet: nothing to back up'
+}
+
+@test "a service whose script writes nothing named after it is reported not backed up" {
+    printf '#!/bin/bash\necho x > "$BACKUP_RUN_DIR/someone-else.txt"\n' > "$FIX/misnamed.sh"
+    run backup_job -e BACKUP_PLAN="ok-a=script writes-nothing=script misnamed=script" --
+    assert_success
+    run in_image -- -c 'jq -c .backup.not_backed_up /backups/status.json'
+    assert_output '["writes-nothing","misnamed"]'
+    run in_image -- -c 'cat /backups/p_*/backup.log'
+    assert_output --partial 'nothing chosen'
+    assert_output --partial 'writes-nothing: not backed up (its script wrote nothing)'
+    refute_output --partial 'writes-nothing: done'
 }
 
 @test "a run where no service wrote a backup fails, and an empty plan is refused" {

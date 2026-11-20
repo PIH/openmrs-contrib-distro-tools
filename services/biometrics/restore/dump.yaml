@@ -1,0 +1,44 @@
+# initialize, biometrics.sql.7z or biometrics.sql (as its backup writes, docs/backups.md): loads the
+# dump into a new biometrics.db in biometrics-data, owned by the user the image runs as
+# (BIOMETRICS_DATA_OWNER, default pih-biometrics' 9000:9000). In the backup-tools image, which has
+# 7-Zip and sqlite3. The database is built under another name and renamed last, so a failed load
+# leaves no biometrics.db.
+
+services:
+  restore-biometrics:
+    image: ${PIHX_IMAGE_BACKUP_TOOLS:?PIHX_IMAGE_BACKUP_TOOLS must be set (pihx sets it)}
+    pull_policy: missing
+    container_name: ${SERVICE_NAME}-restore-biometrics
+    environment:
+      - ARCHIVE_PASSWORD
+      - ENTRY=${BIOMETRICS_RESTORE_NAME:?BIOMETRICS_RESTORE_NAME must be set}
+      - OWNER=${BIOMETRICS_DATA_OWNER:-9000:9000}
+    volumes:
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${BIOMETRICS_RESTORE_PATH:?BIOMETRICS_RESTORE_PATH must be set}
+        target: /source/${BIOMETRICS_RESTORE_NAME:?BIOMETRICS_RESTORE_NAME must be set}
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PIHX_TOOLS}/utils/lib/in-container/extract.sh:/extract.sh:ro
+      - biometrics-data:/target
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        STAGING=/target/.restore-staging
+        case "$$ENTRY" in
+            *.7z) sh /extract.sh "/source/$$ENTRY" "$$STAGING"
+                  DUMP=$$(find "$$STAGING" -type f)
+                  if [ -z "$$DUMP" ] || [ "$$(echo "$$DUMP" | wc -l)" -ne 1 ]; then
+                      echo "error: $$ENTRY must contain exactly one dump file" >&2
+                      exit 1
+                  fi ;;
+            *) DUMP="/source/$$ENTRY" ;;
+        esac
+        echo "biometrics: loading $$ENTRY into biometrics.db" >&2
+        sqlite3 -bail /target/.restore.db < "$$DUMP"
+        mv /target/.restore.db /target/biometrics.db
+        rm -rf /target/.restore-staging
+        chown -R "$$OWNER" /target

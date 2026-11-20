@@ -24,8 +24,10 @@ What another service's backup needs comes from that service: `OPENMRS_DATA_BACKU
 `openmrs-db`'s.
 
 Its image, `partnersinhealth/backup-tools`, is built from [`images/backup-tools`](../../images/backup-tools)
-and referenced by its content tag. It's built for amd64 only (Oracle publishes its MySQL apt
-repository for amd64 only); on an arm64 machine Docker runs it emulated, if at all.
+and referenced by its content tag. It holds the tools the backup scripts and some restores use
+(`mysqldump`, `sqlite3`, `mongodump`/`mongorestore`, `sqlcmd`, 7-Zip, azcopy). It's built for amd64
+only (Oracle publishes its MySQL apt repository for amd64 only); on an arm64 host pihx says so
+rather than building it.
 
 Each upload destination is a script, `scripts/upload-<name>.sh`, that `upload.sh` sources: it checks
 the destination's settings, copies a run and proves the copy is whole. `upload.sh` does the rest

@@ -32,7 +32,9 @@ starting, when it shows as Online:
 - **Modalities.** Each one is a Remote AE (Configuration > Remote AEs), whose AE title must match the
   modality's exactly, case included. Its worklist and query settings are there too.
 - **Data directory.** Leave it at the default, `/opt/AdvaHealthSolutions/AdvaPACSGateway`: that's the
-  `advapacs-gateway-data` volume, which holds received studies until they're uploaded.
+  `advapacs-gateway-data` volume, which holds received studies until they're uploaded. It isn't
+  backed up (`backup: none`): its configuration is in AdvaPACS, and a restored upload queue would be
+  stale and could upload studies twice.
 
 AdvaPACS asks for 4 GB of memory (8 GB recommended) and 50 GB of disk (200 GB recommended) for the
 gateway, and an accurate clock (NTP): its authentication fails if the host's clock drifts.

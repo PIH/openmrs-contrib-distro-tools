@@ -216,9 +216,10 @@ class ServiceTreeTest(unittest.TestCase):
         (named in each run's log and status), so a new service can't go unbacked-up unnoticed."""
         self.assertEqual({n: s.manifest.backup for n, s in SERVICES.items()}, {
             "openmrs-db": "scripts/backup.sh", "openmrs": "scripts/backup.sh",
+            "openhim": "scripts/backup.sh", "biometrics": "scripts/backup.sh",
+            "sqlserver": "scripts/backup.sh",
             "petl": "none", "openmrs-smoke-tests": "none", "openhim-advapacs-mediator": "none",
-            "modality-simulator": "none", "backups": "none",
-            "openhim": None, "biometrics": None, "sqlserver": None, "advapacs-gateway": None})
+            "modality-simulator": "none", "backups": "none", "advapacs-gateway": "none"})
 
     def test_a_backup_script_is_mounted_by_its_with_backups_file(self):
         """The backups service runs /opt/backup/services/<svc>.sh for a service whose plan says
@@ -233,9 +234,12 @@ class ServiceTreeTest(unittest.TestCase):
             spec = yaml.safe_load(svc.with_files["backups"].read_text())["services"]["backups"]
             self.assertIn(f"${{PIHX_TOOLS}}/services/{name}/{backup}:/opt/backup/services/{name}.sh:ro",
                           spec["volumes"], name)
-            # Its data volumes only read-only: the backup never changes what it backs up.
+            # Its data volumes only read-only: the backup never changes what it backs up. Except
+            # these, each saying why in its with-backups.yaml: SQLite locks in its volume (and can't
+            # read a WAL database read-only), and SQL Server writes its .bak into its volume.
+            read_write = {"biometrics": "biometrics-data:", "sqlserver": "sqlserver-data:"}
             for volume in spec["volumes"]:
-                if not volume.startswith("$"):
+                if not volume.startswith("$") and not volume.startswith(read_write.get(name, "-")):
                     self.assertTrue(volume.endswith(":ro"), f"{name}: {volume}")
 
     def test_the_backups_service_mounts_its_jobs_and_runs_a_content_tagged_image(self):
@@ -262,7 +266,10 @@ class ServiceTreeTest(unittest.TestCase):
             "openmrs": [
                 (["openmrs.7z", "openmrs.tar.gz", "openmrs.tgz", "openmrs.tar", "openmrs.zip"],
                  "restore/archive.yaml", None),
-                (["openmrs/"], "restore/directory.yaml", None)]})
+                (["openmrs/"], "restore/directory.yaml", None)],
+            "biometrics": [(["biometrics.sql.7z", "biometrics.sql"], "restore/dump.yaml", None)],
+            "openhim": [(["openhim.archive.7z", "openhim.archive"], "restore/archive.yaml", None)],
+            "sqlserver": [(["sqlserver.7z"], "restore/archive.yaml", None)]})
         for name, svc in SERVICES.items():
             for restore in svc.manifest.restore:
                 for entry in restore.names:

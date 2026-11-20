@@ -1,2 +1,8 @@
 description: OpenHIM (core, console and MongoDB), the interoperability layer
-# No 'backup': not backed up yet (backups name it in each run's log and status).
+# MongoDB's openhim database (scripts/backup.sh): the transaction log, audit events and metrics. Its
+# configuration is rebuilt on every start (openhim-setup, and each mediator's provisioning).
+backup: scripts/backup.sh
+# initialize: the database from its backup's mongodump archive (restore/archive.yaml).
+restore:
+  - names: [openhim.archive.7z, openhim.archive]
+    overlay: restore/archive.yaml

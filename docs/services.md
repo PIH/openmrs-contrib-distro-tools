@@ -178,12 +178,14 @@ without backups unnoticed ([Backups](backups.md)):
 - **A script** (`backup: scripts/backup.sh`): the `backups` service runs it, in its own container
   (the `backup-tools` image), on every backup run. The service's `with-backups.yaml` mounts it at
   `/opt/backup/services/<svc>.sh` and gives the backups container what the script needs: its data
-  volumes read-only under `/sources/`, the values it needs under `environment:` (e.g. a root
-  password), a `depends_on` its database. `test_service_tree.py` checks that it does.
+  volumes read-only under `/sources/` (read-write only where the tool needs it, saying why:
+  `biometrics`' SQLite, `sqlserver`'s `.bak` staging), the values it needs under `environment:`
+  (e.g. a root password), a `depends_on` its database. `test_service_tree.py` checks that it does.
 - **`none`**: nothing of its own to back up (e.g. `petl`, whose output PETL rebuilds); each run's log
   says so.
 - **Absent**: not backed up yet. Each run's log and `status.json` name the service, and the run still
-  counts as complete.
+  counts as complete. So does a script that writes nothing named after its service on a run (e.g.
+  `sqlserver` with no databases chosen for the instance).
 
 The script's contract:
 
@@ -193,11 +195,15 @@ The script's contract:
 - It works with the instance running, and changes nothing it backs up.
 - Progress and errors go to stderr; it never prints a secret or row contents.
 - It exits non-zero on any failure. One failing script fails the run, but the others still run.
-- The image holds the client tools (`mysqldump`, `7z`, `jq`, ...); a new kind of database adds its
+- The image holds the client tools (`mysqldump`, `sqlite3`, `mongodump`, `sqlcmd`, `7z`, `jq`, ...);
+  a restore overlay can run it too (`${PIHX_IMAGE_BACKUP_TOOLS}`). A new kind of database adds its
   client to [`images/backup-tools`](../images/backup-tools), which is a new image tag.
 
-[`openmrs-db`](../services/openmrs-db/scripts/backup.sh) and
-[`openmrs`](../services/openmrs/scripts/backup.sh) are the examples, with their `with-backups.yaml`.
+[`openmrs-db`](../services/openmrs-db/scripts/backup.sh) (a dump),
+[`openmrs`](../services/openmrs/scripts/backup.sh) (files),
+[`openhim`](../services/openhim/scripts/backup.sh) (a dump over the network) and
+[`sqlserver`](../services/sqlserver/scripts/backup.sh) (opt-in per instance) are the examples, with
+their `with-backups.yaml` and `restore/` overlays.
 
 ### Summary and commands
 
