@@ -27,8 +27,8 @@ hostname is fixed and the identity Neurotechnology's library keeps in `/var/tmp`
 `biometrics-licensing` volume. Losing that volume, or moving the instance to another host, makes it a
 new machine: it can't get the license until the old activation expires (about 30–40 minutes).
 The `biometrics-data` volume holds the fingerprint templates (`biometrics.db`, SQLite), which are
-patient data. With the [backups](../backups/README.md) service, each run dumps it into
-`biometrics.sql.7z`, and `initialize --from` restores that into a new instance
+patient data. With the [backups](../backups/README.md) service, each run copies it, while the server
+runs, into `biometrics.db.7z`, and `initialize --from` restores that into a new instance
 ([Backups](../../docs/backups.md)); `biometrics-licensing` isn't backed up, so a restored instance
 activates the license as a new machine. `BIOMETRICS_DATA_OWNER` (default `9000:9000`, the image's
 user) owns the restored files. `pihx <name> summary` prints `[biometrics]`, each table's row count,

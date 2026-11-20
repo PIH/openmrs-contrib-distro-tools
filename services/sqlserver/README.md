@@ -59,9 +59,12 @@ source), so nothing is backed up unless the instance chooses: `SQLSERVER_BACKUP_
 databases, and with the [backups](../backups/README.md) service each run puts a full `COPY_ONLY`
 backup of each, `<db>.bak`, into `sqlserver.7z`. SQL Server writes each `.bak` into `sqlserver-data`
 (`.backup-staging`), unencrypted beside the database's own files, until it's archived, then it's
-deleted. `initialize --from` restores each `.bak` as the database it's named after, and on the first
-start `sqlserver-setup` creates the declared logins and remaps the restored databases' users to them
-([Backups](../../docs/backups.md)). With none chosen, each run names `sqlserver` as not backed up.
+deleted; the backup first checks there's room for the `.bak` files and their archive (twice the
+databases' used space, plus 10%). `initialize --from` restores each `.bak` as the database it's
+named after, and on the first start `sqlserver-setup` creates the declared logins and remaps the
+restored user named after each to it, in that login's databases; other restored users keep the
+source's logins until they're declared too ([Backups](../../docs/backups.md)). Give the restored
+instance the source's `SQLSERVER_BACKUP_DATABASES` too. With none chosen, each run names `sqlserver` as not backed up.
 `pihx <name> summary` prints `[sqlserver]`, each table's row count in the chosen databases, to
 compare a restore with its source (stopped, it starts a throwaway server on the volume, which takes a
 minute or so).

@@ -2,8 +2,8 @@
 # `pihx <instance> summary`: the [openhim] section, each collection's document count in OpenHIM's
 # openhim database and the newest transaction's time. From the running mongo-db if there is one;
 # otherwise from the stopped instance's mongo-data volume, with a throwaway mongod of the instance's
-# own image (no network), e.g. right after `initialize`. Run through pihx, which sets the
-# environment (pihx/script.py).
+# own image (no network), e.g. right after `initialize`, stopped cleanly after. Run through pihx,
+# which sets the environment (pihx/script.py).
 set -euo pipefail
 QUERY='
 db.getCollectionNames().forEach(c => print("documents " + c + " " + db.getCollection(c).countDocuments({})));
@@ -26,8 +26,15 @@ docker volume inspect "$volume" >/dev/null 2>&1 || {
     exit 1
 }
 temp="$SERVICE_NAME-summary-mongo-db"
-docker rm -f "$temp" >/dev/null 2>&1 || true
-trap 'docker rm -f "$temp" >/dev/null 2>&1 || true' EXIT
+# Stopped gracefully (mongod shuts down cleanly on SIGTERM), so the real start that follows needs no
+# crash recovery; one left by an interrupted summary first.
+stop_temp() { docker stop -t 60 "$temp" >/dev/null 2>&1 || true; docker rm -f "$temp" >/dev/null 2>&1 || true; }
+stop_temp
+if [ -n "$(docker ps -q --filter "volume=$volume")" ]; then
+    echo "error: a container is using $volume -- two servers on one data directory corrupt it" >&2
+    exit 1
+fi
+trap stop_temp EXIT
 docker run -d --name "$temp" --network none --mount "type=volume,source=$volume,target=/data/db" \
     "$OPENHIM_MONGO_IMAGE_NAME:$OPENHIM_MONGO_IMAGE_TAG" \
     --bind_ip 127.0.0.1 --wiredTigerCacheSizeGB "${OPENHIM_MONGO_CACHE_SIZE_GB:-0.25}" >/dev/null

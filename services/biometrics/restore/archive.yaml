@@ -1,8 +1,8 @@
-# initialize, biometrics.sql.7z or biometrics.sql (as its backup writes, docs/backups.md): loads the
-# dump into a new biometrics.db in biometrics-data, owned by the user the image runs as
+# initialize, biometrics.db.7z or biometrics.db (as its backup writes, docs/backups.md): the database
+# into a new biometrics-data, once SQLite's check passes, owned by the user the image runs as
 # (BIOMETRICS_DATA_OWNER, default pih-biometrics' 9000:9000). In the backup-tools image, which has
-# 7-Zip and sqlite3. The database is built under another name and renamed last, so a failed load
-# leaves no biometrics.db.
+# 7-Zip and sqlite3. It's checked and renamed into place last, so a failed restore leaves no
+# biometrics.db.
 
 services:
   restore-biometrics:
@@ -30,15 +30,19 @@ services:
         STAGING=/target/.restore-staging
         case "$$ENTRY" in
             *.7z) sh /extract.sh "/source/$$ENTRY" "$$STAGING"
-                  DUMP=$$(find "$$STAGING" -type f)
-                  if [ -z "$$DUMP" ] || [ "$$(echo "$$DUMP" | wc -l)" -ne 1 ]; then
-                      echo "error: $$ENTRY must contain exactly one dump file" >&2
+                  if [ "$$(find "$$STAGING" -type f)" != "$$STAGING/biometrics.db" ]; then
+                      echo "error: $$ENTRY must contain just biometrics.db" >&2
                       exit 1
                   fi ;;
-            *) DUMP="/source/$$ENTRY" ;;
+            *) mkdir -p "$$STAGING"
+               cp "/source/$$ENTRY" "$$STAGING/biometrics.db" ;;
         esac
-        echo "biometrics: loading $$ENTRY into biometrics.db" >&2
-        sqlite3 -bail /target/.restore.db < "$$DUMP"
-        mv /target/.restore.db /target/biometrics.db
+        echo "biometrics: restoring $$ENTRY as biometrics.db" >&2
+        check=$$(sqlite3 -bail "$$STAGING/biometrics.db" "PRAGMA quick_check")
+        if [ "$$check" != ok ]; then
+            echo "error: $$ENTRY fails SQLite's check: $$check" >&2
+            exit 1
+        fi
+        mv "$$STAGING/biometrics.db" /target/biometrics.db
         rm -rf /target/.restore-staging
         chown -R "$$OWNER" /target

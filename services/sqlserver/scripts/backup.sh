@@ -23,6 +23,28 @@ for db in "${databases[@]}"; do
     fi
 done
 
+# Room for the .bak files and, beside them, their archive (the volumes share Docker's disk): twice the
+# space the chosen databases' data uses, plus 10%. The run's own check (backup.sh) counts only the
+# newest run's archives, not this uncompressed staging, so a large database could otherwise fill the
+# disk under the running servers.
+used_kb=0
+for db in "${databases[@]}"; do
+    # The pages its tables and indexes use (by name, not USE: go-sqlcmd prints USE's message).
+    kb=$(sqlcmd -S sqlserver -U sa -C -b -h -1 -W -Q "SET NOCOUNT ON;
+        SELECT SUM(CAST(used_pages AS bigint)) * 8 FROM [$db].sys.allocation_units")
+    if [[ ! "$kb" =~ ^[0-9]+$ ]]; then
+        echo "error: sqlserver: couldn't read the size of $db (does it exist?)" >&2
+        exit 1
+    fi
+    used_kb=$((used_kb + kb))
+done
+needed_kb=$((used_kb * 2 + used_kb / 5))
+free_kb=$(df -Pk /sources/sqlserver-data | awk 'NR == 2 { print $4 }')
+if [ "$free_kb" -lt "$needed_kb" ]; then
+    echo "error: sqlserver: not enough free space for the backup: the chosen databases' data is ${used_kb} KB, which needs ${needed_kb} KB free (the .bak files and their archive), and ${free_kb} KB is free" >&2
+    exit 1
+fi
+
 LOCAL=/sources/sqlserver-data/.backup-staging   # here
 SERVER=/var/opt/mssql/.backup-staging           # the same directory, as the server sees it
 cleanup() { rm -rf "$LOCAL"; }

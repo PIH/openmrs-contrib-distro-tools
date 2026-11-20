@@ -34,46 +34,91 @@ run_files() { ls "$1"; }
 
 # --- biometrics -------------------------------------------------------------------------------------
 
-@test "biometrics: the SQLite database is dumped consistently, even in WAL mode, and restores with initialize" {
-    # The source: an instance with biometrics, whose volume holds a database in WAL mode (as
-    # Neurotechnology's library may keep it), owned by the image's user, with a blob like a template.
+# The biometrics backup script as the backups container runs it (with-backups.yaml): the volume
+# read-write, the script mounted. Extra docker args first, ending in --.
+biometrics_backup() { # <volume> [docker run args...] --
+    local vol=$1; shift
+    local args=()
+    while [ "$1" != -- ]; do args+=("$1"); shift; done
+    docker run --rm -v "$vol:/sources/biometrics-data" -v "$BATS_TEST_TMPDIR/out:/run-dir" \
+        -v "$REPO_ROOT/services/biometrics/scripts/backup.sh:/backup.sh:ro" \
+        -e BACKUP_RUN_DIR=/run-dir -e ARCHIVE_PASSWORD="$PW" ${args[@]+"${args[@]}"} \
+        --entrypoint bash "$IMAGE" /backup.sh
+}
+
+# A volume holding biometrics.db in <journal mode> (default WAL, as Neurotechnology's library may
+# keep it), with a user_version and a blob like a template, owned by the image's user.
+make_biometrics_volume() { # <volume> [journal mode]
+    docker volume create "$1" >/dev/null
+    docker run --rm -v "$1:/d" --entrypoint bash "$IMAGE" -c \
+        "sqlite3 /d/biometrics.db \"PRAGMA journal_mode=${2:-WAL}; PRAGMA user_version=7;
+         CREATE TABLE subjects(id TEXT PRIMARY KEY, template BLOB);
+         INSERT INTO subjects VALUES ('p1', x'00ff10'), ('p2', randomblob(64));\" >/dev/null; chown -R 9000:9000 /d"
+}
+
+@test "biometrics: the SQLite database is copied whole while the server runs, and restores with initialize" {
     BIOMETRICS_LICENSE_BASE64=QUJDRA== "$BIN/pihx" "$NAME" create --services=biometrics >/dev/null
     local vol="${NAME}_biometrics-data"
-    docker volume create "$vol" >/dev/null
-    docker run --rm -v "$vol:/d" --entrypoint bash "$IMAGE" -c \
-        "sqlite3 /d/biometrics.db \"PRAGMA journal_mode=WAL; CREATE TABLE subjects(id TEXT PRIMARY KEY, template BLOB);
-         INSERT INTO subjects VALUES ('p1', x'00ff10'), ('p2', randomblob(64));\" >/dev/null; chown -R 9000:9000 /d"
+    make_biometrics_volume "$vol"
     "$BIN/pihx" "$NAME" summary --output=before.txt
     run cat before.txt
     assert_output $'[biometrics]\nrows subjects 2'
     mkdir out
-    # As the backups container runs it (with-backups.yaml): the volume read-write, the script mounted.
-    run docker run --rm -v "$vol:/sources/biometrics-data" -v "$BATS_TEST_TMPDIR/out:/run-dir" \
-        -v "$REPO_ROOT/services/biometrics/scripts/backup.sh:/backup.sh:ro" \
-        -e BACKUP_RUN_DIR=/run-dir -e ARCHIVE_PASSWORD="$PW" --entrypoint bash "$IMAGE" /backup.sh
+    run biometrics_backup "$vol" --
     assert_success
-    assert_output 'biometrics: dumping /sources/biometrics-data/biometrics.db'
+    assert_output 'biometrics: copying /sources/biometrics-data/biometrics.db'
+    refute_output --partial "$PW"
     run ls out
-    assert_output biometrics.sql.7z
+    assert_output biometrics.db.7z
 
     BIOMETRICS_LICENSE_BASE64=QUJDRA== "$BIN/pihx" "$RESTORED" create --services=biometrics >/dev/null
     ARCHIVE_PASSWORD="$PW" run timeout 300 "$BIN/pihx" "$RESTORED" initialize --from out
     assert_success
-    assert_output --partial 'biometrics: loading biometrics.sql.7z into biometrics.db'
+    assert_output --partial 'biometrics: restoring biometrics.db.7z as biometrics.db'
+    # The copy is the database as it was, settings included.
     run docker run --rm -v "${RESTORED}_biometrics-data:/d" --entrypoint bash "$IMAGE" -c \
-        'sqlite3 /d/biometrics.db "SELECT id, hex(template), length(template) FROM subjects ORDER BY id"; stat -c "%u:%g %n" /d /d/biometrics.db; ls -A /d'
+        'sqlite3 /d/biometrics.db "PRAGMA user_version; PRAGMA journal_mode; SELECT id, hex(template), length(template) FROM subjects ORDER BY id"; stat -c "%u:%g %n" /d /d/biometrics.db; ls -A /d'
+    assert_line --index 0 7
+    assert_line --index 1 wal
+    assert_line --index 2 'p1|00FF10|3'
+    assert_line --index 3 --regexp '^p2\|[0-9A-F]{128}\|64$'
     assert_line '9000:9000 /d'
     assert_line '9000:9000 /d/biometrics.db'
-    assert_line --index 0 'p1|00FF10|3'
-    assert_line --index 1 --regexp '^p2\|[0-9A-F]{128}\|64$'
     refute_output --partial '.restore'
     # The restored instance summarizes as the source did.
     "$BIN/pihx" "$RESTORED" summary --output=after.txt
     run diff before.txt after.txt
     assert_success
-    # Nothing the backup or the summaries read was left owned by root.
-    run docker run --rm -v "$vol:/d" --entrypoint find "$IMAGE" /d -not -user 9000
+    # The staging copy is gone, and nothing the backup or the summaries touched is root's.
+    run docker run --rm -v "$vol:/d" --entrypoint find "$IMAGE" /d -mindepth 1 \( -name '.backup-staging' -o -not -user 9000 \)
     assert_output ''
+}
+
+@test "biometrics: the copy waits for a writer's lock, and fails, writing nothing, when it's held too long" {
+    local vol
+    vol="$(res biometrics-data)"
+    # Rollback-journal mode, SQLite's default, where a writer blocks readers (in WAL it doesn't).
+    make_biometrics_volume "$vol" DELETE
+    mkdir out
+    # A writer holding an exclusive lock for 4 seconds, as the server would during an enrollment.
+    docker run -d --name "$(res writer)" -v "$vol:/d" --user 9000:9000 --entrypoint sqlite3 "$IMAGE" \
+        /d/biometrics.db "BEGIN EXCLUSIVE;" "INSERT INTO subjects VALUES ('p3', x'01');" ".shell sleep 4" "COMMIT;" >/dev/null
+    sleep 1
+    run biometrics_backup "$vol" -e BIOMETRICS_BACKUP_LOCK_TIMEOUT_MS=500 --
+    assert_failure
+    assert_output --partial 'database is locked'
+    run ls out
+    assert_output ''
+    # Waiting long enough, it copies the writer's committed row too.
+    docker wait "$(res writer)" >/dev/null
+    docker run -d --name "$(res writer2)" -v "$vol:/d" --user 9000:9000 --entrypoint sqlite3 "$IMAGE" \
+        /d/biometrics.db "BEGIN EXCLUSIVE;" "INSERT INTO subjects VALUES ('p4', x'02');" ".shell sleep 3" "COMMIT;" >/dev/null
+    sleep 1
+    run biometrics_backup "$vol" --
+    assert_success
+    run docker run --rm -v "$BATS_TEST_TMPDIR/out:/o" --entrypoint bash "$IMAGE" -c \
+        "cd /tmp && printf '%s\n' '$PW' | 7z x /o/biometrics.db.7z >/dev/null && sqlite3 biometrics.db 'SELECT id FROM subjects ORDER BY id'"
+    assert_output --partial 'p4'
 }
 
 @test "biometrics: a server that hasn't created its database writes nothing" {
@@ -150,7 +195,7 @@ sqlcmd_in() { # <name> <query>
 }
 
 create_sqlserver() { # <name> <services>
-    SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 SQLSERVER_DATABASES='d1 d2' \
+    SQLSERVER_SA_PASSWORD="$SA" SQLSERVER_PUBLISHED_PORT=0 SQLSERVER_DATABASES='d1 d2 d3' \
         "$BIN/pihx" "$1" create --services="$2" >/dev/null
 }
 
@@ -159,6 +204,10 @@ create_sqlserver() { # <name> <services>
     timeout 600 "$BIN/pihx" "$NAME" start >/dev/null 2>&1
     timeout 300 "$BIN/pihx" "$NAME" wait >/dev/null 2>&1
     sqlcmd_in "$NAME" "USE d1; CREATE TABLE t (id INT, name NVARCHAR(20)); INSERT INTO t VALUES (1, N'drill');"
+    # More than one data file, with logical names that differ only in punctuation.
+    sqlcmd_in "$NAME" "ALTER DATABASE d1 ADD FILE (NAME = N'more-data', FILENAME = '/var/opt/mssql/data/d1_more1.ndf');
+                       ALTER DATABASE d1 ADD FILE (NAME = N'more_data', FILENAME = '/var/opt/mssql/data/d1_more2.ndf');"
+    sqlcmd_in "$NAME" "USE d2; CREATE TABLE u (id INT); INSERT INTO u VALUES (1), (2);"
 
     # No database chosen: sqlserver is reported not backed up (and, as the only service, the run fails).
     run "$BIN/pihx" "$NAME" backup
@@ -168,11 +217,12 @@ create_sqlserver() { # <name> <services>
     run "$BIN/pihx" "$NAME" list-backups
     assert_output --partial 'Not backed up: sqlserver'
 
-    set_env_value "$NAME" sqlserver SQLSERVER_BACKUP_DATABASES d1
+    set_env_value "$NAME" sqlserver SQLSERVER_BACKUP_DATABASES 'd1 d2'
     timeout 600 "$BIN/pihx" "$NAME" start >/dev/null 2>&1
     run "$BIN/pihx" "$NAME" backup
     assert_success
     assert_output --partial 'sqlserver: backing up d1'
+    assert_output --partial 'sqlserver: backing up d2'
     assert_output --partial 'sqlserver: done'
     refute_output --partial "$SA"
     # The .bak is gone from the server's volume once archived.
@@ -182,16 +232,17 @@ create_sqlserver() { # <name> <services>
     assert_success
     run run_files out
     assert_output $'backup.log\nsqlserver.7z'
-    # From the running server: only the chosen database.
+    # From the running server: only the chosen databases.
     "$BIN/pihx" "$NAME" summary --output=before.txt
     run cat before.txt
-    assert_output $'[sqlserver]\nrows d1.dbo.t 1'
+    assert_output $'[sqlserver]\nrows d1.dbo.t 1\nrows d2.dbo.u 2'
 
     create_sqlserver "$RESTORED" sqlserver
-    set_env_value "$RESTORED" sqlserver SQLSERVER_BACKUP_DATABASES d1
+    set_env_value "$RESTORED" sqlserver SQLSERVER_BACKUP_DATABASES 'd1 d2'
     ARCHIVE_PASSWORD="$PW" run timeout 600 "$BIN/pihx" "$RESTORED" initialize --from out
     assert_success
     assert_output --partial 'sqlserver: restoring d1'
+    assert_output --partial 'sqlserver: restoring d2'
     # Stopped: from a throwaway server on the restored volume, which it removes again.
     run timeout 300 "$BIN/pihx" "$RESTORED" summary --output=after.txt
     assert_success
@@ -203,8 +254,10 @@ create_sqlserver() { # <name> <services>
     timeout 300 "$BIN/pihx" "$RESTORED" wait >/dev/null 2>&1
     run sqlcmd_in "$RESTORED" "SELECT name FROM d1.dbo.t WHERE id = 1"
     assert_output drill
-    # d2 wasn't chosen: sqlserver-setup created it empty on the first start.
-    run sqlcmd_in "$RESTORED" "SELECT COUNT(*) FROM d2.sys.tables"
+    run sqlcmd_in "$RESTORED" "SELECT COUNT(*) FROM d1.sys.database_files"
+    assert_output 4
+    # d3 wasn't chosen: sqlserver-setup created it empty on the first start.
+    run sqlcmd_in "$RESTORED" "SELECT COUNT(*) FROM d3.sys.tables"
     assert_output 0
     run docker exec "$RESTORED-sqlserver" ls -A /var/opt/mssql
     refute_output --partial '.restore-staging'

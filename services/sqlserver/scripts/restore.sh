@@ -4,8 +4,9 @@
 # backup-tools image). sqlserver-data is mounted here at /var/opt/mssql, where the server has it, so
 # a .bak extracted there is a path the server can read; the database's files go to its data
 # directory, /var/opt/mssql/data. The logins come on the first start: sqlserver-setup creates the
-# declared ones and remaps each restored database's users to them. Needs ARCHIVE_PASSWORD (if the
-# archive has one), SQLCMDPASSWORD (sa's) and ENTRY (the archive's name under /source).
+# declared ones and remaps the restored user named after each to it, in that login's databases.
+# Needs ARCHIVE_PASSWORD (if the archive has one), SQLCMDPASSWORD (sa's) and ENTRY (the archive's
+# name under /source).
 set -euo pipefail
 : "${SQLCMDPASSWORD:?}" "${ENTRY:?}"
 STAGING=/var/opt/mssql/.restore-staging
@@ -29,13 +30,25 @@ for bak in "${baks[@]}"; do
         exit 1
     fi
     echo "sqlserver: restoring $db" >&2
-    # Each of the backup's files (data, log, ...) moved into this server's data directory, named
-    # after the database and the file's logical name.
+    # Each of the backup's files moved into this server's data directory, named after the database
+    # and the file's id (unique within the database, where logical names may differ only in
+    # punctuation): data (D) as .mdf for the primary file and .ndf for others, the log (L) as .ldf,
+    # and a FILESTREAM or memory-optimized container (S) or full-text catalog (F), which is a
+    # directory, with no extension. FILELISTONLY's columns: LogicalName, PhysicalName, Type,
+    # FileGroupName, Size, MaxSize, FileId, ...
     moves=()
-    while IFS='|' read -r logical _physical type _rest; do
+    while IFS='|' read -r logical _physical type _group _size _max file_id _rest; do
         [ -n "$logical" ] || continue
-        case "$type" in L) ext=ldf ;; *) ext=mdf ;; esac
-        moves+=("MOVE N'${logical//\'/\'\'}' TO N'/var/opt/mssql/data/${db}_${logical//[^A-Za-z0-9_]/_}.$ext'")
+        if [[ ! "$file_id" =~ ^[0-9]+$ ]]; then
+            echo "error: couldn't read the files of $(basename "$bak")" >&2
+            exit 1
+        fi
+        target="/var/opt/mssql/data/${db}_${file_id}"
+        case "$type" in
+            D) if [ "$file_id" = 1 ]; then target+=.mdf; else target+=.ndf; fi ;;
+            L) target+=.ldf ;;
+        esac
+        moves+=("MOVE N'${logical//\'/\'\'}' TO N'$target'")
     done < <(q "RESTORE FILELISTONLY FROM DISK = N'$bak'")
     if [ ${#moves[@]} -eq 0 ]; then
         echo "error: couldn't read the files of $(basename "$bak")" >&2

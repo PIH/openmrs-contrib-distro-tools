@@ -174,7 +174,8 @@ empty, as when the script fails, so `config` shows the fail-closed default.
 ## One command at a time
 
 Every command that changes an instance (`initialize`, `start`, `stop`, `restart`, `update`, `pull`,
-`add-service`, `remove-service`, `use-tools`, `archive`, `destroy`, `backup`, `upload-backups`, a job's
+`add-service`, `remove-service`, `use-tools`, `archive`, `destroy`, `backup`, `upload-backups`, `summary`
+(which may start a server on a stopped instance's volume), a job's
 `run-service` and a service's commands unless they say `# pihx: no-lock`) holds a lock on it until it exits, and refuses to run while another
 command holds it, naming that command:
 

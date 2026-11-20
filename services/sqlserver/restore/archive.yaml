@@ -1,7 +1,7 @@
 # initialize, sqlserver.7z (as its backup writes, docs/backups.md): restores each <db>.bak in it into
 # the new server once it's healthy (scripts/restore.sh), from the backup-tools image (which has 7-Zip
 # and sqlcmd). sqlserver-setup isn't started: it runs on the first start, and remaps the restored
-# databases' users to the declared logins.
+# user named after each declared login to it.
 
 services:
   restore-sqlserver:

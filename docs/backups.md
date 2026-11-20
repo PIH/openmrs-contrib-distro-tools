@@ -49,16 +49,17 @@ Its settings are in `backups.env`; they're listed in its [README](../services/ba
   one are deleted too. `BACKUP_KEEP_LOCAL=all` deletes nothing.
 - **Disk space.** A run needs the size of the newest complete run (1 GiB before the first) plus
   `BACKUP_MIN_FREE` (default 2G) free in the volume, which shares the disk with the database, or it
-  fails before any script runs.
+  fails before any script runs. `sqlserver`'s backup also checks, before it starts, for room for its
+  uncompressed `.bak` files beside their archive (twice the chosen databases' used space, plus 10%).
 - **Encryption.** Every archive is 7-Zip, encrypted with `BACKUP_ARCHIVE_PASSWORD`. The dumps
-  (`openmrs-db`, `biometrics`, `openhim`) stream straight into their archives, so they're never on
-  disk unencrypted. Their password is on 7-Zip's command line while each dump runs (the dump is on
-  its standard input), and a container's processes show in the host's process list: any user on the
-  host can read it with `ps` for those minutes. 7-Zip has no other way to take a password with the
-  data on standard input (it reads part of the data with the password, and a named pipe is stored as
-  a pipe, not read). For the archives made from files (`openmrs`'s data directory, `sqlserver`'s
-  `.bak` files) the password goes on standard input. Mounting the host's `/proc` with `hidepid=2`
-  hides other users' processes.
+  (`openmrs-db`, `openhim`) stream straight into their archives, so they're never on disk
+  unencrypted. Their password is on 7-Zip's command line while each dump runs (the dump is on its
+  standard input), and a container's processes show in the host's process list: any user on the host
+  can read it with `ps` for those minutes. 7-Zip has no other way to take a password with the data on
+  standard input (it reads part of the data with the password, and a named pipe is stored as a pipe,
+  not read). For the archives made from files (`openmrs`'s data directory, `biometrics`' copy,
+  `sqlserver`'s `.bak` files) the password goes on standard input. Mounting the host's `/proc` with
+  `hidepid=2` hides other users' processes.
 - **Status.** `status.json`, at the root of the volume, holds for each job its last attempt, last
   result, last error and last success; the services not backed up; and the runs and bytes waiting to
   upload. It's for monitoring to read (TASKS-603). `pihx <name> list-backups` shows it.
@@ -72,7 +73,7 @@ Each service's manifest says what happens to its data (its `backup` field,
 |---|---|
 | `openmrs-db` | `openmrs-db.sql.7z`: a single-transaction `mysqldump` of the `openmrs` database, as root, with routines and triggers |
 | `openmrs` | `openmrs.7z`: the `openmrs-data` volume as one directory, `openmrs/`, without the distribution artifacts (the contents of `modules/`, `owa/`, `configuration/` and `frontend/`, and `.openmrs-lib-cache`, which the image puts back on every start) and without the paths in `OPENMRS_DATA_BACKUP_EXCLUDES`. Taken with OpenMRS running |
-| `biometrics` | `biometrics.sql.7z`: the fingerprint templates' SQLite database, `biometrics.db`, as SQL (`sqlite3 .dump`, one read transaction, so consistent while the server writes). Not `biometrics-licensing`: the license's machine identity, which belongs to the host |
+| `biometrics` | `biometrics.db.7z`: the fingerprint templates' SQLite database, `biometrics.db`, copied whole with SQLite's online backup while the server runs (it waits for a writer's lock, up to a minute, and holds a read lock only for the local copy). The copy is staged in `.backup-staging` beside the database until it's archived. Not `biometrics-licensing`: the license's machine identity, which belongs to the host |
 | `openhim` | `openhim.archive.7z`: a `mongodump` archive of the `openhim` database, which is the transaction log, audit events and metrics. Its configuration is rebuilt on every start (`openhim-setup`, and each mediator provisions its channels and clients), so restoring it only brings back that history |
 | `sqlserver` | `sqlserver.7z`: a `<db>.bak` (full, `COPY_ONLY`) of each database in `SQLSERVER_BACKUP_DATABASES`, which is empty by default: what an instance keeps there is usually rebuilt (e.g. by PETL), so it's chosen per instance. With none chosen, each run names `sqlserver` as not backed up |
 | `petl`, `openmrs-smoke-tests`, `openhim-advapacs-mediator`, `modality-simulator`, `advapacs-gateway` | nothing to back up (each manifest says why; `advapacs-gateway` holds only its upload queue, and its configuration is in AdvaPACS) |
@@ -153,8 +154,12 @@ a throwaway server of the instance's image on the volume (a minute or so for SQL
   can take until the old activation expires (about 30–40 minutes; [biometrics](../services/biometrics/README.md)).
 - **openhim**: the restored database has the source's admin account, so `openhim-setup` succeeds on
   the first start only if the instance's `OPENHIM_PASSWORD` is the source's.
-- **sqlserver**: each `.bak` restores as the database it's named after; `sqlserver-setup` creates the
-  declared logins and remaps the restored databases' users to them on the first start.
+- **sqlserver**: each `.bak` restores as the database it's named after. On the first start
+  `sqlserver-setup` creates the declared logins, and in each login's databases remaps the restored
+  user of the same name to it; other users in a restored database keep the source server's logins,
+  which don't exist here, until they're declared too. Give the restored instance the source's
+  `SQLSERVER_BACKUP_DATABASES` as well, or its summary has no `[sqlserver]` section and it stops
+  backing those databases up.
 
 `destroy` keeps the instance's backups volume, and doesn't archive it, unless it's given
 `--include-backups` ([Archive and destroy](instances.md#archive-and-destroy)); `archive` leaves it out.

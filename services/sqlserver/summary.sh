@@ -3,9 +3,10 @@
 # backups service backs up (SQLSERVER_BACKUP_DATABASES; none, nothing is printed: the others are
 # usually rebuilt, so comparing them says nothing about a restore). From the running server if there
 # is one; otherwise from the stopped instance's sqlserver-data volume, with a throwaway server of the
-# instance's own image (publishing nothing; a minute or so to start), e.g. right after `initialize`.
-# sa's password goes by name (SQLCMDPASSWORD, MSSQL_SA_PASSWORD), never on a command line. Run
-# through pihx, which sets the environment (pihx/script.py).
+# instance's own image (on an internal network; a minute or so to start), e.g. right after
+# `initialize`, shut down cleanly after. sa's password goes by name (SQLCMDPASSWORD,
+# MSSQL_SA_PASSWORD), never on a command line. Run through pihx, which sets the environment
+# (pihx/script.py).
 set -euo pipefail
 read -r -a databases <<< "${SQLSERVER_BACKUP_DATABASES:-}"
 [ ${#databases[@]} -gt 0 ] || exit 0
@@ -45,10 +46,27 @@ docker volume inspect "$volume" >/dev/null 2>&1 || {
     exit 1
 }
 temp="$SERVICE_NAME-summary-sqlserver"
-docker rm -f "$temp" >/dev/null 2>&1 || true
-trap 'docker rm -f "$temp" >/dev/null 2>&1 || true' EXIT
-# Docker's default network, publishing nothing: with --network none, each login takes minutes.
-docker run -d --name "$temp" -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD \
+# On a network of its own that reaches nothing (--internal), publishing nothing: with --network none,
+# each login takes minutes.
+network="$SERVICE_NAME-summary"
+# Shut down cleanly (SQL Server ignores SIGTERM, so `docker stop` alone kills it after its timeout),
+# so the real start that follows needs no crash recovery; one left by an interrupted summary first.
+stop_temp() {
+    sql "$temp" "SHUTDOWN" >/dev/null 2>&1 || true
+    docker stop -t 60 "$temp" >/dev/null 2>&1 || true
+    docker rm -f "$temp" >/dev/null 2>&1 || true
+    docker network rm "$network" >/dev/null 2>&1 || true
+}
+stop_temp
+if [ -n "$(docker ps -q --filter "volume=$volume")" ]; then
+    echo "error: a container is using $volume -- two servers on one data directory corrupt it" >&2
+    exit 1
+fi
+trap stop_temp EXIT
+docker network create --internal "$network" >/dev/null
+# The instance's own memory settings, as compose.yaml gives the real server.
+docker run -d --name "$temp" --network "$network" -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD \
+    -e MSSQL_MEMORY_LIMIT_MB="${SQLSERVER_MEMORY_MB:-2048}" --memory "${SQLSERVER_MEMORY_LIMIT:-3g}" \
     --mount "type=volume,source=$volume,target=/var/opt/mssql" \
     "mcr.microsoft.com/mssql/server:$SQLSERVER_IMAGE_TAG" >/dev/null
 # Ready once it takes logins and the chosen databases have recovered (it takes logins first).

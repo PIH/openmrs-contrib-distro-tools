@@ -267,7 +267,7 @@ class ServiceTreeTest(unittest.TestCase):
                 (["openmrs.7z", "openmrs.tar.gz", "openmrs.tgz", "openmrs.tar", "openmrs.zip"],
                  "restore/archive.yaml", None),
                 (["openmrs/"], "restore/directory.yaml", None)],
-            "biometrics": [(["biometrics.sql.7z", "biometrics.sql"], "restore/dump.yaml", None)],
+            "biometrics": [(["biometrics.db.7z", "biometrics.db"], "restore/archive.yaml", None)],
             "openhim": [(["openhim.archive.7z", "openhim.archive"], "restore/archive.yaml", None)],
             "sqlserver": [(["sqlserver.7z"], "restore/archive.yaml", None)]})
         for name, svc in SERVICES.items():
