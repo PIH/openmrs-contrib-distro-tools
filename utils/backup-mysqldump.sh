@@ -45,10 +45,11 @@ prepare_output_file "$OUTPUT"
 mysql_password
 mysql_connect "$DB_PASSWORD"
 
-# --single-transaction: a consistent snapshot, without locking tables. --flush-logs: starts a new
-# binlog, a clean point for purging the older ones.
+# shellcheck source=lib/in-container/mysqldump-options.sh
+. "$UTILS_DIR/lib/in-container/mysqldump-options.sh"
 dump() {
-    mysql_dump --single-transaction --flush-logs --routines --triggers "$DATABASE" |
+    # shellcheck disable=SC2086 # options are a word-split list
+    mysql_dump $MYSQLDUMP_BACKUP_OPTIONS "$DATABASE" |
         if $STRIP_DEFINERS; then strip_definers; else cat; fi
 }
 

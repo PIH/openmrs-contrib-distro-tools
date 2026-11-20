@@ -80,23 +80,9 @@ for path in ${EXCLUDE_PATHS[@]+"${EXCLUDE_PATHS[@]}"}; do
     EXCLUDES+=("$TOP/$path")
 done
 
-# Paths relative to the source, as find prints them under /s. Left-out directories are skipped whole,
-# though the four distribution directories themselves are kept, empty. A link's target is judged by its
-# text alone, from the link's directory (so one dangling is fine; one reaching .. through another link
-# is judged as written).
-LINKS=$(docker run --rm -v "$VOLUME:/s:ro" "$ALPINE_IMAGE" sh -c '
-    cd /s && for d in "$@"; do set -- "$@" -path "./$d" -prune -o; shift; done
-    find . "$@" -type l -exec sh -c "for l; do printf \"%s\t%s\n\" \"\${l#./}\" \"\$(readlink \"\$l\")\"; done" sh {} + |
-    awk -F "\t" "{
-        out = (substr(\$2, 1, 1) == \"/\")
-        depth = split(\$1, parts, \"/\") - 1
-        n = split(\$2, parts, \"/\")
-        for (i = 1; i <= n && !out; i++)
-            if (parts[i] == \"..\") out = (--depth < 0)
-            else if (parts[i] != \".\" && parts[i] != \"\") depth++
-        if (out) print \$1 \" -> \" \$2
-    }"
-' sh ${LEAVE_OUT[@]+"${LEAVE_OUT[@]}"})
+# Left-out directories are skipped whole, though the four distribution directories themselves are kept, empty.
+LINKS=$(docker run --rm -v "$VOLUME:/s:ro" -v "$UTILS_DIR/lib/in-container/outside-links.sh:/outside-links.sh:ro" \
+    "$ALPINE_IMAGE" sh /outside-links.sh /s ${LEAVE_OUT[@]+"${LEAVE_OUT[@]}"})
 [ -z "$LINKS" ] || die "symbolic links pointing outside $VOLUME, which a backup can't carry over (delete the ones not needed, leave them out with --exclude, or replace them with what they point to):
 $LINKS"
 

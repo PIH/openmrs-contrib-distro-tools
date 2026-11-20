@@ -6,7 +6,7 @@ capture-env: [OMRS_EXTRA_]
 start-env:
   - script: start/create-tables
     sets: [OPENMRS_DB_FOUND_EMPTY]
-backup: none
+backup: scripts/backup.sh
 # initialize: openmrs-data from an archive or a directory named after the service (restore/*.yaml).
 restore:
   - names: [openmrs.7z, openmrs.tar.gz, openmrs.tgz, openmrs.tar, openmrs.zip]

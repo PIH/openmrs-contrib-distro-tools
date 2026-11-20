@@ -32,7 +32,8 @@ The policy, and how to change it, is in [Dependencies](docs/development.md#depen
 
 - `pihx/` is product-neutral: no product names, no `if service == ...`. What a service needs goes in
   its own `services/<svc>/` ([Writing a service](docs/services.md#writing-a-service)); OpenMRS
-  specifics go in `openmrs/`.
+  specifics go in `openmrs/`. The one exception is the `backups` service
+  ([Code layout](docs/development.md#code-layout)).
 - `utils/` and the scripts under `services/` stay Bash.
 
 ## Tests

@@ -2,7 +2,8 @@
 
 The OpenMRS database: MySQL (default `mysql:5.6`) or MariaDB, with its data in the `db-data` volume,
 and the one-shot `openmrs-db-accounts` that keeps the declared MySQL accounts in place. Settings are
-in the instance's `openmrs-db.env`; defaults are in [`env.defaults`](env.defaults).
+in the instance's `openmrs-db.env`; defaults are in [`env.defaults`](env.defaults). With the `backups`
+service, each backup run dumps the `openmrs` database into `openmrs-db.sql.7z` ([Backups](../../docs/backups.md)).
 
 | Variable | Default | |
 |---|---|---|

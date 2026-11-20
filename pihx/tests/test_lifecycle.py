@@ -82,6 +82,18 @@ class CommandsTest(LifecycleTest):
         self.assertEqual(status, 0, err)
         self.assertEqual(self.compose_calls[:2], [("pull",), ("up", "-d", "--remove-orphans")])
 
+    def test_pull_and_update_make_sure_of_this_repo_s_images_before_pulling(self):
+        for command in ("pull", "update"):
+            with self.subTest(command=command):
+                self.compose_calls.clear()
+                order = []
+                with mock.patch.object(lifecycle.images, "ensure",
+                                       side_effect=lambda c: order.append("ensure")):
+                    status, _, err = self.run_pihx("kz", command)
+                self.assertEqual(status, 0, err)
+                self.assertEqual(order, ["ensure"])
+                self.assertEqual(self.compose_calls[0], ("pull",))
+
     def test_update_holds_the_lock_once(self):
         with mock.patch.object(lifecycle.lock, "hold", wraps=lifecycle.lock.hold) as hold:
             self.assertEqual(self.run_pihx("kz", "update")[0], 0)

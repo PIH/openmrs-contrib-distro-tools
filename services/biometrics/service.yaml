@@ -1,2 +1,2 @@
 description: The pih-biometrics fingerprint server, for OpenMRS
-backup: none
+# No 'backup': not backed up yet (backups name it in each run's log and status).

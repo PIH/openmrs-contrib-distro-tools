@@ -65,6 +65,10 @@ def _variable_prefix(service_name):
     return service_name.upper().replace("-", "_")
 
 
+# The log each backup run holds (services/backups/scripts/backup.sh), ignored as an entry.
+RUN_LOG = "backup.log"
+
+
 class EntryError(CliError):
     """The directory's entries don't fit the instance's services."""
 
@@ -87,6 +91,9 @@ def choose(inst, folder, entries, label=None):
                     others[n.rstrip("/")] = name
     chosen = {}
     for name, kind in sorted(entries):
+        # A backup run's own log: a run directory (copied out or downloaded) restores as it is.
+        if name == RUN_LOG and kind != "dir":
+            continue
         if name not in accepted:
             if name in others:
                 raise EntryError(f"{where}/{name} is for {others[name]}, which isn't part of "

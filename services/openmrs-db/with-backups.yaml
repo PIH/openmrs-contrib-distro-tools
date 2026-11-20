@@ -1,0 +1,11 @@
+# Added when the instance has the backups service: openmrs-db's backup script, and what it needs.
+services:
+  backups:
+    depends_on:
+      openmrs-db:
+        condition: service_healthy
+    environment:
+      OPENMRS_DB_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD}
+    volumes:
+      - ${PIHX_TOOLS}/services/openmrs-db/scripts/backup.sh:/opt/backup/services/openmrs-db.sh:ro
+      - ${PIHX_TOOLS}/utils/lib/in-container/mysqldump-options.sh:/opt/backup/in-container/mysqldump-options.sh:ro

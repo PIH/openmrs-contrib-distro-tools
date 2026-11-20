@@ -60,10 +60,10 @@ The utilities run their tools in containers, from the images named in `utils/lib
 | `partnersinhealth/percona-0.1-4` | Percona XtraBackup's `innobackupex`, for MySQL 5.6 data directories (`backup-percona`, `convert-percona-backup`, `initialize`'s Percona restore) |
 | the database's own image | `mysqldump`, `mysql` and the like, from the server's image or `--client-image=` |
 
-The two `partnersinhealth` images are still built and published from `docker-openmrs`, not from
-this repo, and stay so until the `backup-tools` image is rebuilt here (TASKS-597): `build-images.yml`
-publishes only what is in `images/` and `services/<svc>/image/`; an image's tag is the hash of its
-directory (`utils/hash-directory.sh`; [Developing this tool](development.md#image-tags)). The ones this
-repo does build, such as `pihx-runtime`, are referenced by that tag and never `latest`; `latest`
-follows the newest build of each, for people who `docker run` them and for tools that pull without a
-tag.
+The two `partnersinhealth` images above are still built and published from `docker-openmrs`, not
+from this repo, and stay so until they move here (TASKS-651): `build-images.yml` publishes only what
+is in `images/` and `services/<svc>/image/`; an image's tag is the hash of its directory
+(`utils/hash-directory.sh`; [Developing this tool](development.md#image-tags)). The ones this repo
+does build, `pihx-runtime` and `backup-tools` (the [backups service](backups.md)'s tools), are
+referenced by that tag and never `latest`; `latest` follows the newest build of each, for people who
+`docker run` them and for tools that pull without a tag.

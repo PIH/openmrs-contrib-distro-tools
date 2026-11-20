@@ -52,7 +52,8 @@ them, after archiving them. So a `docker compose ... down -v` typed by hand leav
 it is, and a bare `docker compose ... up` on an instance whose volumes don't exist fails
 (`external volume "<name>_<volume>" not found`) instead of starting on new, empty ones. Volumes
 Compose made before (an existing instance, or one converted in place) have the same names and keep
-working unchanged. `remove-service` keeps a service's volumes.
+working unchanged. `remove-service` keeps a service's volumes. An instance with the `backups` service
+also has `<name>_backups`, which holds its backup runs ([Backups](backups.md)).
 
 ## Archive and destroy
 
@@ -70,7 +71,8 @@ the instance from them (`mkdir` the instance directory, copy the files back, lin
 `docker volume create` and untar each volume, `pihx <name> start`). It goes to
 `$PIHX_HOME/<name>.archive-<UTC time>/`, or to `--to`, a new or empty directory. It checks there's
 room for the volumes first, reads every archive back, and if anything fails removes what it wrote,
-so a directory it leaves is complete.
+so a directory it leaves is complete. It leaves out the backups volume, `<name>_backups`: its runs are
+copies of the other volumes, and `copy-backup` takes one out ([Backups](backups.md)).
 
 `destroy` is for development and test instances. It lists the instance directory and every volume
 it would delete, with their sizes, and asks you to type the instance's name; then it stops the
@@ -81,6 +83,10 @@ other answer, or no input, stops it: before the archive with nothing changed, af
 instance stopped and its archive and volumes kept. There's no `--force`. It needs `PIHX_HOME` to be
 writable, so it refuses on a Puppet host, whose `PIHX_HOME` isn't; and it refuses a directory without
 `instance.env`.
+
+`destroy` keeps the backups volume, `<name>_backups`, and doesn't archive it, so the runs in it can
+restore the instance once it's created again ([Restoring](backups.md#restoring)); it says so.
+`destroy --include-backups` archives and removes it like the other volumes.
 
 ## Starting, stopping and logs
 
@@ -168,8 +174,8 @@ empty, as when the script fails, so `config` shows the fail-closed default.
 ## One command at a time
 
 Every command that changes an instance (`initialize`, `start`, `stop`, `restart`, `update`, `pull`,
-`add-service`, `remove-service`, `use-tools`, `archive`, `destroy`, a job's `run-service` and a service's commands
-unless they say `# pihx: no-lock`) holds a lock on it until it exits, and refuses to run while another
+`add-service`, `remove-service`, `use-tools`, `archive`, `destroy`, `backup`, `upload-backups`, a job's
+`run-service` and a service's commands unless they say `# pihx: no-lock`) holds a lock on it until it exits, and refuses to run while another
 command holds it, naming that command:
 
 ```
@@ -184,7 +190,9 @@ setup services first (account and login setup), and starts, stops or recreates n
 instance's containers, so `openmrs-db` (and `sqlserver`, if it has one) must be running. It doesn't
 need OpenMRS: PETL also runs against restored databases with no OpenMRS. For other services (the
 smoke tests) it refuses while the instance is busy but doesn't hold the lock. `status`, `logs`, `compose` and
-`wait` never wait for it. The lock is released however its holder exits, so there's nothing to
+`wait` never wait for it (nor `list-backups` and `copy-backup`, which only read). The backups service's
+scheduled jobs run in its container, which can't see the lock: `stop`, `initialize` and `destroy`
+stop that container with the rest ([Backups](backups.md#commands)). The lock is released however its holder exits, so there's nothing to
 clean up after a crash. It uses `flock`.
 
 ## Changing the database passwords

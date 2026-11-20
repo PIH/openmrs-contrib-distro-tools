@@ -175,6 +175,30 @@ instance_config() { # <instance>
 # override order, the environment pihx sets and nothing else (project name COMPOSE_PROJECT, default
 # config). Extra arguments for Compose follow the services' own after `--`; files after `+`
 # (relative to the checkout) are added as overlays.
+# PIHX_IMAGE_<NAME>=partnersinhealth/<name>:<content tag> for each image this repo builds, as pihx
+# sets them (pihx/images.py).
+image_variables() {
+    local dir name
+    for dir in "$REPO_ROOT"/images/*/ "$REPO_ROOT"/services/*/image/; do
+        [ -d "$dir" ] || continue
+        dir=${dir%/}
+        case $dir in */image) name=$(basename "$(dirname "$dir")") ;; *) name=$(basename "$dir") ;; esac
+        printf 'PIHX_IMAGE_%s=partnersinhealth/%s:%s\n' "$(echo "$name" | tr 'a-z-' 'A-Z_')" "$name" \
+            "$("$REPO_ROOT/utils/hash-directory.sh" "$dir")"
+    done
+}
+
+# What pihx sets as PIHX_BACKUP_PLAN for <services> (space-separated): <svc>=script|none|unset from
+# each manifest's `backup` (pihx/services.py backup_plan; the order doesn't matter here).
+backup_plan() { # <services>
+    local svc backup words=()
+    for svc in $1; do
+        backup=$(sed -n 's/^backup: *//p' "$REPO_ROOT/services/$svc/service.yaml")
+        case $backup in "") words+=("$svc=unset") ;; none) words+=("$svc=none") ;; *) words+=("$svc=script") ;; esac
+    done
+    echo "${words[*]}"
+}
+
 instance_compose() { # <dir> <service,...> [+overlay...] -- <compose args...>
     local dir=$1 services=${2//,/ } svc other with args=() overlays=() env=()
     shift 2
@@ -198,7 +222,9 @@ instance_compose() { # <dir> <service,...> [+overlay...] -- <compose args...>
     for svc in "${overlays[@]}"; do args+=(-f "$svc"); done
     env=(PATH="$PATH" HOME="$HOME" PIHX_TOOLS="$REPO_ROOT" PIHX_INSTANCE_DIR="$dir"
          SERVICE_NAME="${COMPOSE_PROJECT:-config}" PIHX_INSTANCE="${COMPOSE_PROJECT:-config}"
+         PIHX_BACKUP_PLAN="$(backup_plan "$services")"
          "${EXTRA_ENV[@]}")
+    mapfile -t -O "${#env[@]}" env < <(image_variables)
     [ -z "${DOCKER_HOST:-}" ] || env+=(DOCKER_HOST="$DOCKER_HOST")
     [ -z "${DOCKER_CONFIG:-}" ] || env+=(DOCKER_CONFIG="$DOCKER_CONFIG")
     env -i "${env[@]}" docker compose "${args[@]}" "$@"

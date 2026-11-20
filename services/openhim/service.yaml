@@ -1,2 +1,2 @@
 description: OpenHIM (core, console and MongoDB), the interoperability layer
-backup: none
+# No 'backup': not backed up yet (backups name it in each run's log and status).

@@ -12,7 +12,8 @@
 
 _PIHX_GLOBAL_COMMANDS="list help version"
 _PIHX_INSTANCE_COMMANDS="create config add-service remove-service use-tools start stop restart
-status logs compose pull update run-service wait summary initialize archive destroy help version"
+status logs compose pull update run-service wait summary backup upload-backups list-backups copy-backup
+initialize archive destroy help version"
 _PIHX_OPENMRS_DOCKER_COMMANDS="build"
 _PIHX_COMPOSE_SUBCOMMANDS="config ps images top port logs events ls version exec"
 
@@ -112,7 +113,7 @@ _pihx_complete() {
     local option=$prev
     [[ $prev == = ]] && option=${COMP_WORDS[COMP_CWORD-2]}
     case $command:$option in
-        initialize:--from | archive:--to)
+        initialize:--from | archive:--to | copy-backup:--to)
             _pihx_reply_dirs "$cur"
             return 0
             ;;
@@ -164,6 +165,8 @@ _pihx_complete() {
         config) options="--show-secrets" ;;
         initialize) options="--from --from-image --pull" ;;
         archive) options="--to=" ;;
+        copy-backup) options="--to= latest" ;;
+        destroy) options="--include-backups" ;;
         run-service) $first && options="--pull" ;;
         summary) options="--output= --include-distribution-artifacts" ;;
         start | update) [[ $cmd == openmrs-docker ]] && options="--build --dev" ;;

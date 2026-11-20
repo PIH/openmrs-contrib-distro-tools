@@ -17,7 +17,10 @@ restore would write exists, so it can't overwrite data.
 The directory holds at most one entry per service, named after the service, in a form that service's
 manifest (`services/<svc>/service.yaml`, `restore:`) accepts. A service with no entry starts empty.
 An entry that no service of the instance accepts, or two entries for one service, is an error;
-so is anything else in the directory, hidden files (e.g. `.DS_Store`) included.
+so is anything else in the directory, hidden files (e.g. `.DS_Store`) included, except a
+`backup.log`: a backup run's directory (from `copy-backup`, or downloaded from its upload
+destination) restores as it is ([Restoring](backups.md#restoring)), with `ARCHIVE_PASSWORD` set to its
+archive password.
 
 | Service | Entry | Restored |
 |---|---|---|

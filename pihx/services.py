@@ -22,6 +22,11 @@ CORE_COMMANDS = frozenset({
 })
 RESERVED_NAMES = CORE_COMMANDS | {"instance"}
 
+# A manifest's `backup`: the path of the service's backup script (which the backups service runs,
+# mounted by the service's with-backups.yaml), BACKUP_NONE when it has nothing to back up, or absent
+# when it isn't backed up (yet). backup_plan() tells the backups service which is which.
+BACKUP_NONE = "none"
+
 
 class _Loader(yaml.SafeLoader):
     """yaml.safe_load, refusing duplicate keys, and with only true/false as booleans (not YAML
@@ -150,6 +155,13 @@ def load(tools, name):
             if not (svc_dir / overlay).is_file():
                 raise ServiceError(f"{manifest_file}: restore overlay {overlay} doesn't exist")
             read_overlay(svc_dir / overlay)
+    if manifest.backup not in (None, BACKUP_NONE):
+        path = manifest.backup
+        if Path(path).is_absolute() or ".." in Path(path).parts:
+            raise ServiceError(f"{manifest_file}: backup script {path} must be a path inside the "
+                               "service directory")
+        if not (svc_dir / path).is_file():
+            raise ServiceError(f"{manifest_file}: backup script {path} doesn't exist")
     for path in (entry.script for entry in manifest.start_env):
         if Path(path).is_absolute() or ".." in Path(path).parts:
             raise ServiceError(f"{manifest_file}: start-env script {path} must be a path inside "
@@ -237,6 +249,18 @@ def in_order(services):
     return ordered
 
 
+def backup_plan(services):
+    """What the backups service does with each of <services> (in_order), as the space-separated
+    <svc>=<kind> words its backup job reads (PIHX_BACKUP_PLAN): script (its backup script runs),
+    none (nothing to back up) or unset (not backed up)."""
+    words = []
+    for svc in in_order(services):
+        backup = svc.manifest.backup
+        kind = "unset" if backup is None else "none" if backup == BACKUP_NONE else "script"
+        words.append(f"{svc.name}={kind}")
+    return " ".join(words)
+
+
 def all(tools):
     """Every service in the tools directory <tools>, by name."""
     services_dir = Path(tools) / "services"
@@ -257,8 +281,8 @@ def _manifest(data):
         raise ValueError("'description' is required")
     if not isinstance(data.get("job", False), bool):
         raise ValueError("'job' must be true or false")
-    if data.get("backup", "none") != "none":
-        raise ValueError("'backup' can only be 'none' (backups come with TASKS-597)")
+    if "backup" in data and (not isinstance(data["backup"], str) or not data["backup"]):
+        raise ValueError("'backup' must be 'none' or the path of the service's backup script")
     restore = _list(data, "restore")
     return Manifest(
         description=data["description"],
