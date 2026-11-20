@@ -161,6 +161,13 @@ class SummaryTest(ServiceCommandTest):
         self.assertFalse(out_file.exists())
         self.assertNotIn("partial", out + err)
 
+    def test_it_holds_the_instance_lock(self):
+        # A stopped instance's summary may start a server on a volume: no start meanwhile.
+        with lock.hold(self.inst(), 0, command="start"):
+            status, _, err = run(["kz", "summary"])
+        self.assertEqual(status, 1)
+        self.assertIn("kz is busy: pihx kz start", err)
+
     def test_options_are_checked(self):
         status, _, err = run(["kz", "summary", "--bogus"])
         self.assertEqual(status, 2)

@@ -17,7 +17,10 @@ restore would write exists, so it can't overwrite data.
 The directory holds at most one entry per service, named after the service, in a form that service's
 manifest (`services/<svc>/service.yaml`, `restore:`) accepts. A service with no entry starts empty.
 An entry that no service of the instance accepts, or two entries for one service, is an error;
-so is anything else in the directory, hidden files (e.g. `.DS_Store`) included.
+so is anything else in the directory, hidden files (e.g. `.DS_Store`) included, except a
+`backup.log`: a backup run's directory (from `copy-backup`, or downloaded from its upload
+destination) restores as it is ([Restoring](backups.md#restoring)), with `ARCHIVE_PASSWORD` set to its
+archive password.
 
 | Service | Entry | Restored |
 |---|---|---|
@@ -223,6 +226,10 @@ MYSQL_PASSWORD=<root password> openmrs-utils fingerprint --container=<source db 
 pihx <name> summary --output=after.txt
 diff before.txt after.txt
 ```
+
+Other services add their own sections (`[biometrics]`, `[openhim]`, `[sqlserver]`;
+[Backups](backups.md#restoring)), which `openmrs-utils fingerprint` doesn't print: compare those
+with the source instance's own `pihx <name> summary`.
 
 `summary` leaves out what the distribution supplies (modules, owa, configuration, frontend) from
 the `[data-dir]` section by default; `--include-distribution-artifacts` keeps it.

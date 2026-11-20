@@ -1,0 +1,48 @@
+# initialize, biometrics.db.7z or biometrics.db (as its backup writes, docs/backups.md): the database
+# into a new biometrics-data, once SQLite's check passes, owned by the user the image runs as
+# (BIOMETRICS_DATA_OWNER, default pih-biometrics' 9000:9000). In the backup-tools image, which has
+# 7-Zip and sqlite3. It's checked and renamed into place last, so a failed restore leaves no
+# biometrics.db.
+
+services:
+  restore-biometrics:
+    image: ${PIHX_IMAGE_BACKUP_TOOLS:?PIHX_IMAGE_BACKUP_TOOLS must be set (pihx sets it)}
+    pull_policy: missing
+    container_name: ${SERVICE_NAME}-restore-biometrics
+    environment:
+      - ARCHIVE_PASSWORD
+      - ENTRY=${BIOMETRICS_RESTORE_NAME:?BIOMETRICS_RESTORE_NAME must be set}
+      - OWNER=${BIOMETRICS_DATA_OWNER:-9000:9000}
+    volumes:
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${BIOMETRICS_RESTORE_PATH:?BIOMETRICS_RESTORE_PATH must be set}
+        target: /source/${BIOMETRICS_RESTORE_NAME:?BIOMETRICS_RESTORE_NAME must be set}
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PIHX_TOOLS}/utils/lib/in-container/extract.sh:/extract.sh:ro
+      - biometrics-data:/target
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        STAGING=/target/.restore-staging
+        case "$$ENTRY" in
+            *.7z) sh /extract.sh "/source/$$ENTRY" "$$STAGING"
+                  if [ "$$(find "$$STAGING" -type f)" != "$$STAGING/biometrics.db" ]; then
+                      echo "error: $$ENTRY must contain just biometrics.db" >&2
+                      exit 1
+                  fi ;;
+            *) mkdir -p "$$STAGING"
+               cp "/source/$$ENTRY" "$$STAGING/biometrics.db" ;;
+        esac
+        echo "biometrics: restoring $$ENTRY as biometrics.db" >&2
+        check=$$(sqlite3 -bail "$$STAGING/biometrics.db" "PRAGMA quick_check")
+        if [ "$$check" != ok ]; then
+            echo "error: $$ENTRY fails SQLite's check: $$check" >&2
+            exit 1
+        fi
+        mv "$$STAGING/biometrics.db" /target/biometrics.db
+        rm -rf /target/.restore-staging
+        chown -R "$$OWNER" /target

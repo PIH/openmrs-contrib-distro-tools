@@ -1,0 +1,9 @@
+# Added when the instance has the backups service: openhim's backup script, which dumps MongoDB over
+# the instance's network.
+services:
+  backups:
+    depends_on:
+      mongo-db:
+        condition: service_healthy
+    volumes:
+      - ${PIHX_TOOLS}/services/openhim/scripts/backup.sh:/opt/backup/services/openhim.sh:ro

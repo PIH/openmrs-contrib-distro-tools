@@ -13,7 +13,11 @@
   Compose on an instance), `volumes.py` (the instance's external volumes, which it creates),
   `lock.py`, `script.py` (running a service's scripts) and `commands/` (`instance_cmds.py`,
   `lifecycle.py`, `initialize.py`, `archive.py`, `destroy.py`, `summary.py`, `wait.py`,
-  `service_cmds.py`).
+  `service_cmds.py`, `backups.py`), plus `images.py` (this repo's images, by content tag).
+  One exception, by decision (TASKS-597): the core knows the `backups` service, because backing up
+  is part of every instance's lifecycle rather than a product's. `commands/backups.py` has its
+  commands, `volumes.py` names its volume (which `destroy` keeps and `archive` leaves out), and
+  `initialize.py` ignores a run's `backup.log`. No other service may be named in `pihx/`.
 - `services/<svc>/` holds everything of one service: manifest, compose file, env defaults,
   restore overlays, summary and commands ([Writing a service](services.md#writing-a-service)). Its
   README is its docs.
@@ -45,6 +49,15 @@ checkout compute the same tag, and a change to the directory is a new tag, never
 runs `partnersinhealth/pihx-runtime:<tag of images/pihx-runtime>`, never `latest`, so a checkout
 always runs the image that matches its source. After a change to `images/pihx-runtime`, the first run
 builds the new image locally (CI publishes it when the change reaches `main`).
+
+A service's compose file names such an image by `${PIHX_IMAGE_<NAME>}` (upper case, `-` as `_`; e.g.
+`PIHX_IMAGE_BACKUP_TOOLS`), which pihx sets to `partnersinhealth/<name>:<tag>` for each image in
+`images/` and `services/<svc>/image/` that the instance's compose files name
+([`pihx/images.py`](../pihx/images.py)), with `pull_policy: missing` (a content tag never changes, so
+it's pulled only when missing). Before `start`, `update`, `pull` and `run-service`, pihx makes sure
+each such image the instance runs is here: on the host, pulled, or, not published yet, built from
+the checkout. An image whose directory has a `platforms` file isn't built on a host of another
+platform: pihx says so instead.
 
 `.github/workflows/build-images.yml` publishes them: [Helper images](ci-workflows.md#helper-images).
 

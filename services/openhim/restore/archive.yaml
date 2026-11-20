@@ -1,0 +1,33 @@
+# initialize, openhim.archive.7z or openhim.archive (as its backup writes, docs/backups.md): loads the
+# mongodump archive into the new mongo-db, once it's healthy, from the backup-tools image (which has
+# 7-Zip and mongorestore). openhim-core isn't started.
+
+services:
+  restore-openhim:
+    image: ${PIHX_IMAGE_BACKUP_TOOLS:?PIHX_IMAGE_BACKUP_TOOLS must be set (pihx sets it)}
+    pull_policy: missing
+    container_name: ${SERVICE_NAME}-restore-openhim
+    depends_on:
+      mongo-db:
+        condition: service_healthy
+    environment:
+      - ARCHIVE_PASSWORD
+      - ENTRY=${OPENHIM_RESTORE_NAME:?OPENHIM_RESTORE_NAME must be set}
+    volumes:
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${OPENHIM_RESTORE_PATH:?OPENHIM_RESTORE_PATH must be set}
+        target: /source/${OPENHIM_RESTORE_NAME:?OPENHIM_RESTORE_NAME must be set}
+        read_only: true
+        bind:
+          create_host_path: false
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        echo "openhim: loading $$ENTRY into mongo-db" >&2
+        # The password on 7z's stdin (it extracts to stdout, so stdin is free).
+        case "$$ENTRY" in
+            *.7z) printf '%s\n' "$${ARCHIVE_PASSWORD:-}" | 7z x -so "/source/$$ENTRY" ;;
+            *) cat "/source/$$ENTRY" ;;
+        esac | mongorestore --quiet --host mongo-db --archive --nsInclude 'openhim.*'

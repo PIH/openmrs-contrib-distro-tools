@@ -48,9 +48,30 @@ class ComposeTest(TempDirTest):
             "PIHX_TOOLS": str(self.tools),
             "PIHX_INSTANCE_DIR": str(self.dir),
             "PIHX_INSTANCE": "kz",
+            # db says it has nothing to back up; app says nothing, so it isn't backed up.
+            "PIHX_BACKUP_PLAN": "db=none app=unset",
         })
         # The names start-env scripts can't set.
         self.assertEqual(set(env), compose.OWN_NAMES)
+
+    def test_env_names_the_images_the_compose_files_use(self):
+        """PIHX_IMAGE_<NAME>: partnersinhealth/<name>:<the hash-directory.sh tag of its directory>,
+        for the images the instance's compose files name; the others aren't hashed, so a broken one
+        can't affect this instance."""
+        write(self.tools / "images" / "backup-tools" / "Dockerfile", "FROM alpine\n")
+        write(self.tools / "images" / "broken" / "Dockerfile", "FROM alpine\n")
+        write(self.tools / "services" / "db" / "image" / "Dockerfile", "FROM busybox\n")
+        write(self.svc / "app" / "compose.yaml",
+              "services:\n  app:\n    image: ${PIHX_IMAGE_BACKUP_TOOLS:?}\n"
+              "  sidecar:\n    image: ${PIHX_IMAGE_DB:?}\n")
+        hasher = write(self.tools / "utils" / "hash-directory.sh",
+                       '#!/bin/sh\ncase "$1" in */broken*) exit 1;; esac\n'
+                       'basename "$(dirname "$1/x")" | cut -c1-4\n')
+        hasher.chmod(0o755)
+        env = compose.Compose(self.kz).env()
+        self.assertEqual(env["PIHX_IMAGE_BACKUP_TOOLS"], "partnersinhealth/backup-tools:back")
+        self.assertEqual(env["PIHX_IMAGE_DB"], "partnersinhealth/db:imag")
+        self.assertNotIn("PIHX_IMAGE_BROKEN", env)
 
     def fake_docker(self, status=0):
         """A docker on PATH that records its arguments, then its environment."""

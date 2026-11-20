@@ -14,7 +14,11 @@ after two confirmations typed on standard input (no input, or anything else, sto
   7. Removes exactly the volumes listed in 1, then the instance directory (a real tools directory
      stays, as Puppet keeps one).
 
-Anything that stops it before 7 deletes nothing, and says what state the instance is in."""
+Anything that stops it before 7 deletes nothing, and says what state the instance is in.
+
+The instance's backups volume (<name>_backups) is neither archived nor removed unless destroy is
+given --include-backups: its runs restore the instance (copy-backup, then initialize --from), which
+is what a destroy is usually followed by when something went wrong."""
 
 import os
 import shutil
@@ -134,6 +138,8 @@ def cmd_destroy(name, args):
     if "--force" in args:
         raise CliError("destroy has no --force: it always asks, twice, and archives the instance "
                        "before deleting anything", status=2)
+    include_backups = "--include-backups" in args
+    args = [a for a in args if a != "--include-backups"]
     if args:
         raise CliError(f"unknown option '{args[0]}' for destroy", status=2)
     inst = _open(name)
@@ -148,7 +154,12 @@ def cmd_destroy(name, args):
     start_again = f"start it again with 'pihx {name} start'"
     with lock.hold(inst, lock.wait_seconds(), command="destroy"):
         image = archive.alpine_image(inst)
-        names = archive.find_volumes(inst, compose)
+        names, backups = archive.split_backups(inst, archive.find_volumes(inst, compose))
+        # The backups volume stays unless asked for, so the runs in it can restore the instance
+        # (copy-backup, then initialize --from); asked for, it is archived and removed like the rest.
+        kept = backups
+        if backups and include_backups:
+            names, kept = sorted(names + [backups]), None
         sizes = {v: archive.size_kb(compose, image, v) for v in names}
         width = max([len(v) for v in names] + [9])
         print(f"destroy is for development and test instances. It stops {name}, archives it to "
@@ -158,6 +169,9 @@ def cmd_destroy(name, args):
             print(f"  volume    {v:<{width}}  {volumes.human(sizes[v])}")
         if not names:
             print("  (no volumes)")
+        if kept:
+            print(f"It keeps {kept}, {name}'s backups (--include-backups archives and deletes it "
+                  "too).")
         answer = ask(f"Type the instance's name ({name}) to stop it and archive it: ")
         if answer != name:
             raise CliError("destroy stopped: nothing was changed")
@@ -202,4 +216,7 @@ def cmd_destroy(name, args):
         print(f"Removed volume {v}")
     print(message)
     print(f"The archive is in {folder}/")
+    if kept:
+        print(f"Kept {kept}: 'pihx {name} list-backups' and 'copy-backup' still reach it once {name} "
+              f"is created again; 'docker volume rm {kept}' deletes it.")
     return 0

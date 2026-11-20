@@ -65,6 +65,12 @@ class ChooseTest(InitializeTest):
         self.assert_choice_error([("db.sql", "file"), ("db.datadir", "dir")],
                                  "db.datadir", "db.sql", "db")
 
+    def test_a_backup_run_s_log_is_ignored(self):
+        """A run directory of the backups service (copy-backup, or downloaded) restores as it is."""
+        [choice] = self.choose(("db.sql.gz", "file"), ("backup.log", "file"))
+        self.assertEqual(choice.service.name, "db")
+        self.assert_choice_error([("backup.log", "dir")], "backup.log", "no service")
+
     def test_an_entry_for_no_service_is_an_error(self):
         self.assert_choice_error([("db.sql", "file"), ("notes.txt", "file")], "notes.txt",
                                  "no service")

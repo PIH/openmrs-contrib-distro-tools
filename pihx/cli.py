@@ -5,12 +5,13 @@ import sys
 import traceback
 
 from pihx import __version__, runtime
-from pihx.commands import (CliError, archive, destroy, initialize, instance_cmds, lifecycle,
+from pihx.commands import (CliError, archive, backups, destroy, initialize, instance_cmds, lifecycle,
                            service_cmds, summary, wait)
 from pihx.compose import ComposeError
 from pihx.instance import InstanceError, instance_name_error
 from pihx.lock import LockError
 from pihx.services import ServiceError
+from pihx.images import ImageError
 from pihx.volumes import VolumeError
 
 USAGE = """\
@@ -49,6 +50,12 @@ Commands:
                              default 3600 s)
   summary [--output=<file>] [--include-distribution-artifacts]
                              Summarize its data, to diff a source against its restored copy
+  backup                     Run the backups service's backup job now (into its backups volume)
+  upload-backups             Run its upload job now (the runs not uploaded yet, off-site)
+  list-backups               Show the runs in the backups volume, and the jobs' last results
+  copy-backup <run>|latest --to=<dir>
+                             Copy a complete run into a new or empty <dir>, which
+                             'initialize --from <dir>' restores from
   <service>                  List a service's commands
   <service> <command> [args...]
                              Run one of a service's commands (e.g. openmrs-db reset-accounts)
@@ -58,10 +65,12 @@ Commands:
   archive [--to=<dir>]       Archive the stopped instance: one <volume>.tar.gz per volume (those
                              of removed services too), copies of its env files and RESTORE.txt, in
                              $PIHX_HOME/<instance>.archive-<time>/ or a new or empty <dir>
-  destroy                    For development and test instances: archive it to
+  destroy [--include-backups]
+                             For development and test instances: archive it to
                              $PIHX_HOME/<instance>.destroyed-<time>/, then remove its containers,
                              volumes and directory. Asks for the instance's name, then for 'delete'
-                             once the archive is written; there is no --force
+                             once the archive is written; there is no --force. Its backups volume
+                             is kept (not archived) unless --include-backups
   help                       Show this help
   version                    Show pihx's version and the tools directory it runs from
 """
@@ -106,6 +115,10 @@ INSTANCE_COMMANDS = {
     "pull": lifecycle.cmd_pull,
     "update": lifecycle.cmd_update,
     "run-service": lifecycle.cmd_run_service,
+    "backup": backups.cmd_backup,
+    "upload-backups": backups.cmd_upload_backups,
+    "list-backups": backups.cmd_list_backups,
+    "copy-backup": backups.cmd_copy_backup,
     "initialize": initialize.cmd_initialize,
     "archive": archive.cmd_archive,
     "destroy": destroy.cmd_destroy,
@@ -152,7 +165,7 @@ def main(argv, extension=None):
             runtime.install_docker_config(docker_config, os.environ["HOME"])
         return dispatch(argv, extension)
     except (CliError, runtime.SetupError, InstanceError, ServiceError, ComposeError, LockError,
-            VolumeError, OSError) as e:
+            VolumeError, ImageError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return getattr(e, "status", 1)
     except KeyboardInterrupt:

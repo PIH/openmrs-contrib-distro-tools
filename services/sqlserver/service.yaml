@@ -1,4 +1,10 @@
 description: Microsoft SQL Server, and the setup that applies its settings, databases and logins
 # Runs on every start, once the server is healthy.
 setup: [sqlserver-setup]
-backup: none
+# The databases an instance chooses (SQLSERVER_BACKUP_DATABASES, none by default: usually what it holds
+# is rebuilt, e.g. by PETL), each as a .bak in sqlserver.7z (scripts/backup.sh).
+backup: scripts/backup.sh
+# initialize: each .bak in that archive restored as its database (restore/archive.yaml).
+restore:
+  - names: [sqlserver.7z]
+    overlay: restore/archive.yaml

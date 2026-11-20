@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 
-from pihx import instance as instance_module, script, services as services_module
+from pihx import instance as instance_module, lock, script, services as services_module
 from pihx.commands import CliError
 from pihx.commands.instance_cmds import tools_dir
 
@@ -69,7 +69,10 @@ def write(text, output):
 def cmd_summary(name, args):
     output, include = _parse(name, args)
     inst = instance_module.open(instance_module.home(), name, tools=tools_dir())
-    text = summarize(inst, inst.services, include)
+    # Under the instance lock: on a stopped instance a summary may start a throwaway server on a
+    # volume, which a `start` meanwhile would open a second time.
+    with lock.hold(inst, lock.wait_seconds(), command="summary"):
+        text = summarize(inst, inst.services, include)
     if not text:
         print(f"None of {name}'s services has a summary.", file=sys.stderr)
     write(text, output)

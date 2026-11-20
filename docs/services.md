@@ -16,6 +16,7 @@ means removing it.
 | `sqlserver` | Microsoft SQL Server, and the setup for its settings, databases and logins | [README](../services/sqlserver/README.md) |
 | `petl` | The PETL ETL job, run against `openmrs-db` and writing to SQL Server | [README](../services/petl/README.md) |
 | `openmrs-smoke-tests` | The PIH EMR smoke tests, run against the instance's OpenMRS | [CI workflows](ci-workflows.md#running-smoke-tests-locally) |
+| `backups` | Scheduled, encrypted backups of the instance's services, uploaded off-site | [Backups](backups.md), [README](../services/backups/README.md) |
 
 ## Adding and removing services
 
@@ -77,14 +78,14 @@ and `test/static/services.bats` check every service in the tree against the conv
 | `start-env` | Scripts that `start` and `update` run, in pihx's container, before Compose's `up`: a list of entries, each `script` (a path in the service directory) and `sets` (the variables it may set). A script prints `KEY=value` lines, values for that `up` only, never written anywhere. A variable it isn't declared to set is ignored with a warning, and `sets` can't name pihx's own (`PIHX_*`, `COMPOSE_*` and `SERVICE_NAME` that pihx sets, and the `PATH`, `HOME`, `DOCKER_CONFIG`, `DOCKER_HOST` it passes through). Every declared variable is passed, empty unless printed; a script that fails or prints anything else gives them all empty, with a warning. So the compose file's default for such a value must be the safe one, and no instance env file may set one (the instance is refused). `openmrs`'s `start/create-tables` decides whether OpenMRS creates its tables |
 | `capture-env` | Name prefixes (e.g. `[OMRS_EXTRA_]`). At `create` and `add-service`, a variable in your environment with such a prefix goes into the service's `.env` even though no default or compose file names it |
 | `job` | `true` for a job: `start` doesn't bring it up and `run-service` runs it holding the instance lock |
-| `backup` | `none`. Backups come with TASKS-597; until then a service says it has nothing to back up |
+| `backup` | What happens to its data ([Backup](#backup)): the path of its backup script (e.g. `scripts/backup.sh`), which the `backups` service runs; `none`, nothing to back up; or absent, not backed up (yet), which each backup run names |
 | `restore` | What `initialize` accepts, as a list of entries: `names` (the entries of the `--from` directory), `overlay` (a compose file under `restore/`) and optionally `after` (another, run after it, e.g. an account reset) |
 
 ```yaml
 description: The OpenMRS database (MySQL or MariaDB), and the setup that makes sure its accounts exist
 capture-env: [OPENMRS_DB_OPT_]
 setup: [openmrs-db-accounts]
-backup: none
+backup: scripts/backup.sh
 restore:
   - names: [openmrs-db.sql, openmrs-db.sql.gz]
     overlay: restore/dump.yaml
@@ -168,6 +169,41 @@ their presence:
   value with `python3 -m pihx.envfile set <file> <NAME> <value>`.
 
 What the entries look like to a user is in [Initializing an instance](restore.md).
+
+### Backup
+
+Every service says what happens to its data in its manifest's `backup`, so a new service can't go
+without backups unnoticed ([Backups](backups.md)):
+
+- **A script** (`backup: scripts/backup.sh`): the `backups` service runs it, in its own container
+  (the `backup-tools` image), on every backup run. The service's `with-backups.yaml` mounts it at
+  `/opt/backup/services/<svc>.sh` and gives the backups container what the script needs: its data
+  volumes read-only under `/sources/` (read-write only where the tool needs it, saying why:
+  `biometrics`' SQLite, `sqlserver`'s `.bak` staging), the values it needs under `environment:`
+  (e.g. a root password), a `depends_on` its database. `test_service_tree.py` checks that it does.
+- **`none`**: nothing of its own to back up (e.g. `petl`, whose output PETL rebuilds); each run's log
+  says so.
+- **Absent**: not backed up yet. Each run's log and `status.json` name the service, and the run still
+  counts as complete. So does a script that writes nothing named after its service on a run (e.g.
+  `sqlserver` with no databases chosen for the instance).
+
+The script's contract:
+
+- It gets `BACKUP_RUN_DIR` (the run's directory) and `ARCHIVE_PASSWORD`, and writes only into that
+  directory, files named after the service (`<svc>.<ext>`), encrypted 7-Zip. Each should be what the
+  service's `restore` accepts, so a run directory restores with `initialize --from` as it is.
+- It works with the instance running, and changes nothing it backs up.
+- Progress and errors go to stderr; it never prints a secret or row contents.
+- It exits non-zero on any failure. One failing script fails the run, but the others still run.
+- The image holds the client tools (`mysqldump`, `sqlite3`, `mongodump`, `sqlcmd`, `7z`, `jq`, ...);
+  a restore overlay can run it too (`${PIHX_IMAGE_BACKUP_TOOLS}`). A new kind of database adds its
+  client to [`images/backup-tools`](../images/backup-tools), which is a new image tag.
+
+[`openmrs-db`](../services/openmrs-db/scripts/backup.sh) (a dump),
+[`openmrs`](../services/openmrs/scripts/backup.sh) (files),
+[`openhim`](../services/openhim/scripts/backup.sh) (a dump over the network) and
+[`sqlserver`](../services/sqlserver/scripts/backup.sh) (opt-in per instance) are the examples, with
+their `with-backups.yaml` and `restore/` overlays.
 
 ### Summary and commands
 

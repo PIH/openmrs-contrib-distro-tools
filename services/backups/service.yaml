@@ -1,0 +1,3 @@
+description: Scheduled, encrypted backups of the instance's services into its backups volume, uploaded off-site
+# Holds the backups themselves; `destroy` keeps its volume unless given --include-backups.
+backup: none

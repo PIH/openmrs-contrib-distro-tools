@@ -71,10 +71,16 @@ def timestamp():
 
 # --- what's archived ------------------------------------------------------------------------------
 
+def split_backups(inst, names):
+    """(<names> without the instance's backups volume, the backups volume if it was among them)."""
+    backups = volumes.backups_volume(inst.name)
+    return [v for v in names if v != backups], (backups if backups in names else None)
+
+
 def find_volumes(inst, compose):
     """The instance's volumes: its external volumes that exist (from its compose model), and those
     labelled as its (pihx's label, or Compose's project label). Every listing is checked, so a
-    failure stops before anything changes."""
+    failure stops before anything changes. Includes the backups volume (split_backups)."""
     model = []
     if inst.services:
         try:
@@ -159,9 +165,10 @@ class Destination:
         return sum(p.stat().st_size for p in self.written) // 1024
 
 
-def check_space(dest, needed_kb):
-    """Refuses unless <dest>'s filesystem has the volumes' size free, plus 10% (their archives are
-    compressed, so usually much smaller). DISK_SPACE_FREE_KB replaces the free space, for tests."""
+def check_space(dest, needed_kb, what="the archive", holding="the volumes hold"):
+    """Refuses unless <dest>'s filesystem has <needed_kb> free, plus 10% (archives are compressed,
+    so usually much smaller). <what> and <holding> word the messages (copy-backup copies a run, not
+    volumes). DISK_SPACE_FREE_KB replaces the free space, for tests."""
     free = os.environ.get("DISK_SPACE_FREE_KB")
     if free and free.isdigit():
         free = int(free)
@@ -169,10 +176,10 @@ def check_space(dest, needed_kb):
         stat = os.statvfs(dest.path)
         free = stat.f_bavail * stat.f_frsize // 1024
     if free < needed_kb + needed_kb // 10:
-        raise CliError(f"not enough disk space for the archive: the volumes hold "
+        raise CliError(f"not enough disk space for {what}: {holding} "
                        f"{volumes.human(needed_kb)} (plus 10%), and {volumes.human(free)} is free "
                        f"at {dest.path}. Nothing was changed.")
-    note(f"Disk space: the volumes hold {volumes.human(needed_kb)}; {volumes.human(free)} free "
+    note(f"Disk space: {holding} {volumes.human(needed_kb)}; {volumes.human(free)} free "
          f"at {dest.path}.")
 
 
@@ -267,9 +274,13 @@ def write(inst, compose, image, names, dest, taken, command):
 
 
 def prepare(inst, compose, image, dest):
-    """The volumes to archive, their sizes, and <dest> made with room checked; nothing is made if
-    a check fails. Returns (names, sizes)."""
-    names = find_volumes(inst, compose)
+    """The volumes to archive (not the backups volume: its runs are copies of the others, and
+    copy-backup takes one out), their sizes, and <dest> made with room checked; nothing is made if a
+    check fails. Returns (names, sizes)."""
+    names, backups = split_backups(inst, find_volumes(inst, compose))
+    if backups:
+        note(f"Leaving out {backups}, the instance's backups (copy a run out with 'pihx "
+             f"{inst.name} copy-backup').")
     sizes = {v: size_kb(compose, image, v) for v in names}
     dest.make()
     try:

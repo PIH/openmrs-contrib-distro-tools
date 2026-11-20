@@ -7,7 +7,7 @@ import re
 import subprocess
 import sys
 
-from pihx import compose as compose_module, instance as instance_module, lock, script, volumes
+from pihx import compose as compose_module, images, instance as instance_module, lock, script, volumes
 from pihx.commands import CliError
 from pihx.commands.instance_cmds import tools_dir
 from pihx.instance import InstanceError
@@ -173,6 +173,7 @@ def start_stack(inst, compose, *up_options, build=False):
     before = instance_images(inst, compose)
     if build:
         compose.run("build")
+    images.ensure(compose)
     volumes.ensure(compose)
     with_start_values(inst, compose).run("up", "-d", *up_options)
     check_setup_services(inst, compose)
@@ -228,6 +229,9 @@ def update_stack(inst, compose, build=False):
     removes the images replaced. Its missing volumes are created before anything starts."""
     # Images before the pull, so the ones it replaces can go.
     before = instance_images(inst, compose)
+    # This repo's images first: an unpublished one is built, so the pull (which skips images that
+    # are here, pull_policy: missing) doesn't fail on it.
+    images.ensure(compose)
     compose.run("pull")
     if build:
         compose.run("build")
@@ -262,7 +266,10 @@ def cmd_pull(name, args):
     _no_arguments(args, "pull")
     inst = _open(name)
     with lock.hold(inst, lock.wait_seconds(), command="pull"):
-        compose_module.Compose(inst).run("pull")
+        compose = compose_module.Compose(inst)
+        # As update: an unpublished image of this repo is built, so the pull doesn't fail on it.
+        images.ensure(compose)
+        compose.run("pull")
     return 0
 
 
@@ -398,6 +405,7 @@ def cmd_run_service(name, args):
 
 
 def _run(inst, compose, svc, command, pull, job):
+    images.ensure(compose)
     volumes.ensure(compose)
     # Named explicitly, so a profiled service's image is pulled too (a plain `pull` skips them).
     if pull:

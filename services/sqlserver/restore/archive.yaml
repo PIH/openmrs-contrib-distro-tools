@@ -1,0 +1,31 @@
+# initialize, sqlserver.7z (as its backup writes, docs/backups.md): restores each <db>.bak in it into
+# the new server once it's healthy (scripts/restore.sh), from the backup-tools image (which has 7-Zip
+# and sqlcmd). sqlserver-setup isn't started: it runs on the first start, and remaps the restored
+# user named after each declared login to it.
+
+services:
+  restore-sqlserver:
+    image: ${PIHX_IMAGE_BACKUP_TOOLS:?PIHX_IMAGE_BACKUP_TOOLS must be set (pihx sets it)}
+    pull_policy: missing
+    container_name: ${SERVICE_NAME}-restore-sqlserver
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    entrypoint: ["bash", "/restore.sh"]
+    environment:
+      - ARCHIVE_PASSWORD
+      - ENTRY=${SQLSERVER_RESTORE_NAME:?SQLSERVER_RESTORE_NAME must be set}
+      # sa's password, for sqlcmd (which reads SQLCMDPASSWORD), so it's on no command line.
+      - SQLCMDPASSWORD=${SQLSERVER_SA_PASSWORD:?SQLSERVER_SA_PASSWORD must be set}
+    volumes:
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${SQLSERVER_RESTORE_PATH:?SQLSERVER_RESTORE_PATH must be set}
+        target: /source/${SQLSERVER_RESTORE_NAME:?SQLSERVER_RESTORE_NAME must be set}
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${PIHX_TOOLS}/utils/lib/in-container/extract.sh:/extract.sh:ro
+      - ${PIHX_TOOLS}/services/sqlserver/scripts/restore.sh:/restore.sh:ro
+      # Where the server has it, so a .bak extracted here is a path the server can read.
+      - sqlserver-data:/var/opt/mssql

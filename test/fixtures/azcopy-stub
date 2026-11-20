@@ -1,0 +1,33 @@
+#!/bin/bash
+# Stands in for azcopy in tests. The "cloud" is the directory $STUB_STORE; a URL's path after the host
+# is the path in it. Calls are logged to $STUB_STORE/.calls (arguments with the query removed).
+#   copy <src> <dest-url>   copies <src> to <dest>/<basename src>; the first one fails if
+#                           $STUB_STORE/.fail-once exists (it is removed), every one while .fail-always
+#                           exists; the failure prints $STUB_STORE/.fail-message, if any
+#   list <url>              <name>; Content Length: <bytes> (what real azcopy 10.34.1 prints with --machine-readable), one per file under the URL; the
+#                           file named in $STUB_STORE/.list-short is reported one byte smaller
+set -u
+cmd=$1; shift
+cat > /dev/null   # azcopy reads stdin; a caller feeding a loop through it must not let it
+path_of() { local u=${1%%\?*}; u=${u#*://}; echo "$STORE/${u#*/}"; }
+STORE=${STUB_STORE:?}
+mkdir -p "$STORE"
+echo "$cmd $(for a in "$@"; do printf '%s ' "${a%%\?*}"; done)" >> "$STORE/.calls"
+echo "${AZCOPY_LOG_LOCATION:-} ${AZCOPY_JOB_PLAN_LOCATION:-} ${AZCOPY_BUFFER_GB:-} ${AZCOPY_CONCURRENCY_VALUE:-}" > "$STORE/.env"
+case "$cmd" in
+    copy)
+        if [ -e "$STORE/.fail-once" ] || [ -e "$STORE/.fail-always" ]; then
+            rm -f "$STORE/.fail-once"; cat "$STORE/.fail-message" >&2 2>/dev/null || echo "stub: failing" >&2; exit 1
+        fi
+        dest=$(path_of "$2"); mkdir -p "$dest"; cp -rn "$1" "$dest/"   # like --overwrite=false
+        echo "Total Number of Bytes Transferred: 0"; echo "Final Job Status: Completed" ;;
+    list)
+        dir=$(path_of "$1")
+        short=$(cat "$STORE/.list-short" 2>/dev/null || true)
+        [ -d "$dir" ] || exit 0
+        (cd "$dir" && find . -type f | sed 's|^\./||' | sort | while read -r f; do
+            size=$(stat -c %s "$f"); [ "$f" = "$short" ] && size=$((size - 1))
+            echo "$f; Content Length: $size"
+        done) ;;
+    *) echo "stub: unsupported $cmd" >&2; exit 2 ;;
+esac

@@ -1,3 +1,4 @@
 description: The AdvaPACS radiology-order mediator, registered with OpenHIM
 requires: [openhim]
+# Nothing to back up: it keeps no data.
 backup: none

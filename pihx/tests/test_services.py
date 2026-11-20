@@ -107,7 +107,7 @@ class ServicesTest(TempDirTest):
                                    ("description: x\njob: yes please\n", "job"),
                                    ("description: x\njob: yes\n", "job"),
                                    ("description: x\njob: True\n", "job"),
-                                   ("description: x\nbackup: daily\n", "backup"),
+                                   ("description: x\nbackup: daily\n", "daily doesn't exist"),
                                    ("description: x\nsetup: [1, [2]]\n", "service.yaml"),
                                    ("- just\n- a list\n", "mapping")]:
             with self.subTest(manifest=manifest):

@@ -72,6 +72,19 @@ HTTPS. Caddy sends it by default; behind nginx, add `proxy_set_header X-Forwarde
 Without it, or with the browser going straight to the published port, every login fails, and
 openhim-core logs "Cannot send secure cookie over unencrypted connection".
 
+## Backups
+
+OpenHIM's configuration isn't data to keep: `openhim.env` sets it, `openhim-setup` sets the admin
+password, and each mediator provisions its channels and clients on every start. The `mongo-data`
+volume holds the history: the transaction log, audit events and metrics (and anything changed by
+hand in the console, which would be lost otherwise). With the [backups](../backups/README.md)
+service, each run dumps the `openhim` database into `openhim.archive.7z`, and `initialize --from`
+restores it into a new instance ([Backups](../../docs/backups.md)). The restored database has the
+source's admin account, so give the new instance the source's `OPENHIM_PASSWORD`, or
+`openhim-setup` fails on the first start. `pihx <name> summary` prints `[openhim]`, each
+collection's document count and the newest transaction's time, to compare a restore with its source
+(stopped, it starts a throwaway `mongod` on the volume).
+
 ## Mediators
 
 Each mediator is its own service, which requires `openhim`. For now there's one,

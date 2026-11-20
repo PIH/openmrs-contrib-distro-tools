@@ -252,6 +252,30 @@ class DestroyTest(LifecycleTest):
         # The backup is written before the second question.
         self.assertIn("Archived kz to", out)
 
+    def test_the_backups_volume_is_kept_and_not_archived(self):
+        """Its runs restore the instance (copy-backup, then initialize --from)."""
+        self.docker.volumes["kz_backups"] = {"pihx.instance": "kz"}
+        status, out, err = self.destroy("kz", "delete")
+        self.assertEqual(status, 0, err)
+        self.assertIn("It keeps kz_backups, kz's backups (--include-backups", out)
+        self.assertNotIn("volume    kz_backups", out)
+        [backup] = self.backups()
+        self.assertFalse((backup / "kz_backups.tar.gz").exists())
+        self.assertNotIn("kz_backups", self.removed()[0])
+        self.assertIn("kz_backups", self.docker.volumes)
+        self.assertIn("Kept kz_backups", out)
+
+    def test_include_backups_archives_and_removes_the_backups_volume_too(self):
+        self.docker.volumes["kz_backups"] = {"pihx.instance": "kz"}
+        status, out, err = self.destroy("kz", "delete", args=["--include-backups"])
+        self.assertEqual(status, 0, err)
+        self.assertIn("volume    kz_backups", out)
+        [backup] = self.backups()
+        self.assertEqual((backup / "kz_backups.tar.gz").read_text(), "archive of kz_backups")
+        self.assertIn("kz_backups", self.removed()[0])
+        self.assertNotIn("kz_backups", self.docker.volumes)
+        self.assertNotIn("Kept kz_backups", out)
+
     def test_the_backup_comes_after_the_stop(self):
         status, _, err = self.destroy("kz", "no")
         self.assertEqual(status, 1)
