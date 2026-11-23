@@ -205,7 +205,7 @@ The script's contract:
 - Its `7z a` runs with `-mmt2`. 7z otherwise starts a thread per CPU of the host, not of the container,
   and on a large host needs more memory than `BACKUP_MEMORY_LIMIT` (1 GB by default) allows: the
   kernel kills it. Two threads at `-mx5` peak at about 400 MB.
-- The image holds the client tools (`mysqldump`, `sqlite3`, `mongodump`, `sqlcmd`, `7z`, `jq`, ...);
+- The image holds the client tools (`mysqldump`, `pg_dump`, `sqlite3`, `mongodump`, `sqlcmd`, `7z`, `jq`, ...);
   a restore overlay can run it too (`${PIHX_IMAGE_BACKUP_TOOLS}`). A new kind of database adds its
   client to [`images/backup-tools`](../images/backup-tools), which is a new image tag.
 

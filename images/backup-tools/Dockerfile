@@ -75,7 +75,7 @@ LABEL authors="Michael Seaton <mseaton@pih.org>"
 # Tools for the backups service (services/backups). Holds tools only; the backup logic lives in this
 # repo (services/backups/scripts/, each service's scripts/backup.sh) and is mounted into the container.
 # amd64 only (platforms): Oracle publishes its MySQL client .deb files for amd64 only. On PATH: bash, tar,
-# 7z (7-Zip), mysqldump and mysql, sqlite3, mongodump and mongorestore, sqlcmd, jq, GNU coreutils
+# 7z (7-Zip), mysqldump and mysql, pg_dump and psql, sqlite3, mongodump and mongorestore, sqlcmd, jq, GNU coreutils
 # (df/du/stat), flock (util-linux), azcopy and supercronic. tzdata supplies /usr/share/zoneinfo so TZ is
 # honored by date and supercronic.
 # Ubuntu 26.04 ships uutils' Rust coreutils as the default; coreutils-from-gnu switches back to GNU's, which
@@ -87,7 +87,7 @@ RUN --mount=type=bind,from=fetch,source=/mysql-debs,target=/tmp/mysql-debs \
     apt-get update \
  && apt-get install -y --no-install-recommends --allow-remove-essential \
       coreutils-from-gnu coreutils-from-uutils- rust-coreutils- \
- && apt-get install -y --no-install-recommends ca-certificates 7zip jq sqlite3 tzdata \
+ && apt-get install -y --no-install-recommends ca-certificates 7zip jq postgresql-client sqlite3 tzdata \
  && apt-get install -y --no-install-recommends /tmp/mysql-debs/*.deb \
  && rm -rf /var/lib/apt/lists/*
 
