@@ -207,9 +207,10 @@ class ServiceTreeTest(unittest.TestCase):
         for name, svc in SERVICES.items():
             text = "".join(f.read_text() for f in [svc.compose_file, *svc.with_files.values()])
             for mounted in re.findall(r"\$\{PIHX_TOOLS\}/((?:services|utils)/[^:\s]+):", text):
-                self.assertTrue((TOOLS / mounted).is_file(), f"{name}: {mounted} doesn't exist")
-                self.assertTrue(mounted.startswith((f"services/{name}/scripts/",
-                                                    "utils/lib/in-container/")), f"{name}: {mounted}")
+                self.assertTrue((TOOLS / mounted).exists(), f"{name}: {mounted} doesn't exist")
+                # A file in, or the whole of, its own scripts directory or the in-container library.
+                self.assertTrue(f"{mounted}/".startswith((f"services/{name}/scripts/",
+                                                          "utils/lib/in-container/")), f"{name}: {mounted}")
 
     def test_every_service_says_what_happens_to_its_data(self):
         """A script runs in the backups container; none: nothing to back up; absent: not backed up
@@ -222,8 +223,9 @@ class ServiceTreeTest(unittest.TestCase):
             "modality-simulator": "none", "backups": "none", "advapacs-gateway": "none"})
 
     def test_a_backup_script_is_mounted_by_its_with_backups_file(self):
-        """The backups service runs /opt/backup/services/<svc>.sh for a service whose plan says
-        script; the service's with-backups.yaml mounts it there, with what it needs."""
+        """The backups service runs /opt/backup-services/<svc>/backup.sh for a service whose plan says
+        script; the service's with-backups.yaml mounts its scripts directory there, with what it needs.
+        So the manifest's script is always scripts/backup.sh."""
         for name, svc in SERVICES.items():
             backup = svc.manifest.backup
             if backup in (None, "none"):
@@ -232,7 +234,8 @@ class ServiceTreeTest(unittest.TestCase):
             self.assertTrue(os.access(svc.dir / backup, os.X_OK), f"{name}: {backup}")
             self.assertIn("backups", svc.with_files, f"{name} needs with-backups.yaml")
             spec = yaml.safe_load(svc.with_files["backups"].read_text())["services"]["backups"]
-            self.assertIn(f"${{PIHX_TOOLS}}/services/{name}/{backup}:/opt/backup/services/{name}.sh:ro",
+            self.assertEqual(backup, "scripts/backup.sh", name)
+            self.assertIn(f"${{PIHX_TOOLS}}/services/{name}/scripts:/opt/backup-services/{name}:ro",
                           spec["volumes"], name)
             # Its data volumes only read-only: the backup never changes what it backs up. Except
             # these, each saying why in its with-backups.yaml: SQLite locks in its volume (and can't
@@ -246,11 +249,23 @@ class ServiceTreeTest(unittest.TestCase):
         spec = compose(SERVICES["backups"])["services"]["backups"]
         self.assertTrue(spec["image"].startswith("${PIHX_IMAGE_BACKUP_TOOLS:?"), spec["image"])
         self.assertEqual(spec["pull_policy"], "missing")
-        for job in ("entrypoint", "lib", "backup", "upload", "cleanup"):
-            self.assertIn(f"${{PIHX_TOOLS}}/services/backups/scripts/{job}.sh:/opt/backup/{job}.sh:ro",
-                          spec["volumes"])
+        self.assertIn("${PIHX_TOOLS}/services/backups/scripts:/opt/backup:ro", spec["volumes"])
         self.assertIn("backups:/backups", spec["volumes"])
         self.assertEqual(spec["environment"]["BACKUP_PLAN"], "${PIHX_BACKUP_PLAN}")
+
+    def test_the_backups_container_mounts_only_directories_of_the_tools_checkout(self):
+        """It runs for months and reads its scripts on every job. git replaces a file it updates, and
+        a container keeps the file it was started with, so a single-file mount would run old scripts
+        after a deploy until the container restarted. A directory mount sees the update."""
+        specs = [compose(SERVICES["backups"])["services"]["backups"]]
+        for name, svc in SERVICES.items():
+            if "backups" in svc.with_files:
+                specs.append(yaml.safe_load(svc.with_files["backups"].read_text())["services"]["backups"])
+        for spec in specs:
+            for volume in spec["volumes"]:
+                if volume.startswith("${PIHX_TOOLS}/"):
+                    source = TOOLS / volume.split(":")[0][len("${PIHX_TOOLS}/"):]
+                    self.assertTrue(source.is_dir(), volume)
 
     def test_restore_entries_are_named_after_their_service(self):
         restore = {name: [(r.names, r.overlay, r.after) for r in svc.manifest.restore]

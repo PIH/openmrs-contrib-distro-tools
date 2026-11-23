@@ -4,7 +4,8 @@
 # properties into it, so other keys in an existing one are changed here.
 #
 # Usage: openmrs-utils runtime-properties --volume=<volume or dir> (--set-aside | --set)
-#   --set-aside  renames it to openmrs-runtime.properties.restored, so OpenMRS writes a fresh one
+#   --set-aside  renames it to openmrs-runtime.properties.restored (the first free of .restored,
+#                .restored.2, ... if there is one already), so OpenMRS writes a fresh one
 #                from the instance's env on its next start (after a restore, it holds the source
 #                server's settings)
 #   --set        sets the key=value lines given on stdin (so secrets are on no command line),
@@ -31,8 +32,10 @@ if [ "$MODE" = --set-aside ]; then
     docker run --rm -v "$VOLUME:/data" "$ALPINE_IMAGE" sh -c '
         f=/data/openmrs-runtime.properties
         [ -f "$f" ] || exit 0
-        mv "$f" "$f.restored"
-        echo "Moved openmrs-runtime.properties aside to openmrs-runtime.properties.restored -- OpenMRS will write a fresh one from the instance'"'"'s env on its next start."' >&2
+        aside="$f.restored" n=2
+        while [ -e "$aside" ] || [ -L "$aside" ]; do aside="$f.restored.$n"; n=$((n + 1)); done
+        mv "$f" "$aside"
+        echo "Moved openmrs-runtime.properties aside to ${aside##*/} -- OpenMRS will write a fresh one from the instance'"'"'s env on its next start."' >&2
     exit 0
 fi
 

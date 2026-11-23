@@ -1,7 +1,8 @@
 services:
   # Runs the backup and upload jobs on their schedules (scripts/entrypoint.sh), with the instance
   # running. What each of the instance's services backs up comes from its with-backups.yaml, which
-  # mounts its backup script at /opt/backup/services/<svc>.sh and passes what that script needs.
+  # mounts its scripts directory at /opt/backup-services/<svc> (its backup script is backup.sh there)
+  # and passes what that script needs.
   backups:
     container_name: ${SERVICE_NAME}-backups
     # Built in this repo (images/backup-tools), referenced by its content tag. A content tag never
@@ -23,12 +24,10 @@ services:
       TZ: ${TZ}
     volumes:
       - backups:/backups
-      - ${PIHX_TOOLS}/services/backups/scripts/entrypoint.sh:/opt/backup/entrypoint.sh:ro
-      - ${PIHX_TOOLS}/services/backups/scripts/lib.sh:/opt/backup/lib.sh:ro
-      - ${PIHX_TOOLS}/services/backups/scripts/backup.sh:/opt/backup/backup.sh:ro
-      - ${PIHX_TOOLS}/services/backups/scripts/upload.sh:/opt/backup/upload.sh:ro
-      - ${PIHX_TOOLS}/services/backups/scripts/upload-azure.sh:/opt/backup/upload-azure.sh:ro
-      - ${PIHX_TOOLS}/services/backups/scripts/cleanup.sh:/opt/backup/cleanup.sh:ro
+      # Directories, never single files: git replaces a file it updates, and a file mount would keep the
+      # old one until the container restarts. A directory mount sees the update (of a checkout updated
+      # in place; docs/services.md#backup).
+      - ${PIHX_TOOLS}/services/backups/scripts:/opt/backup:ro
     restart: unless-stopped
     deploy:
       resources:

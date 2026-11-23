@@ -2,7 +2,7 @@
 services:
   backups:
     volumes:
-      - ${PIHX_TOOLS}/services/biometrics/scripts/backup.sh:/opt/backup/services/biometrics.sh:ro
+      - ${PIHX_TOOLS}/services/biometrics/scripts:/opt/backup-services/biometrics:ro
       # Read-write, unlike the other services' volumes: SQLite takes its locks there, and a database
       # in WAL mode (which Neurotechnology's library may choose) can't be read from a read-only mount.
       # The backup only reads it.

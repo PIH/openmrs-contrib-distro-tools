@@ -6,4 +6,4 @@ services:
       mongo-db:
         condition: service_healthy
     volumes:
-      - ${PIHX_TOOLS}/services/openhim/scripts/backup.sh:/opt/backup/services/openhim.sh:ro
+      - ${PIHX_TOOLS}/services/openhim/scripts:/opt/backup-services/openhim:ro

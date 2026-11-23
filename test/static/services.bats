@@ -467,8 +467,9 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_line "backups:/backups:false"
     assert_line "openmrs-data:/sources/openmrs-data:true"
     assert_line "openmrs-data:/sources/openmrs:true"
-    assert_line "$REPO_ROOT/services/openmrs-db/scripts/backup.sh:/opt/backup/services/openmrs-db.sh:true"
-    assert_line "$REPO_ROOT/services/openmrs/scripts/backup.sh:/opt/backup/services/openmrs.sh:true"
+    assert_line "$REPO_ROOT/services/openmrs-db/scripts:/opt/backup-services/openmrs-db:true"
+    assert_line "$REPO_ROOT/services/openmrs/scripts:/opt/backup-services/openmrs:true"
+    assert_line "$REPO_ROOT/utils/lib/in-container:/opt/backup-lib:true"
     # Without them, the backups container gets none of their values or scripts.
     run instance_compose "$dir" backups -- config --format json
     assert_success

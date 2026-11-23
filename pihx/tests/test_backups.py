@@ -261,10 +261,11 @@ class BackupPlanTest(CommandTest):
         found = services.all(self.tools)
         self.assertEqual(services.backup_plan(found.values()), "db=none app=unset cache=script")
 
-    def test_a_backup_script_must_exist_inside_the_service(self):
-        for manifest, message in [("backup: scripts/nosuch.sh", "scripts/nosuch.sh doesn't exist"),
-                                  ("backup: ../db/x.sh", "inside the service directory"),
-                                  ("backup: /bin/sh", "inside the service directory"),
+    def test_a_backup_script_is_scripts_backup_sh_and_exists(self):
+        for manifest, message in [("backup: scripts/backup.sh", "scripts/backup.sh doesn't exist"),
+                                  ("backup: scripts/nosuch.sh", "must be scripts/backup.sh or none"),
+                                  ("backup: ../db/x.sh", "must be scripts/backup.sh or none"),
+                                  ("backup: /bin/sh", "must be scripts/backup.sh or none"),
                                   ("backup: ''", "'backup' must be"),
                                   ("backup: [a]", "'backup' must be")]:
             with self.subTest(manifest=manifest):

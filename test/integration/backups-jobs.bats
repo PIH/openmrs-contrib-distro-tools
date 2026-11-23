@@ -18,13 +18,14 @@ setup() {
     docker volume create "$VOL" >/dev/null
     FIX="$BATS_TEST_TMPDIR/fixtures"
     mkdir -p "$FIX"
+    fixture() { mkdir -p "$FIX/$1"; echo "$FIX/$1/backup.sh"; } # <svc>: where its script goes
     # Fixture service scripts: write a file named after the service into the run folder, write nothing,
     # or fail.
-    printf '#!/bin/bash\necho a > "$BACKUP_RUN_DIR/ok-a.txt"\n' > "$FIX/ok-a.sh"
-    printf '#!/bin/bash\necho b > "$BACKUP_RUN_DIR/ok-b.txt"\n' > "$FIX/ok-b.sh"
-    printf '#!/bin/bash\necho "boom" >&2\nexit 3\n' > "$FIX/fails.sh"
-    printf '#!/bin/bash\necho "nothing chosen"\n' > "$FIX/writes-nothing.sh"
-    printf '#!/bin/bash\necho z > "$BACKUP_RUN_DIR/half.7z"\nexit 2\n' > "$FIX/half.sh"
+    printf '#!/bin/bash\necho a > "$BACKUP_RUN_DIR/ok-a.txt"\n' > "$(fixture ok-a)"
+    printf '#!/bin/bash\necho b > "$BACKUP_RUN_DIR/ok-b.txt"\n' > "$(fixture ok-b)"
+    printf '#!/bin/bash\necho "boom" >&2\nexit 3\n' > "$(fixture fails)"
+    printf '#!/bin/bash\necho "nothing chosen"\n' > "$(fixture writes-nothing)"
+    printf '#!/bin/bash\necho z > "$BACKUP_RUN_DIR/half.7z"\nexit 2\n' > "$(fixture half)"
 }
 teardown() { common_teardown; }
 
@@ -109,7 +110,7 @@ runs() { in_image -- -c 'ls /backups' | grep -v -e status.json; }
 }
 
 @test "a service whose script writes nothing named after it is reported not backed up" {
-    printf '#!/bin/bash\necho x > "$BACKUP_RUN_DIR/someone-else.txt"\n' > "$FIX/misnamed.sh"
+    printf '#!/bin/bash\necho x > "$BACKUP_RUN_DIR/someone-else.txt"\n' > "$(fixture misnamed)"
     run backup_job -e BACKUP_PLAN="ok-a=script writes-nothing=script misnamed=script" --
     assert_success
     run in_image -- -c 'jq -c .backup.not_backed_up /backups/status.json'
@@ -137,7 +138,7 @@ runs() { in_image -- -c 'ls /backups' | grep -v -e status.json; }
 @test "a service whose plan says script but whose script isn't mounted fails the run" {
     run backup_job -e BACKUP_PLAN="ok-a=script missing=script odd=weird" --
     assert_failure
-    assert_output --partial "missing: its backup script isn't mounted at /fixtures/missing.sh (services/missing/with-backups.yaml)"
+    assert_output --partial "missing: its backup script isn't mounted at /fixtures/missing/backup.sh (services/missing/with-backups.yaml)"
     assert_output --partial "odd: unknown backup kind 'weird' in BACKUP_PLAN"
 }
 

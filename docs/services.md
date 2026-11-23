@@ -78,7 +78,7 @@ and `test/static/services.bats` check every service in the tree against the conv
 | `start-env` | Scripts that `start` and `update` run, in pihx's container, before Compose's `up`: a list of entries, each `script` (a path in the service directory) and `sets` (the variables it may set). A script prints `KEY=value` lines, values for that `up` only, never written anywhere. A variable it isn't declared to set is ignored with a warning, and `sets` can't name pihx's own (`PIHX_*`, `COMPOSE_*` and `SERVICE_NAME` that pihx sets, and the `PATH`, `HOME`, `DOCKER_CONFIG`, `DOCKER_HOST` it passes through). Every declared variable is passed, empty unless printed; a script that fails or prints anything else gives them all empty, with a warning. So the compose file's default for such a value must be the safe one, and no instance env file may set one (the instance is refused). `openmrs`'s `start/create-tables` decides whether OpenMRS creates its tables |
 | `capture-env` | Name prefixes (e.g. `[OMRS_EXTRA_]`). At `create` and `add-service`, a variable in your environment with such a prefix goes into the service's `.env` even though no default or compose file names it |
 | `job` | `true` for a job: `start` doesn't bring it up and `run-service` runs it holding the instance lock |
-| `backup` | What happens to its data ([Backup](#backup)): the path of its backup script (e.g. `scripts/backup.sh`), which the `backups` service runs; `none`, nothing to back up; or absent, not backed up (yet), which each backup run names |
+| `backup` | What happens to its data ([Backup](#backup)): `scripts/backup.sh`, its backup script (always that name), which the `backups` service runs; `none`, nothing to back up; or absent, not backed up (yet), which each backup run names |
 | `restore` | What `initialize` accepts, as a list of entries: `names` (the entries of the `--from` directory), `overlay` (a compose file under `restore/`) and optionally `after` (another, run after it, e.g. an account reset) |
 
 ```yaml
@@ -175,12 +175,19 @@ What the entries look like to a user is in [Initializing an instance](restore.md
 Every service says what happens to its data in its manifest's `backup`, so a new service can't go
 without backups unnoticed ([Backups](backups.md)):
 
-- **A script** (`backup: scripts/backup.sh`): the `backups` service runs it, in its own container
-  (the `backup-tools` image), on every backup run. The service's `with-backups.yaml` mounts it at
-  `/opt/backup/services/<svc>.sh` and gives the backups container what the script needs: its data
-  volumes read-only under `/sources/` (read-write only where the tool needs it, saying why:
+- **A script** (`backup: scripts/backup.sh`, always that name): the `backups` service runs it, in its
+  own container (the `backup-tools` image), on every backup run. The service's `with-backups.yaml`
+  mounts its `scripts` directory at `/opt/backup-services/<svc>` (and `utils/lib/in-container` at
+  `/opt/backup-lib`, if the script uses it) and gives the backups container what the script needs:
+  its data volumes read-only under `/sources/` (read-write only where the tool needs it, saying why:
   `biometrics`' SQLite, `sqlserver`'s `.bak` staging), the values it needs under `environment:`
   (e.g. a root password), a `depends_on` its database. `test_service_tree.py` checks that it does.
+  The backups container mounts directories of the tools checkout, never single files: it runs for
+  months, git replaces a file it updates, and a single-file mount keeps the old file until the
+  container restarts, so a deploy's script changes wouldn't reach the jobs. A directory mount sees them,
+  as long as the checkout is updated in place (git, as Puppet's deploy does): a checkout replaced by
+  a new directory needs `pihx <instance> restart backups`. A backup run going while the checkout is
+  updated can read some scripts from before and some from after, so deploy outside the backup schedule.
 - **`none`**: nothing of its own to back up (e.g. `petl`, whose output PETL rebuilds); each run's log
   says so.
 - **Absent**: not backed up yet. Each run's log and `status.json` name the service, and the run still
