@@ -90,13 +90,19 @@ dhis2_backup() {
     refute_output --partial "$PW"
     run ls out
     assert_output $'dhis2-db.sql.7z\ndhis2.7z'
-    # No dhis.conf (setup writes it), and the analytics tables aren't in the dump.
+    # No dhis.conf (setup writes it).
     run docker run --rm -v "$BATS_TEST_TMPDIR/out:/o:ro" --entrypoint bash "$IMAGE" -c \
-        "printf '%s\n' '$PW' | 7z l -slt /o/dhis2.7z | grep '^Path ='; printf '%s\n' '$PW' | 7z x -so /o/dhis2-db.sql.7z | grep -c 'analytics_' || true"
+        "set -eo pipefail; printf '%s\n' '$PW' | 7z l -slt /o/dhis2.7z | grep '^Path ='"
+    assert_success
     assert_line 'Path = dhis2/.dhis2-version'
     assert_line 'Path = dhis2/files/2.txt'
     refute_output --partial 'dhis.conf'
-    assert_line --index -1 0
+    # The dump is there (a failed extraction fails the test), and has no analytics tables.
+    run docker run --rm -v "$BATS_TEST_TMPDIR/out:/o:ro" --entrypoint bash "$IMAGE" -c \
+        "set -eo pipefail; printf '%s\n' '$PW' | 7z x -so /o/dhis2-db.sql.7z"
+    assert_success
+    assert_output --partial 'COPY public.datavalue'
+    refute_output --partial 'analytics_'
 
     docker rm -f "$NAME-dhis2-db" >/dev/null
     "$BIN/pihx" "$RESTORED" create --services=dhis2-db,dhis2 >/dev/null
