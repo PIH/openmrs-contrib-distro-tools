@@ -65,7 +65,8 @@ DHIS2 runs as root, the stock Tomcat image's user.
 
 ### When a start fails
 
-`pihx <name> start` names `dhis2-setup` and shows its last lines:
+`pihx <name> start` fails saying only that `dhis2-setup` didn't complete successfully: Compose stops
+before pihx can show its log. **The reason is in `pihx <name> logs dhis2-setup`**, as one of these:
 
 | Message | |
 |---|---|
