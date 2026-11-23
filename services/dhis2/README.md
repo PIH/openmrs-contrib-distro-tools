@@ -14,14 +14,16 @@ release WARs are in `dhis2-wars`. Settings are in the instance's `dhis2.env`; de
 | `DHIS2_ENCRYPTION_PASSWORD` | empty (none) | `encryption.password`. An instance restored from another must have that one's, or DHIS2 can't read what it encrypted |
 | `DHIS2_MEMORY_LIMIT`, `DHIS2_JAVA_OPTS` | `4g`, `-Xms1g -Xmx3g` | the container's memory limit, and Tomcat's Java options |
 | `DHIS2_TEST_COPY` | `false` | `true` only on a copy of production: every start turns off its outbound email and sending jobs ([below](#a-copy-of-production)) |
+| `DHIS2_UPGRADE_STEP_TIMEOUT` | `7200` | seconds each version has to come up during an [upgrade](#upgrading) |
 | `DHIS2_CONF_<key>` | none | any other `dhis.conf` setting ([below](#dhisconf)) |
 
 The database's name, user and password come from `dhis2-db.env`: `dhis2` doesn't redefine them. `TZ`
 comes from `instance.env`.
 
-**Nothing in this repo changes the version an instance runs.** `DHIS2_VERSION` has no default, and
+**Nothing in this repo changes the version an instance runs on its own.** `DHIS2_VERSION` has no default, and
 DHIS2's database migrations can't be undone, so the instance's own env (Puppet's `site.pp`) names the
-version, and changing it is the only way to upgrade.
+version, and changing it is the only way to upgrade. `pihx <name> dhis2 upgrade`, run by an operator,
+changes it one version at a time ([below](#upgrading)).
 
 ## Versions
 
@@ -120,6 +122,17 @@ instead. It has the database connection (`dhis2-db`, with `dhis2-db.env`'s name,
 after the ones above, so it's the one DHIS2 reads. At `create`, the `DHIS2_CONF_*` in your shell go
 into `dhis2.env` (the manifest's `capture-env`). Values are written as a Java properties file reads
 them, with a backslash doubled.
+
+## Upgrading
+
+`pihx <name> dhis2 upgrade [--to=<version>] [--with-fix=<version>/<file>]...` steps the instance to the
+next version in the list (or each one up to `--to`): it runs the chosen
+[known fixes](known-fixes), sets `DHIS2_VERSION` and `DHIS2_TOMCAT_TAG` in `dhis2.env`, starts the
+instance and waits up to `DHIS2_UPGRADE_STEP_TIMEOUT` seconds (default 7200) for DHIS2 to come up. A
+version that didn't come up is retried by the next run, never skipped. A failure prints only the
+failed migration and its SQL state ([`scripts/flyway-errors.sh`](scripts/flyway-errors.sh)), never
+log text that could quote data. The procedure, before and after, the known fixes and refreshing a
+test copy are in [DHIS2: upgrading, patching and test copies](../../docs/dhis2.md).
 
 ## Backup, restore and summary
 

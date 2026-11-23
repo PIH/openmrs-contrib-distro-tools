@@ -1,0 +1,177 @@
+#!/bin/bash
+# Upgrades DHIS2 to the next version in scripts/versions (or each one up to --to), retrying one that didn't come up.
+#
+# Usage: pihx <instance> dhis2 upgrade [--to=<version>] [--with-fix=<version>/<file>]...
+#   --to        steps through every version up to this one (default: one step)
+#   --with-fix  runs known-fixes/<version>/<file> before that version's step; repeat for more
+#   DHIS2_UPGRADE_STEP_TIMEOUT  seconds each version has to come up: an instance setting (dhis2.env),
+#                               default 7200
+#
+# DHIS2's database migrations can't skip a version or be undone. Per step: dhis2-db up and healthy,
+# dhis2 stopped, the chosen fixes run (each in one transaction), then DHIS2_VERSION and
+# DHIS2_TOMCAT_TAG set to the step's in dhis2.env and the instance started, and DHIS2 waited for.
+# dhis2-upgrade.pending names the step's version from just before the env changes until DHIS2 has come
+# up: if it names the version the env is on, that version didn't come up (it failed, or the run was
+# interrupted), so the next run retries it, fixes and all, rather than going past it.
+# A failure prints only the failed migration and SQL state (flyway-errors.sh): DHIS2's and Postgres's
+# own messages can quote row values. The full log stays in `docker logs`. Each step is logged, with
+# its duration, to dhis2-upgrade.log in the instance directory. Run through pihx, which holds the
+# instance lock and sets the environment (pihx/script.py); docs/dhis2.md has the procedure.
+set -euo pipefail
+
+die() { echo "error: $*" >&2; exit 1; }
+note() { echo "$*" >&2; }
+
+VERSIONS_FILE="$PIHX_TOOLS/services/dhis2/scripts/versions"
+FIXES_DIR="$PIHX_TOOLS/services/dhis2/known-fixes"
+PENDING="$PIHX_INSTANCE_DIR/dhis2-upgrade.pending"
+LOG="$PIHX_INSTANCE_DIR/dhis2-upgrade.log"
+STEP_TIMEOUT="${DHIS2_UPGRADE_STEP_TIMEOUT:-7200}"
+
+TO=""
+FIXES=()
+for arg in "$@"; do
+    case "$arg" in
+        --to=*) TO="${arg#*=}" ;;
+        --with-fix=*) FIXES+=("${arg#*=}") ;;
+        *) die "unknown argument: $arg (usage: pihx $PIHX_INSTANCE dhis2 upgrade [--to=<version>] [--with-fix=<version>/<file>]...)" ;;
+    esac
+done
+case "$STEP_TIMEOUT" in
+    ''|*[!0-9]*|0) die "DHIS2_UPGRADE_STEP_TIMEOUT must be a positive number of seconds" ;;
+esac
+
+# The versions list, oldest first: VERSIONS[i] runs on tomcat:TAGS[i].
+VERSIONS=()
+TAGS=()
+while read -r version tag _; do
+    VERSIONS+=("$version")
+    TAGS+=("$tag")
+done < <(awk '!/^#/ && NF' "$VERSIONS_FILE")
+
+index_of() { # <version>: its position in VERSIONS, or a failure
+    local i
+    for i in "${!VERSIONS[@]}"; do
+        if [ "${VERSIONS[$i]}" = "$1" ]; then
+            echo "$i"
+            return
+        fi
+    done
+    die "DHIS2 $1 isn't in services/dhis2/scripts/versions"
+}
+
+# Each fix must be a file in known-fixes, named exactly: no other path is ever run.
+for fix in "${FIXES[@]}"; do
+    [[ $fix =~ ^[0-9][0-9.]*/[A-Za-z0-9][A-Za-z0-9._-]*\.sql$ ]] && [[ $fix != *..* ]] ||
+        die "--with-fix=$fix: expected <version>/<file>.sql, a file in services/dhis2/known-fixes/"
+    [ -f "$FIXES_DIR/$fix" ] || die "$fix isn't a known fix (services/dhis2/known-fixes/)"
+done
+
+CURRENT="${DHIS2_VERSION:?DHIS2_VERSION must be set}"
+FROM=$(index_of "$CURRENT")
+if [ "$FROM" -gt 0 ] && [ -f "$PENDING" ] && [ "$(cat "$PENDING")" = "$CURRENT" ]; then
+    FROM=$((FROM - 1))
+    note "DHIS2 $CURRENT didn't come up last time: retrying it."
+fi
+if [ -n "$TO" ]; then
+    LAST=$(index_of "$TO")
+else
+    LAST=$((FROM + 1))
+fi
+if [ "$LAST" -le "$FROM" ] || [ "$LAST" -ge "${#VERSIONS[@]}" ]; then
+    note "$PIHX_INSTANCE is on DHIS2 $CURRENT: nothing to do."
+    exit 0
+fi
+
+# A fix for a version this run doesn't step to would silently not run.
+for fix in "${FIXES[@]}"; do
+    fix_version="${fix%%/*}"
+    fix_index=$(index_of "$fix_version")
+    if [ "$fix_index" -le "$FROM" ] || [ "$fix_index" -gt "$LAST" ]; then
+        die "--with-fix=$fix is for DHIS2 $fix_version, which this run doesn't step to (${VERSIONS[$FROM]} -> ${VERSIONS[$LAST]})"
+    fi
+done
+
+# pihx makes the volumes, at a start or initialize: one never started has no database to upgrade.
+if ! docker volume inspect "${SERVICE_NAME}_dhis2-db-data" >/dev/null 2>&1; then
+    die "${SERVICE_NAME}_dhis2-db-data doesn't exist: initialize or start $PIHX_INSTANCE first, on DHIS2 $CURRENT"
+fi
+
+compose() { docker compose --project-directory "$PIHX_INSTANCE_DIR" "$@"; }
+
+# The chosen fixes for <version>, by file name (their numbers order them), each once.
+fixes_for() { # <version>
+    local fix
+    for fix in "${FIXES[@]}"; do
+        [ "${fix%%/*}" != "$1" ] || echo "${fix#*/}"
+    done | sort -u
+}
+
+# One fix, in one transaction, in dhis2-db. Output is only psql's severity and SQL state on an error
+# (VERBOSITY=sqlstate): its messages can quote row values. The password stays in the container.
+run_fix() { # <version>/<file>
+    note "Running known fix $1..."
+    # shellcheck disable=SC2016 # expanded in the container
+    docker exec -i "$SERVICE_NAME-dhis2-db" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -X -q -1 \
+        -h 127.0.0.1 -v ON_ERROR_STOP=1 -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never \
+        -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$FIXES_DIR/$1" >/dev/null
+}
+
+log_step() { # <from> <to> <fixes> <seconds> <ok|failed>
+    printf '%s %s -> %s fixes=[%s] %ss %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$@" >> "$LOG"
+}
+
+note "Upgrading $PIHX_INSTANCE from DHIS2 ${VERSIONS[$FROM]} to ${VERSIONS[$LAST]}, one version at a time."
+for ((i = FROM + 1; i <= LAST; i++)); do
+    from=${VERSIONS[$((i - 1))]} v=${VERSIONS[$i]} tag=${TAGS[$i]} start=$(date +%s)
+    mapfile -t step_fixes < <(fixes_for "$v")
+    note ""
+    note "=== DHIS2 $from -> $v (tomcat:$tag)"
+    # Through Compose: an instance just restored has no containers yet.
+    compose up -d dhis2-db
+    "$PIHX_TOOLS/utils/wait-for-healthy.sh" --container="$SERVICE_NAME-dhis2-db" --timeout=600
+    compose stop dhis2
+    for file in "${step_fixes[@]}"; do
+        if ! run_fix "$v/$file"; then
+            log_step "$from" "$v" "${step_fixes[*]}" $(($(date +%s) - start)) failed
+            die "known fix $v/$file failed, and was rolled back. DHIS2 is stopped; its version is unchanged. Fix the cause, then run this again."
+        fi
+    done
+
+    echo "$v" > "$PENDING"
+    python3 -m pihx.envfile set "$PIHX_INSTANCE_DIR/dhis2.env" DHIS2_VERSION "$v"
+    python3 -m pihx.envfile set "$PIHX_INSTANCE_DIR/dhis2.env" DHIS2_TOMCAT_TAG "$tag"
+    since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    # pihx's own start, without the lock (this command holds it): it reads the new dhis2.env.
+    # A failed migration leaves Tomcat running without DHIS2: it logs this, and is never healthy.
+    if ! python3 -m pihx "$PIHX_INSTANCE" _start ||
+            ! "$PIHX_TOOLS/utils/wait-for-healthy.sh" --container="$SERVICE_NAME-dhis2" \
+                --timeout="$STEP_TIMEOUT" --fail-on-unhealthy=true \
+                --fail-on-log='startup failed due to previous errors'; then
+        log_step "$from" "$v" "${step_fixes[*]}" $(($(date +%s) - start)) failed
+        note ""
+        note "DHIS2 $v didn't come up."
+        summary=$(docker logs --since "$since" "$SERVICE_NAME-dhis2" 2>&1 |
+            "$PIHX_TOOLS/services/dhis2/scripts/flyway-errors.sh" || true)
+        if [ -n "$summary" ]; then
+            note "$summary"
+        else
+            note "  (no failed Flyway migration in its log; a failed setup's reason is in 'pihx $PIHX_INSTANCE logs dhis2-setup')"
+        fi
+        note "The full log: docker logs $SERVICE_NAME-dhis2. dhis2.env now says $v: fix the cause and run this"
+        note "again to retry $v (docs/dhis2.md). Never set an earlier version: DHIS2 can't be downgraded."
+        exit 1
+    fi
+    log_step "$from" "$v" "${step_fixes[*]}" $(($(date +%s) - start)) ok
+    rm -f "$PENDING"
+    note "DHIS2 $v is up ($(($(date +%s) - start))s)."
+done
+
+v=${VERSIONS[$LAST]}
+tag=${TAGS[$LAST]}
+# On a Puppet host the instance's tools directory is Puppet's checkout, not a link (use-tools), and
+# site.pp names the version: it must name the new one, or the next apply fails dhis2's start.
+if [ -d "$PIHX_INSTANCE_DIR/tools" ] && [ ! -L "$PIHX_INSTANCE_DIR/tools" ]; then
+    note "Set DHIS2_VERSION=$v and DHIS2_TOMCAT_TAG=$tag in site.pp (Puppet) before unholding the instance."
+fi
+note "$PIHX_INSTANCE is on DHIS2 $v."
