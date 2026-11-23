@@ -38,6 +38,7 @@ ENV
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret > "$dir/advapacs-gateway.env"
     echo "BACKUP_ARCHIVE_PASSWORD=Placeholder-1" > "$dir/backups.env"
     echo "DHIS2_DB_PASSWORD=Placeholder-1" > "$dir/dhis2-db.env"
+    echo "DHIS2_VERSION=2.43.2.1" > "$dir/dhis2.env"
 }
 
 # <service> and, recursively, the services its manifest requires.
@@ -97,7 +98,7 @@ assert_valid() {
     EXTRA_ENV=()
     make_instance "$dir"
     for pair in openmrs:OPENMRS_IMAGE_NAME petl:PETL_MYSQL_PASSWORD sqlserver:SQLSERVER_SA_PASSWORD \
-            biometrics:BIOMETRICS_LICENSE_BASE64 dhis2-db:DHIS2_DB_PASSWORD \
+            biometrics:BIOMETRICS_LICENSE_BASE64 dhis2-db:DHIS2_DB_PASSWORD dhis2:DHIS2_VERSION \
             advapacs-gateway:ADVAPACS_GATEWAY_REGION openhim:OPENHIM_PASSWORD \
             openhim-advapacs-mediator:ADVAPACS_MEDIATOR_INBOUND_SECRET \
             openhim-advapacs-mediator:ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD \
@@ -489,4 +490,31 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_success
     run bash -c "grep -n '7z a ' '$REPO_ROOT'/services/*/scripts/backup.sh | grep -v -e ' -mmt2 '"
     assert_output ""
+}
+
+@test "dhis2 runs its version's WAR at /dhis in the Tomcat tag it's given, and only dhis2-setup gets the database password" {
+    local dir="$BATS_TEST_TMPDIR/instance" config
+    EXTRA_ENV=()
+    make_instance "$dir"
+    run instance_compose "$dir" dhis2-db,dhis2 -- config --format json
+    assert_success
+    config=$output
+    run jq -r '.services["dhis2-setup"].image, .services.dhis2.image' <<< "$config"
+    assert_output $'tomcat:10.1-jdk17-temurin-noble\ntomcat:10.1-jdk17-temurin-noble'
+    run jq -r '.services.dhis2.environment.CATALINA_OPTS' <<< "$config"
+    assert_output '-Xms1g -Xmx3g -Ddhis2.war=/wars/dhis2-2.43.2.1.war'
+    run jq -r '.services["dhis2-setup"].environment | .DHIS2_VERSION, .DHIS2_TOMCAT_TAG, .DHIS2_DB_PASSWORD, .DHIS2_BASE_URL' <<< "$config"
+    assert_output $'2.43.2.1\n10.1-jdk17-temurin-noble\nPlaceholder-1\nhttp://localhost:8080/dhis'
+    run jq -r '.services.dhis2.environment | has("DHIS2_DB_PASSWORD")' <<< "$config"
+    assert_output false
+    run jq -r '.services.dhis2 | .init, .stop_grace_period, .ulimits.nofile.soft, .healthcheck.start_period' <<< "$config"
+    assert_output $'true\n2m0s\n65536\n2h0m0s'
+    run jq -r '.services.dhis2.depends_on | .["dhis2-setup"].condition, .["dhis2-db"].condition' <<< "$config"
+    assert_output $'service_completed_successfully\nservice_healthy'
+    # An instance sets its own tag (one before 2.41) and base URL.
+    printf 'DHIS2_VERSION=2.40.12\nDHIS2_TOMCAT_TAG=9-jdk11-temurin-noble\nDHIS2_BASE_URL=https://example.org/dhis\n' > "$dir/dhis2.env"
+    run instance_compose "$dir" dhis2-db,dhis2 -- config --format json
+    assert_success
+    run jq -r '.services.dhis2.image, .services["dhis2-setup"].environment.DHIS2_BASE_URL' <<< "$output"
+    assert_output $'tomcat:9-jdk11-temurin-noble\nhttps://example.org/dhis'
 }

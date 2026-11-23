@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Tomcat's server.xml for DHIS2 (compose.yaml mounts it over the image's): one HTTP connector, with
+     the characters DHIS2's API puts in query strings allowed (DHIS2's installation guide), no AJP,
+     and no shutdown port.
+     DHIS2 is the one Context, at /dhis: its WAR is the system property dhis2.war, which compose.yaml
+     sets in CATALINA_OPTS to the DHIS2_VERSION's WAR in the dhis2-wars volume (read-only). Tomcat
+     expands it into webapps/dhis in the container's own filesystem, so a new version, which
+     recreates the container, starts from a fresh copy.
+     RemoteIpValve: behind a proxy that ends TLS and forwards plain HTTP (Caddy), the scheme, port and
+     client address come from X-Forwarded-Proto and X-Forwarded-For, so DHIS2's redirects are https
+     and its session cookie Secure. Only from the valve's default internal proxies (private, loopback
+     and 100.64/10 addresses, which include Docker's bridge); from anywhere else the headers are
+     ignored. -->
+<Server port="-1" shutdown="SHUTDOWN">
+  <Listener className="org.apache.catalina.startup.VersionLoggerListener" />
+  <Listener className="org.apache.catalina.core.JreMemoryLeakPreventionListener" />
+  <Listener className="org.apache.catalina.core.ThreadLocalLeakPreventionListener" />
+  <Service name="Catalina">
+    <Connector port="8080" protocol="HTTP/1.1" connectionTimeout="20000" relaxedQueryChars="\ { } | [ ]" />
+    <Engine name="Catalina" defaultHost="localhost">
+      <Valve className="org.apache.catalina.valves.RemoteIpValve" protocolHeader="X-Forwarded-Proto" />
+      <Host name="localhost" appBase="webapps" unpackWARs="true" autoDeploy="false">
+        <Context path="/dhis" docBase="${dhis2.war}" />
+      </Host>
+    </Engine>
+  </Service>
+</Server>
