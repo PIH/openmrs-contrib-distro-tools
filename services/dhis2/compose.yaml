@@ -29,6 +29,30 @@ services:
       - ${PIHX_TOOLS}/services/dhis2/scripts/versions:/versions:ro
     restart: "no"
 
+  # Before every start of dhis2 (service.yaml's setup), once dhis2-db is healthy: on a copy of
+  # production (DHIS2_TEST_COPY=true), turns off outbound email, SMS gateways and the jobs that send
+  # data out (scripts/test-copy.sh, test-copy.sql); otherwise changes nothing. In dhis2-db's image, for
+  # its psql, so nothing more is pulled.
+  dhis2-test-copy:
+    container_name: ${SERVICE_NAME}-dhis2-test-copy
+    image: ${DHIS2_DB_IMAGE_NAME}:${DHIS2_DB_IMAGE_TAG}
+    depends_on:
+      dhis2-db:
+        condition: service_healthy
+    entrypoint: ["bash", "/test-copy.sh"]
+    env_file:
+      - path: ${PIHX_TOOLS}/services/dhis2/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/dhis2.env
+        required: false
+    environment:
+      DHIS2_DB_NAME: ${DHIS2_DB_NAME}
+      DHIS2_DB_USER: ${DHIS2_DB_USER}
+      PGPASSWORD: ${DHIS2_DB_PASSWORD:?DHIS2_DB_PASSWORD must be set (the password of the DHIS2 database account)}
+    volumes:
+      - ${PIHX_TOOLS}/services/dhis2/scripts/test-copy.sh:/test-copy.sh:ro
+      - ${PIHX_TOOLS}/services/dhis2/scripts/test-copy.sql:/test-copy.sql:ro
+    restart: "no"
+
   # DHIS2 in the stock Tomcat for its Java (DHIS2_TOMCAT_TAG), as the image's user, root. Our
   # server.xml deploys the WAR named by the dhis2.war system property at /dhis.
   dhis2:
@@ -36,6 +60,8 @@ services:
     image: tomcat:${DHIS2_TOMCAT_TAG}
     depends_on:
       dhis2-setup:
+        condition: service_completed_successfully
+      dhis2-test-copy:
         condition: service_completed_successfully
       dhis2-db:
         condition: service_healthy

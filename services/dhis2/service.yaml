@@ -2,8 +2,8 @@ description: DHIS2, in the stock Tomcat for its Java, with its release WAR fetch
 requires: [dhis2-db]
 # dhis.conf settings, set when the instance is created, as DHIS2_CONF_<key> (scripts/setup.sh).
 capture-env: [DHIS2_CONF_]
-# Runs before every start of dhis2.
-setup: [dhis2-setup]
+# Run before every start of dhis2.
+setup: [dhis2-setup, dhis2-test-copy]
 backup: scripts/backup.sh
 # initialize: dhis2-data from an archive named after the service (restore/archive.yaml).
 restore:

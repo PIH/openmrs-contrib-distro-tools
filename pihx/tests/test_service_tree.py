@@ -170,7 +170,8 @@ class ServiceTreeTest(unittest.TestCase):
              "biometrics": ["BIOMETRICS_LICENSE_BASE64"],
              "sqlserver": ["SQLSERVER_SA_PASSWORD"], "petl": ["PETL_MYSQL_PASSWORD"],
              "backups": ["BACKUP_ARCHIVE_PASSWORD", "PIHX_IMAGE_BACKUP_TOOLS"],
-             "dhis2-db": ["DHIS2_DB_PASSWORD"], "dhis2": ["DHIS2_DB_PASSWORD", "DHIS2_VERSION"], "x": []})
+             "dhis2-db": ["DHIS2_DB_PASSWORD"],
+             "dhis2": ["DHIS2_DB_PASSWORD", "DHIS2_DB_PASSWORD", "DHIS2_VERSION"], "x": []})
 
     def test_a_service_does_not_name_another_services_variables_outside_a_with_file(self):
         for name in ("openmrs-db", "sqlserver"):

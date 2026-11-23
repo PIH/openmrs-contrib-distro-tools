@@ -13,6 +13,7 @@ release WARs are in `dhis2-wars`. Settings are in the instance's `dhis2.env`; de
 | `DHIS2_BASE_URL` | `http://localhost:<DHIS2_HTTP_PORT>/dhis` | `server.base.url`: the address users reach DHIS2 at |
 | `DHIS2_ENCRYPTION_PASSWORD` | empty (none) | `encryption.password`. An instance restored from another must have that one's, or DHIS2 can't read what it encrypted |
 | `DHIS2_MEMORY_LIMIT`, `DHIS2_JAVA_OPTS` | `4g`, `-Xms1g -Xmx3g` | the container's memory limit, and Tomcat's Java options |
+| `DHIS2_TEST_COPY` | `false` | `true` only on a copy of production: every start turns off its outbound email and sending jobs ([below](#a-copy-of-production)) |
 | `DHIS2_CONF_<key>` | none | any other `dhis.conf` setting ([below](#dhisconf)) |
 
 The database's name, user and password come from `dhis2-db.env`: `dhis2` doesn't redefine them. `TZ`
@@ -54,6 +55,11 @@ and `dhis2` starts only if it succeeds. In order, it:
 5. writes `dhis.conf` (mode 600) into the DHIS2 home from the settings above, every time;
 6. writes `.dhis2-version`.
 
+`dhis2-test-copy` runs too, once `dhis2-db` is healthy, and `dhis2` starts only if it succeeds: on a
+copy of production it turns off outbound email and the jobs that send data out
+([below](#a-copy-of-production)); on any other instance it prints `dhis2-test-copy: not a test copy,
+nothing changed`.
+
 Then `dhis2` runs Tomcat with our [`scripts/server.xml`](scripts/server.xml), which deploys the
 version's WAR at `/dhis`. It has one HTTP connector with the query characters DHIS2's API uses
 allowed, no AJP and no shutdown port. Its `RemoteIpValve` takes the scheme from `X-Forwarded-Proto`,
@@ -75,6 +81,34 @@ before pihx can show its log. **The reason is in `pihx <name> logs dhis2-setup`*
 | `this instance last ran DHIS2 <old>; DHIS2_VERSION is <new>` | a downgrade: set `DHIS2_VERSION` back to `<old>` or later |
 | `couldn't download <url>` | no internet access, or the release moved |
 | `the download from <url> has SHA-256 ...` | the download isn't the release the list names: it's deleted, never used |
+
+A failed `dhis2-test-copy` is in `pihx <name> logs dhis2-test-copy` in the same way.
+
+## A copy of production
+
+An instance that holds a copy of production (lsdata-test, for trainings) sets `DHIS2_TEST_COPY=true` in
+its `dhis2.env`. Then, before every start of DHIS2, `dhis2-test-copy` runs
+[`scripts/test-copy.sql`](scripts/test-copy.sql) on the database (`psql` in `dhis2-db`'s image, in one
+transaction) and prints `dhis2-test-copy: outbound email and sending jobs turned off`. It:
+
+- deletes the email server's settings (`keyEmailHostName`, `keyEmailPort`, `keyEmailUsername`,
+  `keyEmailPassword`, `keyEmailSender`, `keyEmailTls`), so DHIS2 sends no email;
+- deletes the remote instance that data and metadata sync send to (`keyRemoteInstanceUrl`,
+  `keyRemoteInstanceUsername`, `keyRemoteInstancePassword`);
+- deletes the SMS gateways (the `keySmsSetting` setting up to 2.41, the datastore's
+  `sms-config`/`config` from 2.42);
+- turns off the scheduled jobs that send data out or message people: notifications, scheduled
+  messages, data, metadata and program sync, SMS, push analysis, data exchange, monitoring and
+  expiry alerts (the list, with the versions each exists in, is in `test-copy.sql`). Other jobs, such
+  as analytics, are left alone.
+
+It runs on every start, so an admin who turns any of it back on during a training has it turned off
+again at the next start. It changes rows that are there and skips tables that aren't (an empty
+database, before DHIS2's first start), on every version from 2.30 to 2.43; a schema it doesn't
+recognize fails the start rather than changing nothing. A job DHIS2 itself creates during a start
+(a new version's built-in job, at an upgrade) is turned off at the next one; with no email server or
+SMS gateway it has nothing to send through meanwhile. A value other than `true` or `false` fails
+the start. Never set it on production.
 
 ## dhis.conf
 
