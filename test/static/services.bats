@@ -37,6 +37,7 @@ ENV
     printf '%s\n' ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret > "$dir/advapacs-gateway.env"
     echo "BACKUP_ARCHIVE_PASSWORD=Placeholder-1" > "$dir/backups.env"
+    echo "DHIS2_DB_PASSWORD=Placeholder-1" > "$dir/dhis2-db.env"
 }
 
 # <service> and, recursively, the services its manifest requires.
@@ -96,7 +97,7 @@ assert_valid() {
     EXTRA_ENV=()
     make_instance "$dir"
     for pair in openmrs:OPENMRS_IMAGE_NAME petl:PETL_MYSQL_PASSWORD sqlserver:SQLSERVER_SA_PASSWORD \
-            biometrics:BIOMETRICS_LICENSE_BASE64 \
+            biometrics:BIOMETRICS_LICENSE_BASE64 dhis2-db:DHIS2_DB_PASSWORD \
             advapacs-gateway:ADVAPACS_GATEWAY_REGION openhim:OPENHIM_PASSWORD \
             openhim-advapacs-mediator:ADVAPACS_MEDIATOR_INBOUND_SECRET \
             openhim-advapacs-mediator:ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD \
@@ -146,7 +147,8 @@ ENV
 # overlays (services/<svc>/restore/), checked with the values the extension and initialize set.
 overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     EXTRA_ENV=(OPENMRS_DB_RESTORE_PATH=/tmp/openmrs-db.sql OPENMRS_DB_RESTORE_NAME=openmrs-db.sql
-        OPENMRS_DB_RESTORE_ARCHIVE=archive.7z OPENMRS_RESTORE_PATH=/tmp/openmrs.7z
+        OPENMRS_DB_RESTORE_ARCHIVE=archive.7z DHIS2_DB_RESTORE_PATH=/tmp/dhis2-db.sql
+        DHIS2_DB_RESTORE_NAME=dhis2-db.sql DHIS2_DB_RESTORE_ARCHIVE=archive.7z OPENMRS_RESTORE_PATH=/tmp/openmrs.7z
         OPENMRS_RESTORE_NAME=openmrs.7z OPENMRS_RESTORE_ARCHIVE=archive.7z OPENMRS_DATA_OWNER=1:1
         OPENMRS_DISTRO_DIR=/tmp/distro ALPINE_IMAGE=placeholder/alpine P7ZIP_IMAGE=placeholder/p7zip
         PERCONA_IMAGE=placeholder/percona)
@@ -158,7 +160,8 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
 @test "dev, build and every restore overlay is valid with the services" {
     local o failures=""
     for o in openmrs/modes/dev.yaml openmrs/modes/build.yaml services/openmrs-db/restore/dump.yaml \
-            services/openmrs-db/restore/dump-archive.yaml services/openmrs/restore/archive.yaml \
+            services/openmrs-db/restore/dump-archive.yaml services/dhis2-db/restore/dump.yaml \
+            services/dhis2-db/restore/dump-archive.yaml services/openmrs/restore/archive.yaml \
             services/openmrs/restore/directory.yaml; do
         run overlay_config "$o"
         if [ "$status" -ne 0 ] || [[ "$output" == *'variable is not set'* ]]; then failures+="$o: $output"$'\n'; fi

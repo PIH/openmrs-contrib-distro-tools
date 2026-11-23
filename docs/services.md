@@ -7,6 +7,7 @@ means removing it.
 | Service | What it is | Docs |
 |---|---|---|
 | `openmrs-db` | The OpenMRS database (MySQL or MariaDB), and the setup that keeps its declared accounts in place | [README](../services/openmrs-db/README.md) |
+| `dhis2-db` | The DHIS2 database (PostgreSQL with PostGIS) | [README](../services/dhis2-db/README.md) |
 | `openmrs` | The OpenMRS application (requires `openmrs-db`) | [README](../services/openmrs/README.md) |
 | `openhim` | OpenHIM: core, console and MongoDB | [README](../services/openhim/README.md) |
 | `openhim-advapacs-mediator` | The AdvaPACS radiology-order mediator (requires `openhim`) | [README](../services/openhim-advapacs-mediator/README.md) |
