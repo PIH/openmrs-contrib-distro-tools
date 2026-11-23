@@ -13,8 +13,10 @@
 # dhis2-upgrade.pending names the step's version from just before the env changes until DHIS2 has come
 # up: if it names the version the env is on, that version didn't come up (it failed, or the run was
 # interrupted), so the next run retries it, fixes and all, rather than going past it.
-# A failure prints only the failed migration and SQL state (flyway-errors.sh): DHIS2's and Postgres's
-# own messages can quote row values. The full log stays in `docker logs`. Each step is logged, with
+# Output never includes log text, since DHIS2's and Postgres's messages can quote row values: a failed
+# start prints a fixed line, and a failed migration only its name and SQL state (flyway-errors.sh). The
+# full logs stay in `docker logs`. A step that times out while DHIS2 is still starting says so, and a
+# run refuses to stop a DHIS2 that is still starting (it may be migrating). Each step is logged, with
 # its duration, to dhis2-upgrade.log in the instance directory. Run through pihx, which holds the
 # instance lock and sets the environment (pihx/script.py); docs/dhis2.md has the procedure.
 set -euo pipefail
@@ -99,6 +101,26 @@ fi
 
 compose() { docker compose --project-directory "$PIHX_INSTANCE_DIR" "$@"; }
 
+# What Tomcat logs when DHIS2 fails to deploy (e.g. a failed migration): it keeps running, never healthy.
+DEPLOY_FAILED='startup failed due to previous errors'
+
+# Whether dhis2 is running and still starting, without having logged a failed deploy since its
+# container started: its migrations may be running, and stopping it would interrupt them.
+dhis2_still_starting() {
+    local container="$SERVICE_NAME-dhis2" state started
+    state=$(docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' \
+        "$container" 2>/dev/null || true)
+    [ "$state" = "running starting" ] || return 1
+    started=$(docker inspect --format '{{.State.StartedAt}}' "$container")
+    # Not grep -q: it would end docker logs with SIGPIPE, failing the pipeline (pipefail).
+    ! docker logs --since "$started" "$container" 2>&1 | grep -F -- "$DEPLOY_FAILED" >/dev/null
+}
+
+# A run that timed out leaves DHIS2 starting; a run now would stop it, perhaps mid-migration.
+if dhis2_still_starting; then
+    die "$SERVICE_NAME-dhis2 is still starting on DHIS2 $CURRENT: its migrations may be running, and stopping it could interrupt them. Wait until 'pihx $PIHX_INSTANCE status' shows it healthy (or its log shows it failed), then run this again."
+fi
+
 # The chosen fixes for <version>, by file name (their numbers order them), each once.
 fixes_for() { # <version>
     local fix
@@ -142,21 +164,34 @@ for ((i = FROM + 1; i <= LAST; i++)); do
     python3 -m pihx.envfile set "$PIHX_INSTANCE_DIR/dhis2.env" DHIS2_VERSION "$v"
     python3 -m pihx.envfile set "$PIHX_INSTANCE_DIR/dhis2.env" DHIS2_TOMCAT_TAG "$tag"
     since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    # pihx's own start, without the lock (this command holds it): it reads the new dhis2.env.
-    # A failed migration leaves Tomcat running without DHIS2: it logs this, and is never healthy.
-    if ! python3 -m pihx "$PIHX_INSTANCE" _start ||
-            ! "$PIHX_TOOLS/utils/wait-for-healthy.sh" --container="$SERVICE_NAME-dhis2" \
-                --timeout="$STEP_TIMEOUT" --fail-on-unhealthy=true \
-                --fail-on-log='startup failed due to previous errors'; then
+    # pihx's own start, without the lock (this command holds it): it reads the new dhis2.env. Its
+    # output is never shown: when a setup container fails, it prints that container's last log lines,
+    # and dhis2-setup's, dhis2-test-copy's and Postgres's messages could quote data.
+    note "Starting $PIHX_INSTANCE on DHIS2 $v (dhis2-setup downloads its WAR the first time)..."
+    if ! python3 -m pihx "$PIHX_INSTANCE" _start >/dev/null 2>&1; then
         log_step "$from" "$v" "${step_fixes[*]}" $(($(date +%s) - start)) failed
         note ""
+        note "DHIS2 $v didn't start: a setup container failed (pihx $PIHX_INSTANCE logs dhis2-setup, pihx $PIHX_INSTANCE logs dhis2-test-copy)."
+        note "dhis2.env now says $v: fix the cause and run this again to retry $v (docs/dhis2.md)."
+        exit 1
+    fi
+    if ! "$PIHX_TOOLS/utils/wait-for-healthy.sh" --container="$SERVICE_NAME-dhis2" \
+            --timeout="$STEP_TIMEOUT" --fail-on-unhealthy=true --fail-on-log="$DEPLOY_FAILED"; then
+        log_step "$from" "$v" "${step_fixes[*]}" $(($(date +%s) - start)) failed
+        note ""
+        if dhis2_still_starting; then
+            note "DHIS2 $v hasn't come up within ${STEP_TIMEOUT}s, but is still starting: its migrations may still be running."
+            note "Don't stop it. Wait until 'pihx $PIHX_INSTANCE status' shows $SERVICE_NAME-dhis2 healthy, then run this"
+            note "again to finish the step; if its log shows it failed instead, run this again to retry $v."
+            exit 1
+        fi
         note "DHIS2 $v didn't come up."
         summary=$(docker logs --since "$since" "$SERVICE_NAME-dhis2" 2>&1 |
             "$PIHX_TOOLS/services/dhis2/scripts/flyway-errors.sh" || true)
         if [ -n "$summary" ]; then
             note "$summary"
         else
-            note "  (no failed Flyway migration in its log; a failed setup's reason is in 'pihx $PIHX_INSTANCE logs dhis2-setup')"
+            note "  (no failed migration recognised in its log)"
         fi
         note "The full log: docker logs $SERVICE_NAME-dhis2. dhis2.env now says $v: fix the cause and run this"
         note "again to retry $v (docs/dhis2.md). Never set an earlier version: DHIS2 can't be downgraded."

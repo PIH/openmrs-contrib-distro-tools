@@ -64,7 +64,8 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                    WHERE table_schema = current_schema() AND table_name = 'jobconfiguration' AND column_name = 'enabled') THEN
-        RAISE EXCEPTION 'jobconfiguration has no enabled column: the test-copy guard can''t turn jobs off';
+        RAISE EXCEPTION 'jobconfiguration has no enabled column: the test-copy guard can''t turn jobs off'
+            USING ERRCODE = 'PX001';
     END IF;
     SELECT data_type INTO job_type_column FROM information_schema.columns
         WHERE table_schema = current_schema() AND table_name = 'jobconfiguration' AND column_name = 'jobtype';
@@ -77,6 +78,7 @@ BEGIN
             WHERE substring(jobtype FROM length(jobtype) - length(t.name) - 2)
                   = decode('7400' || lpad(to_hex(length(t.name)), 2, '0'), 'hex') || convert_to(t.name, 'UTF8'));
     ELSE
-        RAISE EXCEPTION 'jobconfiguration.jobtype is %, which the test-copy guard doesn''t know', coalesce(job_type_column, 'missing');
+        RAISE EXCEPTION 'jobconfiguration.jobtype is %, which the test-copy guard doesn''t know', coalesce(job_type_column, 'missing')
+            USING ERRCODE = 'PX002';
     END IF;
 END $$;

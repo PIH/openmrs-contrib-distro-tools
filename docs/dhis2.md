@@ -42,20 +42,31 @@ and `DHIS2_TOMCAT_TAG` in `site.pp`.
 
 ### When a step fails
 
-The output is only `DHIS2 <version> didn't come up.` and, for each failed Flyway migration in that
-step's log, its version and description, its file and the SQL state, for example:
+`upgrade` never prints log text, from DHIS2, its setup containers or Postgres, since their messages
+can quote row values (`Key (id)=(...)`). On a copy of production, its output is safe to pass on. The
+whole logs stay on the machine (`docker logs <name>-dhis2`, `pihx <name> logs <service>`). A step
+ends in one of three ways:
 
-```
-DHIS2 2.41.11.0 didn't come up.
-  migration 2.41.24 - TrackedEntityInstanceToTrackedEntity failed
-  migration V2_41_24__TrackedEntityInstanceToTrackedEntity.sql failed
-  SQL state 42P07
-```
+- **DHIS2 failed to come up**: `DHIS2 <version> didn't come up.` and, for each failed Flyway
+  migration in that step's log, its version and description, its file and the SQL state, for
+  example:
 
-Nothing else from the log is shown, since DHIS2's and Postgres's messages can quote row values
-(`Key (id)=(...)`): on a copy of production, that output is safe to pass on. The whole log stays on
-the machine, in `docker logs <name>-dhis2`. With no migration listed, the start itself failed: the
-reason is in `pihx <name> logs dhis2-setup` ([When a start fails](../services/dhis2/README.md#when-a-start-fails)).
+  ```
+  DHIS2 2.41.11.0 didn't come up.
+    migration 2.41.24 - TrackedEntityInstanceToTrackedEntity failed
+    migration V2_41_24__TrackedEntityInstanceToTrackedEntity.sql failed
+    SQL state 42P07
+  ```
+
+  With `(no failed migration recognised in its log)` instead, read the log on the machine.
+- **A setup container failed**: `DHIS2 <version> didn't start: a setup container failed`. The
+  reason is in `pihx <name> logs dhis2-setup` or `dhis2-test-copy`
+  ([When a start fails](../services/dhis2/README.md#when-a-start-fails)).
+- **The wait timed out with DHIS2 still starting**: `DHIS2 <version> hasn't come up within <n>s,
+  but is still starting`. Its migrations may still be running: **don't stop it**. Wait until
+  `pihx <name> status` shows `<name>-dhis2` healthy, then run `upgrade` again to finish the step. Until
+  then `upgrade` refuses to run (`<name>-dhis2 is still starting`), rather than stopping DHIS2
+  mid-migration. A DHIS2 that has logged a failed deploy doesn't count as starting.
 
 `dhis2.env` already names the failed version, and `<instance dir>/dhis2-upgrade.pending` records that
 it hasn't come up. Run `upgrade` again and it **retries that version**, never going past it: the

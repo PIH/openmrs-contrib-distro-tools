@@ -143,6 +143,20 @@ INSERT INTO jobconfiguration (jobconfigurationid, name, jobtype, enabled) VALUES
     assert_output 2
 }
 
+@test "test-copy guard fails on a schema it doesn't know, printing only SQL states, never values" {
+    sql "CREATE TABLE jobconfiguration (jobconfigurationid bigint PRIMARY KEY, name varchar(230), enabled boolean, jobtype integer);
+         CREATE TABLE systemsetting (systemsettingid bigint PRIMARY KEY, name varchar(255) NOT NULL UNIQUE, value text);
+         INSERT INTO systemsetting VALUES (1, 'keyFlag', 'secret-row');"
+    set_env_value "$NAME" dhis2 DHIS2_TEST_COPY true
+    run run_guard
+    assert_line --partial "ERROR:  PX002"
+    assert_line "error: dhis2-test-copy: test-copy.sql failed with the SQL state above (PX001, PX002: a schema it doesn't know; see test-copy.sql), and changed nothing"
+    refute_output --partial "the test-copy guard doesn't know"
+    refute_output --partial integer
+    run docker inspect -f '{{.State.ExitCode}}' "$NAME-dhis2-test-copy"
+    refute_output 0
+}
+
 @test "test-copy guard fails a start when DHIS2_TEST_COPY is neither true nor false" {
     schema_243
     set_env_value "$NAME" dhis2 DHIS2_TEST_COPY yes

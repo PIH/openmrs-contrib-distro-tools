@@ -107,10 +107,11 @@ transaction) and prints `dhis2-test-copy: outbound email and sending jobs turned
 It runs on every start, so an admin who turns any of it back on during a training has it turned off
 again at the next start. It changes rows that are there and skips tables that aren't (an empty
 database, before DHIS2's first start), on every version from 2.30 to 2.43; a schema it doesn't
-recognize fails the start rather than changing nothing. A job DHIS2 itself creates during a start
-(a new version's built-in job, at an upgrade) is turned off at the next one; with no email server or
-SMS gateway it has nothing to send through meanwhile. A value other than `true` or `false` fails
-the start. Never set it on production.
+recognize fails the start rather than changing nothing. Errors show only their SQL state (PX001 and
+PX002 are its own checks, in `test-copy.sql`), since a message could quote a row's values. A job DHIS2
+itself creates during a start (a new version's built-in job, at an upgrade) is turned off at the next
+one; with no email server or SMS gateway it has nothing to send through meanwhile. A value other
+than `true` or `false` fails the start. Never set it on production.
 
 ## dhis.conf
 
@@ -129,10 +130,12 @@ them, with a backslash doubled.
 next version in the list (or each one up to `--to`): it runs the chosen
 [known fixes](known-fixes), sets `DHIS2_VERSION` and `DHIS2_TOMCAT_TAG` in `dhis2.env`, starts the
 instance and waits up to `DHIS2_UPGRADE_STEP_TIMEOUT` seconds (default 7200) for DHIS2 to come up. A
-version that didn't come up is retried by the next run, never skipped. A failure prints only the
-failed migration and its SQL state ([`scripts/flyway-errors.sh`](scripts/flyway-errors.sh)), never
-log text that could quote data. The procedure, before and after, the known fixes and refreshing a
-test copy are in [DHIS2: upgrading, patching and test copies](../../docs/dhis2.md).
+version that didn't come up is retried by the next run, never skipped, and a DHIS2 still starting
+(perhaps migrating) is never stopped. Its output never includes log text, which could quote data: a
+failed migration is shown as its name and SQL state
+([`scripts/flyway-errors.sh`](scripts/flyway-errors.sh)). The procedure, before and after, the known
+fixes and refreshing a test copy are in
+[DHIS2: upgrading, patching and test copies](../../docs/dhis2.md).
 
 ## Backup, restore and summary
 

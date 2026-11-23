@@ -58,50 +58,84 @@ psql_value() { # <query>
     assert_output --partial 'nothing to do'
 }
 
-@test "a step that doesn't come up keeps .pending, and the next run retries that version: its fixes only when chosen" {
-    # A fix for 2.43.2.1, in a copy of the tools, so the repo's known-fixes stay as they are.
-    local tools="$BATS_TEST_TMPDIR/tools"
-    mkdir "$tools"
-    (cd "$REPO_ROOT" && git ls-files -co --exclude-standard -z | tar --null -T - -cf -) | tar -xf - -C "$tools"
-    mkdir -p "$tools/services/dhis2/known-fixes/2.43.2.1"
+# A copy of the tools in <dir>, with a fix for 2.43.2.1 that records each run, so the repo's
+# known-fixes stay as they are.
+tools_with_test_fix() { # <dir>
+    mkdir "$1"
+    (cd "$REPO_ROOT" && git ls-files -co --exclude-standard -z | tar --null -T - -cf -) | tar -xf - -C "$1"
+    mkdir -p "$1/services/dhis2/known-fixes/2.43.2.1"
     echo 'CREATE TABLE IF NOT EXISTS upgrade_test_fix (n int); INSERT INTO upgrade_test_fix VALUES (1);' \
-        > "$tools/services/dhis2/known-fixes/2.43.2.1/10-test-fix.sql"
-    # No containers, and only the database volume, as initialize leaves a restored instance (with an
-    # empty database here): the step starts dhis2-db, and the start makes the other volumes.
-    DHIS2_VERSION=2.42.7.1 DHIS2_TOMCAT_TAG="$(tag_of 2.42.7.1)" \
-        "$tools/bin/pihx" "$NAME" create --services=dhis2-db,dhis2 >/dev/null
-    docker volume create --label "pihx.instance=$NAME" "${NAME}_dhis2-db-data" >/dev/null
+        > "$1/services/dhis2/known-fixes/2.43.2.1/10-test-fix.sql"
+}
 
-    # A second isn't long enough for DHIS2 to come up: the wait fails, DHIS2 itself is fine.
+# No containers, and only the database volume, as initialize leaves a restored instance (with an
+# empty database here): the step starts dhis2-db, and the start makes the other volumes.
+create_restored() { # <tools dir>
+    DHIS2_VERSION=2.42.7.1 DHIS2_TOMCAT_TAG="$(tag_of 2.42.7.1)" \
+        "$1/bin/pihx" "$NAME" create --services=dhis2-db,dhis2 >/dev/null
+    docker volume create --label "pihx.instance=$NAME" "${NAME}_dhis2-db-data" >/dev/null
+}
+
+@test "a step that times out while DHIS2 is still starting says so, and a run then refuses to stop it; once it's up, the next run retries that version, its fixes only when chosen" {
+    tools_with_test_fix "$BATS_TEST_TMPDIR/tools"
+    create_restored "$BATS_TEST_TMPDIR/tools"
+
+    # A second isn't long enough for DHIS2 to come up: the wait times out, DHIS2 carries on.
     set_env_value "$NAME" dhis2 DHIS2_UPGRADE_STEP_TIMEOUT 1
     run "$BIN/pihx" "$NAME" dhis2 upgrade --with-fix=2.43.2.1/10-test-fix.sql
     assert_failure
-    assert_output --partial "DHIS2 2.43.2.1 didn't come up."
+    assert_output --partial "DHIS2 2.43.2.1 hasn't come up within 1s, but is still starting: its migrations may still be running."
+    refute_output --partial "didn't come up."
     assert_equal "$(cat "$DIR/dhis2-upgrade.pending")" 2.43.2.1
     assert_equal "$(env_value DHIS2_VERSION)" 2.43.2.1
     assert_equal "$(psql_value 'SELECT count(*) FROM upgrade_test_fix')" 1
     run tail -n 1 "$DIR/dhis2-upgrade.log"
     assert_output --regexp ' 2\.42\.7\.1 -> 2\.43\.2\.1 fixes=\[10-test-fix\.sql\] [0-9]+s failed$'
 
-    # Retried, not skipped (2.43.2.1 is the last version: a skip would say "nothing to do"), and
-    # without the fix this time.
+    # Run again at once: refused, DHIS2 left running, nothing logged.
+    local started logged
+    started=$(docker inspect -f '{{.State.StartedAt}}' "$NAME-dhis2")
+    logged=$(wc -l < "$DIR/dhis2-upgrade.log")
     run "$BIN/pihx" "$NAME" dhis2 upgrade
     assert_failure
-    assert_output --partial "DHIS2 2.43.2.1 didn't come up last time: retrying it"
-    assert_output --partial "DHIS2 2.43.2.1 didn't come up."
-    assert_equal "$(psql_value 'SELECT count(*) FROM upgrade_test_fix')" 1
-    run tail -n 1 "$DIR/dhis2-upgrade.log"
-    assert_output --regexp ' 2\.42\.7\.1 -> 2\.43\.2\.1 fixes=\[\] [0-9]+s failed$'
+    assert_output --partial "$NAME-dhis2 is still starting on DHIS2 2.43.2.1"
+    assert_equal "$(docker inspect -f '{{.State.Running}} {{.State.StartedAt}}' "$NAME-dhis2")" "true $started"
+    assert_equal "$(wc -l < "$DIR/dhis2-upgrade.log")" "$logged"
     assert_equal "$(cat "$DIR/dhis2-upgrade.pending")" 2.43.2.1
 
-    # With time to come up, the retry completes.
+    # Once it's up, the version is retried, not skipped (2.43.2.1 is the last version: a skip would
+    # say "nothing to do"), and without the fix this time.
+    run "$UTILS/wait-for-healthy.sh" --container="$NAME-dhis2" --timeout=1800
+    assert_success
     sed -i '/^DHIS2_UPGRADE_STEP_TIMEOUT=/d' "$DIR/dhis2.env"
     run "$BIN/pihx" "$NAME" dhis2 upgrade
     assert_success
+    assert_output --partial "DHIS2 2.43.2.1 didn't come up last time: retrying it"
     assert_line --index -1 "$NAME is on DHIS2 2.43.2.1."
+    assert_equal "$(psql_value 'SELECT count(*) FROM upgrade_test_fix')" 1
     assert [ ! -e "$DIR/dhis2-upgrade.pending" ]
     run tail -n 1 "$DIR/dhis2-upgrade.log"
     assert_output --regexp ' 2\.42\.7\.1 -> 2\.43\.2\.1 fixes=\[\] [0-9]+s ok$'
+}
+
+@test "a step whose setup fails prints a fixed line, never the setup containers' logs, and the next run retries it" {
+    create_restored "$REPO_ROOT"
+    # The test-copy guard refuses this value, logging a line upgrade must not pass on.
+    set_env_value "$NAME" dhis2 DHIS2_TEST_COPY yes
+    run "$BIN/pihx" "$NAME" dhis2 upgrade
+    assert_failure
+    assert_output --partial "DHIS2 2.43.2.1 didn't start: a setup container failed (pihx $NAME logs dhis2-setup, pihx $NAME logs dhis2-test-copy)."
+    refute_output --partial 'must be true or false'
+    assert_equal "$(cat "$DIR/dhis2-upgrade.pending")" 2.43.2.1
+    run tail -n 1 "$DIR/dhis2-upgrade.log"
+    assert_output --regexp ' 2\.42\.7\.1 -> 2\.43\.2\.1 fixes=\[\] [0-9]+s failed$'
+
+    # Not running, so not refused: the version is retried, and fails the same way.
+    run "$BIN/pihx" "$NAME" dhis2 upgrade
+    assert_failure
+    assert_output --partial "DHIS2 2.43.2.1 didn't come up last time: retrying it"
+    assert_output --partial "DHIS2 2.43.2.1 didn't start: a setup container failed"
+    refute_output --partial 'must be true or false'
 }
 
 @test "the known fixes are idempotent and change only what they should, on tables shaped as they expect" {

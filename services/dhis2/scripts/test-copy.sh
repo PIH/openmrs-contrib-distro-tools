@@ -18,7 +18,13 @@ case ${DHIS2_TEST_COPY:-false} in
         exit 1 ;;
 esac
 
-# Notices (none expected) would only be noise: warnings and errors still show.
-PGOPTIONS='-c client_min_messages=warning' psql -X -q -1 -v ON_ERROR_STOP=1 \
-    -h dhis2-db -U "${DHIS2_DB_USER:?}" -d "${DHIS2_DB_NAME:?}" -f /test-copy.sql
+# Notices (none expected) would only be noise: warnings and errors still show, as their SQL state
+# only (VERBOSITY=sqlstate): a message can quote a row's values, and on a copy of production those are
+# patients'. test-copy.sql's own checks raise PX001 and PX002 (it says which is which).
+if ! PGOPTIONS='-c client_min_messages=warning' psql -X -q -1 -v ON_ERROR_STOP=1 \
+        -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never \
+        -h dhis2-db -U "${DHIS2_DB_USER:?}" -d "${DHIS2_DB_NAME:?}" -f /test-copy.sql; then
+    echo "error: dhis2-test-copy: test-copy.sql failed with the SQL state above (PX001, PX002: a schema it doesn't know; see test-copy.sql), and changed nothing" >&2
+    exit 1
+fi
 echo "dhis2-test-copy: outbound email and sending jobs turned off"
