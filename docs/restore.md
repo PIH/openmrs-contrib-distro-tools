@@ -139,10 +139,11 @@ Restored files keep the owners they had on the source host, so `initialize` give
 images). Set `OPENMRS_DATA_OWNER=<uid>:<gid>` to choose it instead.
 
 It also moves a restored `openmrs-runtime.properties` aside to `openmrs-runtime.properties.restored`
-(`openmrs-utils runtime-properties --set-aside`). That file holds the source server's settings and
-secrets, which would otherwise carry on unreviewed: openmrs-core 2.8.11+ overrides only the connection
-settings and `OMRS_EXTRA_*` in an existing file. OpenMRS writes a fresh one from the instance's values
-(`openmrs.env`) on its first start.
+(`openmrs-utils runtime-properties --set-aside`), or, if the data already has one (the source was itself
+restored), to the first free of `.restored.2`, `.restored.3`, ...: an earlier one is never overwritten.
+That file holds the source server's settings and secrets, which would otherwise carry on unreviewed:
+openmrs-core 2.8.11+ overrides only the connection settings and `OMRS_EXTRA_*` in an existing file.
+OpenMRS writes a fresh one from the instance's values (`openmrs.env`) on its first start.
 
 With no runtime properties in `openmrs-data` (set aside, or nothing restored), OpenMRS takes the
 database for a new install, and would create every table again if told to. It is told to only when

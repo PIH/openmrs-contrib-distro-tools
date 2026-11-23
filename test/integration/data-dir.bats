@@ -266,6 +266,20 @@ FIXTURE_TREE_EXCLUDING="./.openmrs-lib-cache
     assert_output 'connection.url=jdbc:mysql://x/openmrs'
 }
 
+@test "initialize keeps a .restored the source already had, moving the new one to the next free name" {
+    echo old > "$BATS_TEST_TMPDIR/data/openmrs-runtime.properties.restored"
+    echo older > "$BATS_TEST_TMPDIR/data/openmrs-runtime.properties.restored.2"
+    NAME="$(instance)"
+    create_instance "$NAME"
+    run_initialize "$NAME" --from "$(from_folder openmrs-db.sql dump.sql openmrs data)"
+    assert_success
+    assert_output --partial 'Moved openmrs-runtime.properties aside to openmrs-runtime.properties.restored.3'
+    run docker run --rm -v "${NAME}_openmrs-data:/v" alpine:3.21 sh -c \
+        'cd /v && ls openmrs-runtime.properties* && cat openmrs-runtime.properties.restored*'
+    assert_output "$(printf '%s\n' openmrs-runtime.properties.restored openmrs-runtime.properties.restored.2 \
+        openmrs-runtime.properties.restored.3 old older 'connection.url=jdbc:mysql://x/openmrs')"
+}
+
 # OpenMRS creates its tables only when a pihx start has just found the database empty
 # (services/openmrs/start/create-tables): a plain `docker compose` gets false, whatever
 # OPENMRS_CREATE_TABLES says. Nothing is recorded in the instance's files.

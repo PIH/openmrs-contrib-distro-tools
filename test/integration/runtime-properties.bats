@@ -37,6 +37,15 @@ in_volume() { # <command>
     assert_output ''
 }
 
+@test "--set-aside never overwrites an earlier .restored" {
+    in_volume 'echo old > /v/openmrs-runtime.properties.restored'
+    run "$UTILS/runtime-properties.sh" --volume="$VOL" --set-aside
+    assert_success
+    assert_output --partial 'aside to openmrs-runtime.properties.restored.2'
+    run in_volume 'ls /v; cat /v/openmrs-runtime.properties.restored'
+    assert_output "$(printf '%s\n' openmrs-runtime.properties.restored openmrs-runtime.properties.restored.2 old)"
+}
+
 @test "needs one of --set-aside and --set, and an existing volume" {
     run "$UTILS/runtime-properties.sh" --volume="$VOL"
     assert_failure
