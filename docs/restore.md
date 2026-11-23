@@ -28,6 +28,8 @@ archive password.
 | `openmrs-db` | `openmrs-db.sql.7z`, `openmrs-db.sql.zip` | an archive holding one dump (e.g. from `backup-mysqldump`) |
 | `openmrs-db` | `openmrs-db.percona.7z`, `openmrs-db.percona/` | a Percona/xtrabackup backup ([below](#percona-backups)), then the [accounts reset](#database-accounts-after-a-physical-restore) |
 | `openmrs-db` | `openmrs-db.datadir/` | a ready MySQL data directory, copied in, then the accounts reset |
+| `dhis2-db` | `dhis2-db.sql`, `dhis2-db.sql.gz` | a plain-format `pg_dump`, imported by PostgreSQL on first start |
+| `dhis2-db` | `dhis2-db.sql.7z`, `dhis2-db.sql.zip` | an archive holding one dump |
 | `openmrs` | `openmrs.7z`, `openmrs.tar.gz`, `openmrs.tgz`, `openmrs.tar`, `openmrs.zip`, `openmrs/` | `openmrs-data`, from an archive (e.g. from `backup-openmrs-data-directory`) or a directory |
 
 An entry may be a link: its host path is what the restore containers mount, and one that doesn't
@@ -228,7 +230,7 @@ pihx <name> summary --output=after.txt
 diff before.txt after.txt
 ```
 
-Other services add their own sections (`[biometrics]`, `[openhim]`, `[sqlserver]`;
+Other services add their own sections (`[biometrics]`, `[dhis2-db]`, `[openhim]`, `[sqlserver]`;
 [Backups](backups.md#restoring)), which `openmrs-utils fingerprint` doesn't print: compare those
 with the source instance's own `pihx <name> summary`.
 
