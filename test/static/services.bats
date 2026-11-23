@@ -479,3 +479,10 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_failure
     assert_output --partial "the password the backup archives are encrypted with"
 }
+
+@test "every backup script caps 7z's threads, so it fits the backups container's memory limit on a host with many CPUs" {
+    run grep -n '7z a ' "$REPO_ROOT"/services/*/scripts/backup.sh
+    assert_success
+    run bash -c "grep -n '7z a ' '$REPO_ROOT'/services/*/scripts/backup.sh | grep -v -e ' -mmt2 '"
+    assert_output ""
+}
