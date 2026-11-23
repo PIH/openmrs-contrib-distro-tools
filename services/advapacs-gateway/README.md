@@ -34,7 +34,9 @@ starting, when it shows as Online:
 - **Data directory.** Leave it at the default, `/opt/AdvaHealthSolutions/AdvaPACSGateway`: that's the
   `advapacs-gateway-data` volume, which holds received studies until they're uploaded. It isn't
   backed up (`backup: none`): its configuration is in AdvaPACS, and a restored upload queue would be
-  stale and could upload studies twice.
+  stale and could upload studies twice. So studies received but not yet uploaded are lost if the
+  volume is: re-send them from the modalities. AdvaPACS's docs don't cover backing up the gateway;
+  confirming this with them is LSO-315.
 
 AdvaPACS asks for 4 GB of memory (8 GB recommended) and 50 GB of disk (200 GB recommended) for the
 gateway, and an accurate clock (NTP): its authentication fails if the host's clock drifts.
