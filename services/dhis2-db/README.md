@@ -42,3 +42,14 @@ It stops at the first error, and `initialize` then removes what it made.
 `organisationunit` (those that exist), and `flyway <version>`, the latest successful Flyway
 migration. It reads the running container or, with the instance stopped, the volume (by starting a
 throwaway server on it), to compare a restore with its source.
+
+## Backup
+
+The `backups` service runs [`scripts/backup.sh`](scripts/backup.sh) ([Backups](../../docs/backups.md)):
+a plain-format `pg_dump` of the database into `dhis2-db.sql.7z`, with the instance running. It leaves
+out ownership and privileges (`-O -x`), so the dump restores under the new instance's account, and the
+`analytics_*` tables, which DHIS2's analytics job rebuilds (they are the largest part of a database).
+The database password reaches `pg_dump` through its environment, never its command line.
+The image's `pg_dump` is 18 and the database 16, so the script drops the two things in its output that
+the older server rejects (`SET transaction_timeout` and the `\restrict` lines). The archive
+restores with `initialize --from` as `dhis2-db.sql.7z`.

@@ -86,3 +86,21 @@ instead. It has the database connection (`dhis2-db`, with `dhis2-db.env`'s name,
 after the ones above, so it's the one DHIS2 reads. At `create`, the `DHIS2_CONF_*` in your shell go
 into `dhis2.env` (the manifest's `capture-env`). Values are written as a Java properties file reads
 them, with a backslash doubled.
+
+## Backup, restore and summary
+
+The `backups` service runs [`scripts/backup.sh`](scripts/backup.sh) ([Backups](../../docs/backups.md)):
+the `dhis2-data` volume into `dhis2.7z`, holding one directory, `dhis2/` (`files/`, `apps/` and the
+version marker `.dhis2-version`), with the instance running. `dhis.conf` is left out: `dhis2-setup`
+writes it on every start, and it holds the database password. The WARs in `dhis2-wars` are fetched
+again, so they aren't backed up.
+
+`initialize --from` restores `dhis2.7z`, `dhis2.tar.gz`, `dhis2.tgz`, `dhis2.tar` or `dhis2.zip` into
+`dhis2-data` ([`restore/archive.yaml`](restore/archive.yaml)). A single top-level directory is
+unwrapped, so an archive of a legacy DHIS2 home (`files/` and `apps/` at the top, as RIMU keeps it)
+restores as it is, and so does the backup's `dhis2/`. A legacy `dhis.conf` in the archive is
+replaced by `dhis2-setup`'s on the first start; the version marker, if the archive has none, is
+written then. Set `DHIS2_ENCRYPTION_PASSWORD` to the source's if it had one.
+
+`pihx <name> summary` prints `[dhis2]`: `files <n>` and `apps <n>`, the number of files under
+`files/` and `apps/`, and `version <marker>` (`none` before the first start).

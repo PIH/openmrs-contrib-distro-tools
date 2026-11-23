@@ -30,6 +30,7 @@ archive password.
 | `openmrs-db` | `openmrs-db.datadir/` | a ready MySQL data directory, copied in, then the accounts reset |
 | `dhis2-db` | `dhis2-db.sql`, `dhis2-db.sql.gz` | a plain-format `pg_dump`, imported by PostgreSQL on first start |
 | `dhis2-db` | `dhis2-db.sql.7z`, `dhis2-db.sql.zip` | an archive holding one dump |
+| `dhis2` | `dhis2.7z`, `dhis2.tar.gz`, `dhis2.tgz`, `dhis2.tar`, `dhis2.zip` | `dhis2-data`, from an archive: one holding a `dhis2/` directory (from the backups service), or `files/` and `apps/` at the top (a legacy DHIS2 home; rename its `dhis2-db` dump `dhis2-db.sql.gz` and its files archive `dhis2.tar.gz`) |
 | `openmrs` | `openmrs.7z`, `openmrs.tar.gz`, `openmrs.tgz`, `openmrs.tar`, `openmrs.zip`, `openmrs/` | `openmrs-data`, from an archive (e.g. from `backup-openmrs-data-directory`) or a directory |
 
 An entry may be a link: its host path is what the restore containers mount, and one that doesn't
@@ -230,7 +231,7 @@ pihx <name> summary --output=after.txt
 diff before.txt after.txt
 ```
 
-Other services add their own sections (`[biometrics]`, `[dhis2-db]`, `[openhim]`, `[sqlserver]`;
+Other services add their own sections (`[biometrics]`, `[dhis2-db]`, `[dhis2]`, `[openhim]`, `[sqlserver]`;
 [Backups](backups.md#restoring)), which `openmrs-utils fingerprint` doesn't print: compare those
 with the source instance's own `pihx <name> summary`.
 

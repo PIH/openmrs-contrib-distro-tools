@@ -223,8 +223,7 @@ class ServiceTreeTest(unittest.TestCase):
             "sqlserver": "scripts/backup.sh",
             "petl": "none", "openmrs-smoke-tests": "none", "openhim-advapacs-mediator": "none",
             "modality-simulator": "none", "backups": "none", "advapacs-gateway": "none",
-            # Not backed up yet.
-            "dhis2-db": None, "dhis2": None})
+            "dhis2-db": "scripts/backup.sh", "dhis2": "scripts/backup.sh"})
 
     def test_a_backup_script_is_mounted_by_its_with_backups_file(self):
         """The backups service runs /opt/backup-services/<svc>/backup.sh for a service whose plan says
@@ -291,7 +290,10 @@ class ServiceTreeTest(unittest.TestCase):
             "sqlserver": [(["sqlserver.7z"], "restore/archive.yaml", None)],
             "dhis2-db": [
                 (["dhis2-db.sql", "dhis2-db.sql.gz"], "restore/dump.yaml", None),
-                (["dhis2-db.sql.7z", "dhis2-db.sql.zip"], "restore/dump-archive.yaml", None)]})
+                (["dhis2-db.sql.7z", "dhis2-db.sql.zip"], "restore/dump-archive.yaml", None)],
+            "dhis2": [
+                (["dhis2.7z", "dhis2.tar.gz", "dhis2.tgz", "dhis2.tar", "dhis2.zip"],
+                 "restore/archive.yaml", None)]})
         for name, svc in SERVICES.items():
             for restore in svc.manifest.restore:
                 for entry in restore.names:

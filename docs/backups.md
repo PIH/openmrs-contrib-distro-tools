@@ -52,12 +52,12 @@ Its settings are in `backups.env`; they're listed in its [README](../services/ba
   fails before any script runs. `sqlserver`'s backup also checks, before it starts, for room for its
   uncompressed `.bak` files beside their archive (twice the chosen databases' used space, plus 10%).
 - **Encryption.** Every archive is 7-Zip, encrypted with `BACKUP_ARCHIVE_PASSWORD`. The dumps
-  (`openmrs-db`, `openhim`) stream straight into their archives, so they're never on disk
+  (`openmrs-db`, `dhis2-db`, `openhim`) stream straight into their archives, so they're never on disk
   unencrypted. Their password is on 7-Zip's command line while each dump runs (the dump is on its
   standard input), and a container's processes show in the host's process list: any user on the host
   can read it with `ps` for those minutes. 7-Zip has no other way to take a password with the data on
   standard input (it reads part of the data with the password, and a named pipe is stored as a pipe,
-  not read). For the archives made from files (`openmrs`'s data directory, `biometrics`' copy,
+  not read). For the archives made from files (`openmrs`'s and `dhis2`'s data, `biometrics`' copy,
   `sqlserver`'s `.bak` files) the password goes on standard input. Mounting the host's `/proc` with
   `hidepid=2` hides other users' processes.
 - **Status.** `status.json`, at the root of the volume, holds for each job its last attempt, last
@@ -76,6 +76,8 @@ Each service's manifest says what happens to its data (its `backup` field,
 | `biometrics` | `biometrics.db.7z`: the fingerprint templates' SQLite database, `biometrics.db`, copied whole with SQLite's online backup while the server runs (it waits for a writer's lock, up to a minute, and holds a read lock only for the local copy). The copy is staged in `.backup-staging` beside the database until it's archived. Not `biometrics-licensing`: the license's machine identity, which belongs to the host |
 | `openhim` | `openhim.archive.7z`: a `mongodump` archive of the `openhim` database, which is the transaction log, audit events and metrics. Its configuration is rebuilt on every start (`openhim-setup`, and each mediator provisions its channels and clients), so restoring it only brings back that history |
 | `sqlserver` | `sqlserver.7z`: a `<db>.bak` (full, `COPY_ONLY`) of each database in `SQLSERVER_BACKUP_DATABASES`, which is empty by default: what an instance keeps there is usually rebuilt (e.g. by PETL), so it's chosen per instance. With none chosen, each run names `sqlserver` as not backed up |
+| `dhis2-db` | `dhis2-db.sql.7z`: a plain-format `pg_dump` of the DHIS2 database (without ownership and privileges, and without the `analytics_*` tables, which DHIS2's analytics job rebuilds) |
+| `dhis2` | `dhis2.7z`: the `dhis2-data` volume as one directory, `dhis2/`: `files/`, `apps/` and the version marker, without `dhis.conf` (`dhis2-setup` writes it on every start, and it holds the database password). Taken with DHIS2 running |
 | `petl`, `openmrs-smoke-tests`, `openhim-advapacs-mediator`, `modality-simulator`, `advapacs-gateway` | nothing to back up (each manifest says why; `advapacs-gateway` holds only its upload queue, and its configuration is in AdvaPACS) |
 
 A service whose script writes nothing named after it is recorded as not backed up for that run, like

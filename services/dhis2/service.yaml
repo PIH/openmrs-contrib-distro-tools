@@ -4,3 +4,8 @@ requires: [dhis2-db]
 capture-env: [DHIS2_CONF_]
 # Runs before every start of dhis2.
 setup: [dhis2-setup]
+backup: scripts/backup.sh
+# initialize: dhis2-data from an archive named after the service (restore/archive.yaml).
+restore:
+  - names: [dhis2.7z, dhis2.tar.gz, dhis2.tgz, dhis2.tar, dhis2.zip]
+    overlay: restore/archive.yaml
