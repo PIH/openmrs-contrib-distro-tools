@@ -21,6 +21,7 @@ import tempfile
 from pathlib import Path
 
 from pihx import compose as compose_module, envfile, instance as instance_module, lock, script
+from pihx import images as images_module
 from pihx import volumes as volumes_module
 from pihx import services as services_module
 from pihx.commands import CliError
@@ -65,6 +66,10 @@ def _variable_prefix(service_name):
     return service_name.upper().replace("-", "_")
 
 
+# The log each backup run holds (services/backups/scripts/backup.sh), ignored as an entry.
+RUN_LOG = "backup.log"
+
+
 class EntryError(CliError):
     """The directory's entries don't fit the instance's services."""
 
@@ -87,6 +92,9 @@ def choose(inst, folder, entries, label=None):
                     others[n.rstrip("/")] = name
     chosen = {}
     for name, kind in sorted(entries):
+        # A backup run's own log: a run directory (copied out or downloaded) restores as it is.
+        if name == RUN_LOG and kind != "dir":
+            continue
         if name not in accepted:
             if name in others:
                 raise EntryError(f"{where}/{name} is for {others[name]}, which isn't part of "
@@ -500,6 +508,9 @@ def restore_folder(inst, folder, label=None):
     # service's volumes (e.g. petl-data) for new ones.
     before = restore.project_volumes()
     env_files = {p: p.read_bytes() for p in inst.dir.glob("*.env")}
+    # An overlay may run one of this repo's images (e.g. backup-tools): here, or built, before anything
+    # is created.
+    images_module.ensure(restore.compose)
     # The instance's external volumes this run creates (those of the restored services, refused
     # above if they existed, and any other service's still missing), recorded as each is made.
     created = []

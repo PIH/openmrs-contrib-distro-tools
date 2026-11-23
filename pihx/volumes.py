@@ -20,6 +20,14 @@ from pihx import compose as compose_module
 # The label pihx gives the volumes it creates: destroy finds an instance's volumes by it, including
 # those of services removed since.
 LABEL = "pihx.instance"
+# The volume the backups service keeps its runs in. archive leaves it out, and destroy keeps it unless
+# given --include-backups, so local backups outlive the instance they came from.
+BACKUPS_VOLUME = "backups"
+
+
+def backups_volume(name):
+    """The name of the instance <name>'s backups volume."""
+    return f"{name}_{BACKUPS_VOLUME}"
 
 
 class VolumeError(Exception):

@@ -36,6 +36,7 @@ ENV
         ADVAPACS_MEDIATOR_PLACER_ORDER_NUMBER_SYSTEM=urn:placeholder-placer > "$dir/openhim-advapacs-mediator.env"
     printf '%s\n' ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret > "$dir/advapacs-gateway.env"
+    echo "BACKUP_ARCHIVE_PASSWORD=Placeholder-1" > "$dir/backups.env"
 }
 
 # <service> and, recursively, the services its manifest requires.
@@ -444,4 +445,37 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_output 'ghcr.io/pih/pih-biometrics:latest'
     run jq -r '.services.biometrics.volumes[] | "\(.type) \(.source) \(.target)"' <<< "$config"
     assert_output $'volume biometrics-data /opt/pih-biometrics/data\nvolume biometrics-licensing /var/tmp'
+}
+
+@test "backups gets openmrs-db's and openmrs's backup scripts and what they need only when the instance has them, and its image by its content tag" {
+    local dir="$BATS_TEST_TMPDIR/instance" tag
+    EXTRA_ENV=()
+    make_instance "$dir"
+    echo "OPENMRS_DATA_BACKUP_EXCLUDES='lucene activemq-data'" >> "$dir/openmrs.env"
+    run instance_compose "$dir" openmrs-db,openmrs,backups -- config --format json
+    assert_success
+    local config=$output
+    tag=$("$REPO_ROOT/utils/hash-directory.sh" "$REPO_ROOT/images/backup-tools")
+    run jq -r '.services.backups.image, .services.backups.pull_policy' <<< "$config"
+    assert_output "partnersinhealth/backup-tools:$tag"$'\nmissing'
+    run jq -r '.services.backups.environment | .OPENMRS_DB_ROOT_PASSWORD, .OPENMRS_DATA_BACKUP_EXCLUDES,
+        .BACKUP_PREFIX, .BACKUP_ARCHIVE_PASSWORD, .BACKUP_SCHEDULE' <<< "$config"
+    assert_output $'openmrs\nlucene activemq-data\nconfig\nPlaceholder-1\n30 1 * * *'
+    run jq -r '.services.backups.depends_on["openmrs-db"].condition' <<< "$config"
+    assert_output service_healthy
+    run jq -r '.services.backups.volumes[] | "\(.source):\(.target):\(.read_only // false)"' <<< "$config"
+    assert_line "backups:/backups:false"
+    assert_line "openmrs-data:/sources/openmrs-data:true"
+    assert_line "openmrs-data:/sources/openmrs:true"
+    assert_line "$REPO_ROOT/services/openmrs-db/scripts/backup.sh:/opt/backup/services/openmrs-db.sh:true"
+    assert_line "$REPO_ROOT/services/openmrs/scripts/backup.sh:/opt/backup/services/openmrs.sh:true"
+    # Without them, the backups container gets none of their values or scripts.
+    run instance_compose "$dir" backups -- config --format json
+    assert_success
+    refute_output --partial OPENMRS
+    # Without a password, nothing renders.
+    rm "$dir/backups.env"
+    run instance_compose "$dir" backups -- config
+    assert_failure
+    assert_output --partial "the password the backup archives are encrypted with"
 }

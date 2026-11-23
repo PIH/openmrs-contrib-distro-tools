@@ -11,7 +11,9 @@ import sys
 PASSED_THROUGH = ("PATH", "HOME", "DOCKER_CONFIG", "DOCKER_HOST")
 # The names env() sets: pihx's own, which nothing else (e.g. a start-env script) may set.
 OWN_NAMES = frozenset({"COMPOSE_PROJECT_NAME", "COMPOSE_FILE", "COMPOSE_ENV_FILES", "SERVICE_NAME",
-                       "PIHX_TOOLS", "PIHX_INSTANCE_DIR", "PIHX_INSTANCE"})
+                       "PIHX_TOOLS", "PIHX_INSTANCE_DIR", "PIHX_INSTANCE", "PIHX_BACKUP_PLAN"})
+# (env() also sets a PIHX_IMAGE_<NAME> for each image of the tools directory the compose files name:
+# pihx/images.py.)
 # Names no service value may take.
 RESERVED_NAMES = OWN_NAMES | frozenset(PASSED_THROUGH)
 
@@ -70,8 +72,14 @@ class Compose:
 
     def env(self):
         """The variables compose files interpolate, plus COMPOSE_* so a plain `docker compose` in a
-        service script or command targets the instance the same way."""
+        service script or command targets the instance the same way. PIHX_BACKUP_PLAN tells the
+        backups service what each service backs up; PIHX_IMAGE_<NAME> names each image of the tools
+        directory that the compose files name (pihx/images.py)."""
+        # (Imported here: both modules import this one.)
+        from pihx import images, services
         return {
+            **images.references(self.instance.tools, self.compose_files()),
+            "PIHX_BACKUP_PLAN": services.backup_plan(self.instance.services),
             "COMPOSE_PROJECT_NAME": self.instance.name,
             "COMPOSE_FILE": os.pathsep.join(str(f) for f in self.compose_files()),
             "COMPOSE_ENV_FILES": ",".join(str(f) for f in self.env_files()),

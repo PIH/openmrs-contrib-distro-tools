@@ -411,7 +411,7 @@ An ETL project calls it after building its image:
 ## Helper images
 
 `.github/workflows/build-images.yml` builds and publishes the images this repo defines: every
-`images/<name>/` and every `services/<svc>/image/`, as `partnersinhealth/<name>` (multi-arch: amd64
+`images/<name>/` and every `services/<svc>/image/`, as `partnersinhealth/<name>` (by default amd64
 and arm64). It is not reusable; it runs here, on pushes to `main` and on pull requests that touch
 those directories, `utils/hash-directory.sh` or the workflow itself.
 
@@ -429,9 +429,12 @@ those directories, `utils/hash-directory.sh` or the workflow itself.
   without being pushed, to check it builds, and `latest` is left alone. Two runs on `main` queue
   rather than race to push the same tag.
 - It needs `DOCKERHUB_PASSWORD` as a secret (the `pihci` account).
+- **Platforms.** Each image is built for amd64 and arm64, unless its directory has a `platforms` file
+  naming them (`backup-tools`'s says `linux/amd64`: Oracle publishes its MySQL client .deb files for
+  amd64 only).
 
 `p7zip` and `percona-0.1-4`, which the utilities use, are not built here yet: they stay with
-`docker-openmrs` until the `backup-tools` image is rebuilt in this repo ([Utilities](utilities.md#images)).
+`docker-openmrs` until they move here (TASKS-651; [Utilities](utilities.md#images)).
 Seed images are a different thing, built by [`build-seeded-image.yml`](#seed-image-builds).
 
 ## Vulnerability scanning

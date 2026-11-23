@@ -119,6 +119,9 @@ pihx t1 stop
   `openmrs.log`'s size can differ in the comparison below.
 - Keep `before.txt` outside `~/rt`: `initialize` takes the directory's entries by name and refuses
   anything it doesn't recognise.
+- For scheduled backups instead, add the `backups` service: `BACKUP_ARCHIVE_PASSWORD=<pw> pihx t1
+  add-service backups`, `pihx t1 update`, then `pihx t1 backup` and `pihx t1 copy-backup latest
+  --to=$HOME/rt` make the same directory ([Backups](backups.md)).
 
 Restore into a new instance with the same settings, and compare before its first start:
 

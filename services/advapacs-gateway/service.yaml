@@ -1,2 +1,6 @@
 description: AdvaPACS's on-premises gateway, which uploads DICOM from local modalities to the AdvaPACS cloud
+# Nothing to back up: its configuration comes from AdvaPACS, and its volume holds the upload queue
+# (studies on their way to AdvaPACS, usually within minutes), logs and other operational data. A
+# restored queue would be stale, and could upload studies twice. Studies not yet uploaded are lost
+# with the volume: re-send them from the modalities. To confirm with AdvaPACS: LSO-315.
 backup: none

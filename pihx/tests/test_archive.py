@@ -51,6 +51,17 @@ class ArchiveTest(DestroyTest):
         self.assertEqual(self.downs(), [])
         self.assert_nothing_deleted()
 
+    def test_the_backups_volume_is_left_out(self):
+        """Its runs are copies of the other volumes; copy-backup takes one out."""
+        self.docker.volumes["kz_backups"] = {"pihx.instance": "kz"}
+        status, _, err = self.archive()
+        self.assertEqual(status, 0, err)
+        [folder] = self.archives()
+        self.assertFalse((folder / "kz_backups.tar.gz").exists())
+        self.assertIn("Leaving out kz_backups, the instance's backups", err)
+        self.assertFalse([c for c in self.docker.calls if c[:1] == ["run"]
+                          and "type=volume,source=kz_backups,target=/v,readonly" in c])
+
     def test_to_names_an_empty_directory(self):
         to = self.root / "out"
         to.mkdir()

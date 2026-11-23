@@ -14,6 +14,7 @@ defaults are in [`env.defaults`](env.defaults).
 | `OPENMRS_ACTIVITYLOG_ENABLED` | `false` | |
 | `OPENMRS_CREATE_TABLES` | unset | `false` stops OpenMRS creating its tables. It can't force them: `true` still needs an empty database, and any other value is false. Unset, pihx decides at each `start` and `update` ([below](#creating-the-tables)) |
 | `OMRS_EXTRA_*`, `OMRS_JAVA_SERVER_OPTS` | none | runtime properties and Java options ([below](#runtime-properties-omrs_extra_)) |
+| `OPENMRS_DATA_BACKUP_EXCLUDES` | empty | paths in `openmrs-data` the [backups](../../docs/backups.md) leave out, space-separated, relative to the volume (e.g. `lucene activemq-data`); the distribution artifacts are always left out |
 
 The database password and user come from `openmrs-db.env`: `openmrs` doesn't redefine them.
 

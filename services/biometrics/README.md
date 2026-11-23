@@ -26,8 +26,13 @@ one machine at a time. The container keeps the same machine identity when it's r
 hostname is fixed and the identity Neurotechnology's library keeps in `/var/tmp` is on the
 `biometrics-licensing` volume. Losing that volume, or moving the instance to another host, makes it a
 new machine: it can't get the license until the old activation expires (about 30–40 minutes).
-The `biometrics-data` volume holds the fingerprint templates, which are patient data: back it up
-wherever the instance's data matters. To check the server can enroll and match:
+The `biometrics-data` volume holds the fingerprint templates (`biometrics.db`, SQLite), which are
+patient data. With the [backups](../backups/README.md) service, each run copies it, while the server
+runs, into `biometrics.db.7z`, and `initialize --from` restores that into a new instance
+([Backups](../../docs/backups.md)); `biometrics-licensing` isn't backed up, so a restored instance
+activates the license as a new machine. `BIOMETRICS_DATA_OWNER` (default `9000:9000`, the image's
+user) owns the restored files. `pihx <name> summary` prints `[biometrics]`, each table's row count,
+to compare a restore with its source. To check the server can enroll and match:
 `docker exec <name>-biometrics pih-biometrics-selftest`.
 
 ```bash

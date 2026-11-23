@@ -1,3 +1,4 @@
 description: The PIH EMR smoke tests, run against the instance's OpenMRS
 requires: [openmrs]
+# Nothing to back up: its output directory is rewritten on every run.
 backup: none
