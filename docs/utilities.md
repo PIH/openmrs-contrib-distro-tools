@@ -46,7 +46,7 @@ Run one as `openmrs-utils <name> [options]` (a passthrough to `utils/<name>.sh`)
 | `purge-binlogs` | Has a server delete its binary logs except the current one; run it before turning binary logging off |
 | `runtime-properties` | Sets aside, or sets keys in, a data directory's `openmrs-runtime.properties` (values on stdin) |
 | `clear-configuration-checksums` | Removes openmrs-module-initializer's `configuration_checksums`, so the next start reprocesses all configuration |
-| `wait-for-healthy` | Waits until a container's healthcheck reports healthy, failing at once if it stops |
+| `wait-for-healthy` | Waits until a container's healthcheck reports healthy, failing at once if it stops or restarts. `--timeout` (default 600 s); `--fail-on-unhealthy=true` fails at the first `unhealthy`; `--fail-on-log=<pattern>` fails as soon as the container logs a line matching the `grep -E` pattern since its current start (a failure that leaves it running but never healthy, such as a web app Tomcat failed to deploy), naming the pattern, never the line |
 | `hash-directory` | Prints a short content hash of a directory (12 hex digits), the same on every checkout: only file contents and paths count. Images built here are tagged with the hash of their directory |
 
 ## Images

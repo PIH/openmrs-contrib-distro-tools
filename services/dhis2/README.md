@@ -81,6 +81,7 @@ before pihx can show its log. **The reason is in `pihx <name> logs dhis2-setup`*
 | `DHIS2_VERSION '<v>' isn't in services/dhis2/scripts/versions` | a version this repo doesn't list |
 | `DHIS2 <v> runs on tomcat:<tag>; DHIS2_TOMCAT_TAG is <other>` | set `DHIS2_TOMCAT_TAG` as it says |
 | `this instance last ran DHIS2 <old>; DHIS2_VERSION is <new>` | a downgrade: set `DHIS2_VERSION` back to `<old>` or later |
+| `this instance last ran DHIS2 <old> (...), which isn't in services/dhis2/scripts/versions` | the version marker names a version this repo doesn't list, so setup can't tell whether `DHIS2_VERSION` is a downgrade: run it from tools that list `<old>` |
 | `couldn't download <url>` | no internet access, or the release moved |
 | `the download from <url> has SHA-256 ...` | the download isn't the release the list names: it's deleted, never used |
 
