@@ -15,6 +15,7 @@ on another host."""
 
 import functools
 import platform
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +26,9 @@ REPOSITORY = "partnersinhealth"
 PREFIX = "PIHX_IMAGE_"
 # Docker's names for the architectures platform.machine() reports.
 ARCHITECTURES = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}
+# What `docker pull` says when the registry has no such tag ("manifest unknown") or, before an
+# image's first publish, no such repository. Other failures (network, rate limit) don't match.
+_NOT_PUBLISHED = re.compile(r"manifest unknown|repository does not exist")
 
 
 class ImageError(Exception):
@@ -117,8 +121,13 @@ def ensure(compose):
     for reference, directory in sorted(used(compose, volumes.model(compose)).items()):
         if _docker(compose, "image", "inspect", reference).returncode == 0:
             continue
-        if _docker(compose, "pull", "-q", reference).returncode == 0:
+        pulled = _docker(compose, "pull", "-q", reference)
+        if pulled.returncode == 0:
             continue
+        # Build only when the registry says it has no such image. Any other failure (network, rate
+        # limit) raises: a build would stand in for the published image from then on.
+        if not _NOT_PUBLISHED.search(pulled.stderr or ""):
+            raise ImageError(f"couldn't pull {reference}: {(pulled.stderr or '').strip()}")
         supported = platforms(directory)
         if supported and host_platform() not in supported:
             raise ImageError(f"{reference} is built for {', '.join(supported)} only, and this host is "

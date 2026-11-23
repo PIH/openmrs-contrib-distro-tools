@@ -15,9 +15,10 @@ source "$HERE/lib.sh"
 
 [ -n "${BACKUP_UPLOAD:-}" ] || exit 0
 
-# One upload at a time (the schedule never overlaps itself, but a manual run could).
+# One upload at a time (the schedule never overlaps itself, but a manual run could). The one that
+# waits exits non-zero: it uploaded nothing, so `upload-backups` mustn't look like it succeeded.
 exec 8> "$BACKUPS_DIR/.upload.lock"
-flock -n 8 || { echo "another upload is running; nothing done" >&2; exit 0; }
+flock -n 8 || { echo "error: another upload is running; this one did nothing" >&2; exit 1; }
 
 attempt=$(now_iso)
 abort() { # <reason>

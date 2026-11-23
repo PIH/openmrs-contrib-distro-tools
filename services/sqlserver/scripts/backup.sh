@@ -29,9 +29,10 @@ done
 # disk under the running servers.
 used_kb=0
 for db in "${databases[@]}"; do
-    # The pages its tables and indexes use (by name, not USE: go-sqlcmd prints USE's message).
+    # The pages its tables and indexes use (by name, not USE: go-sqlcmd prints USE's message). A failed
+    # query (no such database) leaves kb empty, for the message below rather than set -e's bare exit.
     kb=$(sqlcmd -S sqlserver -U sa -C -b -h -1 -W -Q "SET NOCOUNT ON;
-        SELECT SUM(CAST(used_pages AS bigint)) * 8 FROM [$db].sys.allocation_units")
+        SELECT SUM(CAST(used_pages AS bigint)) * 8 FROM [$db].sys.allocation_units") || kb=
     if [[ ! "$kb" =~ ^[0-9]+$ ]]; then
         echo "error: sqlserver: couldn't read the size of $db (does it exist?)" >&2
         exit 1

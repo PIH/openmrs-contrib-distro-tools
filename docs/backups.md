@@ -97,7 +97,7 @@ pihx <name> copy-backup <run>|latest --to=<dir>
 
 `backup` and `upload-backups` run the job in the running backups container, holding the instance
 lock, and show its output as it goes; they exit with the job's status. If a scheduled run is already
-going, the backup job says so and exits; the upload job says so and does nothing.
+going, either job says so and exits non-zero, having done nothing.
 
 `list-backups` shows each run with its state (complete, failed, or partial: being written, or left by
 a job that was stopped), size, and whether it's uploaded; then the jobs' status. It reads the volume

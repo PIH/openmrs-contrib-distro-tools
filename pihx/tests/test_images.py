@@ -7,6 +7,16 @@ from pihx import compose, images, instance
 from pihx.tests.fixtures import TempDirTest, two_service_instance, write
 from pihx.tests.test_lifecycle import done
 
+NO_TAG = ('manifest for partnersinhealth/backup-tools:abc123 not found: manifest unknown: '
+          'manifest unknown')
+
+
+def not_published(stderr=NO_TAG):
+    """A failed pull, with what docker says when the registry has no such image."""
+    result = done(returncode=1)
+    result.stderr = stderr
+    return result
+
 
 class EnsureTest(TempDirTest):
     def setUp(self):
@@ -51,20 +61,20 @@ class EnsureTest(TempDirTest):
 
     def test_an_unpublished_image_is_built_from_the_checkout(self):
         self.results["image"] = done(returncode=1)
-        self.results["pull"] = done(returncode=1)
+        self.results["pull"] = not_published()
         self.ensure("services:\n  app:\n    image: ${PIHX_IMAGE_BACKUP_TOOLS:?}\n")
         self.assertIn(["build", "-q", "-t", "partnersinhealth/backup-tools:abc123",
                        str(self.tools / "images" / "backup-tools")], self.calls)
 
     def test_a_failed_build_is_an_error(self):
-        self.results = {"image": done(returncode=1), "pull": done(returncode=1),
+        self.results = {"image": done(returncode=1), "pull": not_published(),
                         "build": done(returncode=1)}
         with self.assertRaises(images.ImageError):
             self.ensure("services:\n  app:\n    image: ${PIHX_IMAGE_BACKUP_TOOLS:?}\n")
 
     def test_an_image_for_other_platforms_is_not_built_here(self):
         write(self.tools / "images" / "backup-tools" / "platforms", "linux/amd64\n")
-        self.results = {"image": done(returncode=1), "pull": done(returncode=1)}
+        self.results = {"image": done(returncode=1), "pull": not_published()}
         with mock.patch.object(images, "host_platform", return_value="linux/arm64"), \
                 self.assertRaises(images.ImageError) as raised:
             self.ensure("services:\n  app:\n    image: ${PIHX_IMAGE_BACKUP_TOOLS:?}\n")
@@ -73,10 +83,26 @@ class EnsureTest(TempDirTest):
 
     def test_an_image_for_this_platform_is_built(self):
         write(self.tools / "images" / "backup-tools" / "platforms", "linux/amd64\n")
-        self.results = {"image": done(returncode=1), "pull": done(returncode=1)}
+        self.results = {"image": done(returncode=1), "pull": not_published()}
         with mock.patch.object(images, "host_platform", return_value="linux/amd64"):
             self.ensure("services:\n  app:\n    image: ${PIHX_IMAGE_BACKUP_TOOLS:?}\n")
         self.assertTrue([c for c in self.calls if c[0] == "build"])
+
+    def test_an_image_whose_repository_is_not_published_yet_is_built(self):
+        self.results = {"image": done(returncode=1), "pull": not_published(
+            "pull access denied for partnersinhealth/backup-tools, repository does not exist or may "
+            "require 'docker login': denied: requested access to the resource is denied")}
+        self.ensure("services:\n  app:\n    image: ${PIHX_IMAGE_BACKUP_TOOLS:?}\n")
+        self.assertTrue([c for c in self.calls if c[0] == "build"])
+
+    def test_a_pull_that_fails_for_another_reason_is_an_error_not_a_build(self):
+        self.results = {"image": done(returncode=1), "pull": not_published(
+            "Get \"https://registry-1.docker.io/v2/\": net/http: request canceled while waiting "
+            "for connection")}
+        with self.assertRaises(images.ImageError) as raised:
+            self.ensure("services:\n  app:\n    image: ${PIHX_IMAGE_BACKUP_TOOLS:?}\n")
+        self.assertIn("couldn't pull partnersinhealth/backup-tools:abc123", str(raised.exception))
+        self.assertFalse([c for c in self.calls if c[0] == "build"])
 
 
 class PlatformsTest(TempDirTest):

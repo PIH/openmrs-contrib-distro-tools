@@ -188,12 +188,12 @@ volume_runs() { in_image -- -c 'ls /backups' | grep -v -e status.json; }
     assert_output "$(printf '2\t16')"
 }
 
-@test "an upload already running makes this one say so and exit successfully" {
+@test "an upload already running makes this one say so and fail" {
     make_runs p_20200101T000000Z
     run in_image -e BACKUP_UPLOAD=azure -e BACKUP_AZURE_URL=https://a.b/c -e BACKUP_AZURE_SAS=x -- -c \
         'flock /backups/.upload.lock sleep 5 & sleep 1; /opt/backup/upload.sh'
-    assert_success
-    assert_output "another upload is running; nothing done"
+    assert_failure
+    assert_output "error: another upload is running; this one did nothing"
 }
 
 @test "azcopy's logs and plans are kept in the volume, out of the runs, and its buffer and concurrency capped" {

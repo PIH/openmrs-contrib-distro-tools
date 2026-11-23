@@ -56,8 +56,10 @@ A service's compose file names such an image by `${PIHX_IMAGE_<NAME>}` (upper ca
 ([`pihx/images.py`](../pihx/images.py)), with `pull_policy: missing` (a content tag never changes, so
 it's pulled only when missing). Before `start`, `update`, `pull` and `run-service`, pihx makes sure
 each such image the instance runs is here: on the host, pulled, or, not published yet, built from
-the checkout. An image whose directory has a `platforms` file isn't built on a host of another
-platform: pihx says so instead.
+the checkout. It builds only when the registry says it has no such tag (or repository); any other
+failed pull (offline, rate limited) is an error, so a local build never stands in for a published
+image. An image whose directory has a `platforms` file isn't built on a host of another platform:
+pihx says so instead.
 
 `.github/workflows/build-images.yml` publishes them: [Helper images](ci-workflows.md#helper-images).
 
