@@ -46,7 +46,7 @@ services:
         required: false
     environment:
       DHIS2_HOME: /opt/dhis2
-      CATALINA_OPTS: ${DHIS2_JAVA_OPTS} -Ddhis2.war=/wars/dhis2-${DHIS2_VERSION:?DHIS2_VERSION must be set (a version in services/dhis2/scripts/versions)}.war
+      CATALINA_OPTS: ${DHIS2_JAVA_OPTS} -Ddhis2.war=/wars/dhis2-${DHIS2_VERSION}.war
       TZ: ${TZ}
     ports:
       - ${DHIS2_HTTP_PORT}:8080
