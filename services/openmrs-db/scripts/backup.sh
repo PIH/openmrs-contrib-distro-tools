@@ -6,7 +6,7 @@
 # (docs/backups.md): the data is on stdin, and 7z reads part of it with a password given there too,
 # and stores a named pipe as a pipe rather than reading it.
 set -euo pipefail
-source /opt/backup/in-container/mysqldump-options.sh
+source /opt/backup-lib/mysqldump-options.sh
 : "${OPENMRS_DB_ROOT_PASSWORD:?}" "${BACKUP_RUN_DIR:?}" "${ARCHIVE_PASSWORD:?}"
 
 # TCP: the client's default for a host name.

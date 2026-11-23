@@ -10,7 +10,7 @@ services:
       # sa's password, for sqlcmd (which reads SQLCMDPASSWORD), so it's on no command line.
       SQLCMDPASSWORD: ${SQLSERVER_SA_PASSWORD}
     volumes:
-      - ${PIHX_TOOLS}/services/sqlserver/scripts/backup.sh:/opt/backup/services/sqlserver.sh:ro
+      - ${PIHX_TOOLS}/services/sqlserver/scripts:/opt/backup-services/sqlserver:ro
       # Read-write: SQL Server writes each backup into the volume, and the script deletes it once
       # it's archived (scripts/backup.sh).
       - sqlserver-data:/sources/sqlserver-data

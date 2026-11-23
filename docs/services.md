@@ -175,12 +175,16 @@ What the entries look like to a user is in [Initializing an instance](restore.md
 Every service says what happens to its data in its manifest's `backup`, so a new service can't go
 without backups unnoticed ([Backups](backups.md)):
 
-- **A script** (`backup: scripts/backup.sh`): the `backups` service runs it, in its own container
-  (the `backup-tools` image), on every backup run. The service's `with-backups.yaml` mounts it at
-  `/opt/backup/services/<svc>.sh` and gives the backups container what the script needs: its data
-  volumes read-only under `/sources/` (read-write only where the tool needs it, saying why:
+- **A script** (`backup: scripts/backup.sh`, always that name): the `backups` service runs it, in its
+  own container (the `backup-tools` image), on every backup run. The service's `with-backups.yaml`
+  mounts its `scripts` directory at `/opt/backup-services/<svc>` (and `utils/lib/in-container` at
+  `/opt/backup-lib`, if the script uses it) and gives the backups container what the script needs:
+  its data volumes read-only under `/sources/` (read-write only where the tool needs it, saying why:
   `biometrics`' SQLite, `sqlserver`'s `.bak` staging), the values it needs under `environment:`
   (e.g. a root password), a `depends_on` its database. `test_service_tree.py` checks that it does.
+  The backups container mounts directories of the tools checkout, never single files: it runs for
+  months, git replaces a file it updates, and a single-file mount keeps the old file until the
+  container restarts, so a deploy's script changes wouldn't reach the jobs. A directory mount sees them.
 - **`none`**: nothing of its own to back up (e.g. `petl`, whose output PETL rebuilds); each run's log
   says so.
 - **Absent**: not backed up yet. Each run's log and `status.json` name the service, and the run still

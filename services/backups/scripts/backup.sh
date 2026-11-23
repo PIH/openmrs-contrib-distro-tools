@@ -6,10 +6,10 @@
 # on failure.
 #   BACKUP_ARCHIVE_PASSWORD   required; reaches each script as ARCHIVE_PASSWORD
 #   BACKUP_PLAN               <svc>=script|none|unset for each of the instance's services, in order:
-#                             script runs BACKUP_SERVICES_DIR/<svc>.sh; none has nothing to back up;
+#                             script runs BACKUP_SERVICES_DIR/<svc>/backup.sh; none has nothing to back up;
 #                             unset is recorded as not backed up, and so is a script that writes
 #                             nothing named after its service (<svc>.* or <svc>/)
-#   BACKUP_SERVICES_DIR       default /opt/backup/services
+#   BACKUP_SERVICES_DIR       default /opt/backup-services
 #   BACKUP_MIN_FREE           free space left after the run: bytes, or with a K, M or G suffix (default 2G)
 #   BACKUP_KEEP_LOCAL, BACKUP_UPLOAD  with no upload destination, cleanup runs at the end (cleanup.sh --local-only)
 # One run at a time (/backups/.backup.lock): a run that starts while another is going exits at once
@@ -40,7 +40,7 @@ abort() { # <reason>
 if [ -z "${BACKUP_ARCHIVE_PASSWORD:-}" ]; then abort "BACKUP_ARCHIVE_PASSWORD must be set"; fi
 error=$(prefix_error); [ -z "$error" ] || abort "$error"
 if [ -z "${BACKUP_PLAN:-}" ]; then abort "BACKUP_PLAN is empty: pihx sets it from the instance's services"; fi
-SERVICES_DIR="${BACKUP_SERVICES_DIR:-/opt/backup/services}"
+SERVICES_DIR="${BACKUP_SERVICES_DIR:-/opt/backup-services}"
 MIN_RUN_BYTES=$((1024 * 1024 * 1024))
 min_free=${BACKUP_MIN_FREE:-2G}
 case "$min_free" in
@@ -93,7 +93,7 @@ else
                 log "error: ${failures[-1]}"
                 continue ;;
         esac
-        script="$SERVICES_DIR/$svc.sh"
+        script="$SERVICES_DIR/$svc/backup.sh"
         if [ ! -f "$script" ]; then
             failures+=("$svc: its backup script isn't mounted at $script (services/$svc/with-backups.yaml)")
             log "error: ${failures[-1]}"

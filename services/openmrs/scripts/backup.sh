@@ -25,7 +25,7 @@ for path in ${OPENMRS_DATA_BACKUP_EXCLUDES:-}; do
 done
 set +f
 
-LINKS=$(sh /opt/backup/in-container/outside-links.sh "$SRC" "${LEAVE_OUT[@]}")
+LINKS=$(sh /opt/backup-lib/outside-links.sh "$SRC" "${LEAVE_OUT[@]}")
 if [ -n "$LINKS" ]; then
     echo "error: symbolic links pointing outside openmrs-data, which a backup can't carry over (delete the ones not needed, leave them out with OPENMRS_DATA_BACKUP_EXCLUDES, or replace them with what they point to):
 $LINKS" >&2

@@ -4,8 +4,8 @@ services:
     environment:
       OPENMRS_DATA_BACKUP_EXCLUDES: ${OPENMRS_DATA_BACKUP_EXCLUDES}
     volumes:
-      - ${PIHX_TOOLS}/services/openmrs/scripts/backup.sh:/opt/backup/services/openmrs.sh:ro
-      - ${PIHX_TOOLS}/utils/lib/in-container/outside-links.sh:/opt/backup/in-container/outside-links.sh:ro
+      - ${PIHX_TOOLS}/services/openmrs/scripts:/opt/backup-services/openmrs:ro
+      - ${PIHX_TOOLS}/utils/lib/in-container:/opt/backup-lib:ro
       - openmrs-data:/sources/openmrs-data:ro
       # The same volume, so the archive's top directory is named openmrs (scripts/backup.sh).
       - openmrs-data:/sources/openmrs:ro
