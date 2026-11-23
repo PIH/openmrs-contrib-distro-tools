@@ -25,7 +25,8 @@ services:
     volumes:
       - backups:/backups
       # Directories, never single files: git replaces a file it updates, and a file mount would keep the
-      # old one until the container restarts. A directory mount sees the update.
+      # old one until the container restarts. A directory mount sees the update (of a checkout updated
+      # in place; docs/services.md#backup).
       - ${PIHX_TOOLS}/services/backups/scripts:/opt/backup:ro
     restart: unless-stopped
     deploy:

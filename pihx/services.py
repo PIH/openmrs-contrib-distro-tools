@@ -26,6 +26,9 @@ RESERVED_NAMES = CORE_COMMANDS | {"instance"}
 # mounted by the service's with-backups.yaml), BACKUP_NONE when it has nothing to back up, or absent
 # when it isn't backed up (yet). backup_plan() tells the backups service which is which.
 BACKUP_NONE = "none"
+# The one name a backup script can have: the backups container runs <svc>/backup.sh from its mount of
+# the service's scripts directory.
+BACKUP_SCRIPT = "scripts/backup.sh"
 
 
 class _Loader(yaml.SafeLoader):
@@ -157,9 +160,9 @@ def load(tools, name):
             read_overlay(svc_dir / overlay)
     if manifest.backup not in (None, BACKUP_NONE):
         path = manifest.backup
-        if Path(path).is_absolute() or ".." in Path(path).parts:
-            raise ServiceError(f"{manifest_file}: backup script {path} must be a path inside the "
-                               "service directory")
+        # The backups container mounts the service's scripts directory and runs backup.sh in it.
+        if path != BACKUP_SCRIPT:
+            raise ServiceError(f"{manifest_file}: backup must be {BACKUP_SCRIPT} or none, not {path}")
         if not (svc_dir / path).is_file():
             raise ServiceError(f"{manifest_file}: backup script {path} doesn't exist")
     for path in (entry.script for entry in manifest.start_env):

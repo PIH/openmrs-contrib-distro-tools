@@ -33,7 +33,7 @@ if [ "$MODE" = --set-aside ]; then
         f=/data/openmrs-runtime.properties
         [ -f "$f" ] || exit 0
         aside="$f.restored" n=2
-        while [ -e "$aside" ]; do aside="$f.restored.$n"; n=$((n + 1)); done
+        while [ -e "$aside" ] || [ -L "$aside" ]; do aside="$f.restored.$n"; n=$((n + 1)); done
         mv "$f" "$aside"
         echo "Moved openmrs-runtime.properties aside to ${aside##*/} -- OpenMRS will write a fresh one from the instance'"'"'s env on its next start."' >&2
     exit 0
