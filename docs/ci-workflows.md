@@ -430,7 +430,7 @@ those directories, `utils/hash-directory.sh` or the workflow itself.
   rather than race to push the same tag.
 - It needs `DOCKERHUB_PASSWORD` as a secret (the `pihci` account).
 - **Platforms.** Each image is built for amd64 and arm64, unless its directory has a `platforms` file
-  naming them (`backup-tools`'s says `linux/amd64`: Oracle publishes its MySQL apt repository for
+  naming them (`backup-tools`'s says `linux/amd64`: Oracle publishes its MySQL client .deb files for
   amd64 only).
 
 `p7zip` and `percona-0.1-4`, which the utilities use, are not built here yet: they stay with

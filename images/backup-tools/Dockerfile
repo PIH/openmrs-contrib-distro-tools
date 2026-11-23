@@ -1,22 +1,32 @@
 # ubuntu:26.04, pinned by digest
 ARG UBUNTU_IMAGE=ubuntu@sha256:0e73b71479e7bc5f006bca872e25c3cd680dc052a0116f90d63ae363537db0dd
 
-# Downloads and verifies what the image adds from outside Ubuntu's archive, so curl and gnupg stay out of it.
+# Downloads and verifies what the image adds from outside Ubuntu's archive, so curl stays out of it.
 FROM ${UBUNTU_IMAGE} AS fetch
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
  && rm -rf /var/lib/apt/lists/*
 
-# Oracle's MySQL apt repository signing key ("MySQL Release Engineering <mysql-build@oss.oracle.com>"). The
-# fingerprint is the one the MySQL 8.4 Reference Manual gives in "Signature Checking Using GnuPG" (key ID
-# B7B3B788A8D3785C), and the one keyserver.ubuntu.com serves; the build fails unless the file holds that one
-# key.
-ARG MYSQL_KEY_FINGERPRINT=BCA43417C3B485DD128EC6D4B7B3B788A8D3785C
-RUN curl -fsSL -o /tmp/mysql.asc https://repo.mysql.com/RPM-GPG-KEY-mysql-2025 \
- && gpg --show-keys --with-colons /tmp/mysql.asc \
-      | awk -F: -v want="${MYSQL_KEY_FINGERPRINT}" \
-          '$1 == "pub" { n++ } $1 == "fpr" && !fpr { fpr = $10 } END { exit !(n == 1 && fpr == want) }' \
- && gpg --dearmor -o /mysql.gpg /tmp/mysql.asc
+# Oracle's MySQL 8.4 LTS client, as the four .deb files apt would install from Oracle's repository, pinned
+# by SHA-256. Oracle's index lists only the newest version, so installing a pinned version from the
+# repository breaks the build at each release; the files stay in its pool. The SHA-256s are the ones in
+# Oracle's index for this version (Packages.gz, checked against InRelease, which verifies with the MySQL
+# 8.4 Reference Manual's signing key BCA43417C3B485DD128EC6D4B7B3B788A8D3785C). To update: take a newer
+# version and its files' SHA256 lines from that index, after checking its signature the same way.
+ARG MYSQL_CLIENT_VERSION=8.4.13.1-1ubuntu26.04
+ARG MYSQL_COMMON_SHA256=0f1b1ba7b9fead4a4df68e7979c4f9064f7d44d4e090d8469aab83988a740441
+ARG MYSQL_CLIENT_SHA256=f9438aaff309ab4ee295b5e3020c818efe1efa5a49d20651bf33fd4af80294be
+ARG MYSQL_CLIENT_CORE_SHA256=94330417abcc2cd5375f7a4d3fe9116a0e1642c364ee99a8348a5da15e763c47
+ARG MYSQL_CLIENT_PLUGINS_SHA256=24aab235d7d6e3b6a9f87cbca387571d411e55269cd39229018a1a5580125c26
+RUN mkdir /mysql-debs && cd /mysql-debs \
+ && pool=https://repo.mysql.com/apt/ubuntu/pool/mysql-8.4-lts/m/mysql-community \
+ && for pkg in mysql-common:${MYSQL_COMMON_SHA256} mysql-community-client:${MYSQL_CLIENT_SHA256} \
+        mysql-community-client-core:${MYSQL_CLIENT_CORE_SHA256} \
+        mysql-community-client-plugins:${MYSQL_CLIENT_PLUGINS_SHA256}; do \
+      file="${pkg%%:*}_${MYSQL_CLIENT_VERSION}_amd64.deb" \
+      && curl -fsSL -o "$file" "$pool/$file" \
+      && echo "${pkg#*:}  $file" | sha256sum -c - || exit 1; \
+    done
 
 # azcopy, pinned to a release tarball. Microsoft publishes no checksum, so the SHA-256 below was computed
 # from the tarball downloaded from the GitHub release page.
@@ -64,24 +74,21 @@ LABEL authors="Michael Seaton <mseaton@pih.org>"
 
 # Tools for the backups service (services/backups). Holds tools only; the backup logic lives in this
 # repo (services/backups/scripts/, each service's scripts/backup.sh) and is mounted into the container.
-# amd64 only (platforms): Oracle publishes its MySQL apt repository for amd64 only. On PATH: bash, tar,
+# amd64 only (platforms): Oracle publishes its MySQL client .deb files for amd64 only. On PATH: bash, tar,
 # 7z (7-Zip), mysqldump and mysql, sqlite3, mongodump and mongorestore, sqlcmd, jq, GNU coreutils
 # (df/du/stat), flock (util-linux), azcopy and supercronic. tzdata supplies /usr/share/zoneinfo so TZ is
 # honored by date and supercronic.
 # Ubuntu 26.04 ships uutils' Rust coreutils as the default; coreutils-from-gnu switches back to GNU's, which
 # the scripts were written and tested against (the swap removes an essential package, hence the flag).
-# mysqldump is Oracle's MySQL 8.4 LTS client, from Oracle's apt repository (signed by the key above). It
-# dumps MySQL 5.6, 5.7, 8.0 and 8.4 servers.
-ARG MYSQL_CLIENT_VERSION=8.4.13-1ubuntu26.04
-COPY --from=fetch /mysql.gpg /usr/share/keyrings/mysql.gpg
-RUN apt-get update \
+# mysqldump is Oracle's MySQL 8.4 LTS client (the .deb files fetched above); apt installs what they need
+# from Ubuntu. It dumps MySQL 5.6, 5.7, 8.0 and 8.4 servers.
+# The .deb files are mounted for the install only, so they take no space in the image.
+RUN --mount=type=bind,from=fetch,source=/mysql-debs,target=/tmp/mysql-debs \
+    apt-get update \
  && apt-get install -y --no-install-recommends --allow-remove-essential \
       coreutils-from-gnu coreutils-from-uutils- rust-coreutils- \
  && apt-get install -y --no-install-recommends ca-certificates 7zip jq sqlite3 tzdata \
- && echo "deb [signed-by=/usr/share/keyrings/mysql.gpg] https://repo.mysql.com/apt/ubuntu resolute mysql-8.4-lts" \
-      > /etc/apt/sources.list.d/mysql.list \
- && apt-get update \
- && apt-get install -y --no-install-recommends "mysql-community-client=${MYSQL_CLIENT_VERSION}" \
+ && apt-get install -y --no-install-recommends /tmp/mysql-debs/*.deb \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=fetch /azcopy /supercronic /mongodump /mongorestore /sqlcmd /usr/local/bin/
