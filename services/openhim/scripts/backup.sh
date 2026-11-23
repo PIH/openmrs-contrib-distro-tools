@@ -11,4 +11,4 @@ set -euo pipefail
 echo "openhim: dumping the openhim database" >&2
 # --quiet: mongodump's progress lines would fill backup.log; errors still go to stderr.
 mongodump --quiet --host mongo-db --db openhim --archive |
-    7z a -si"openhim.archive" -p"$ARCHIVE_PASSWORD" -mx5 -t7z "$BACKUP_RUN_DIR/openhim.archive.7z" >/dev/null
+    7z a -si"openhim.archive" -p"$ARCHIVE_PASSWORD" -mx5 -mmt2 -t7z "$BACKUP_RUN_DIR/openhim.archive.7z" >/dev/null

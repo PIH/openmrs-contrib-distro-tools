@@ -62,4 +62,4 @@ for db in "${databases[@]}"; do
     sqlcmd -S sqlserver -U sa -C -b -Q "BACKUP DATABASE [$db] TO DISK = N'$SERVER/$db.bak' WITH COPY_ONLY, INIT, CHECKSUM" >&2
 done
 cd "$LOCAL"
-printf '%s\n' "$ARCHIVE_PASSWORD" | 7z a -p -mx5 -t7z "$BACKUP_RUN_DIR/sqlserver.7z" ./*.bak >/dev/null
+printf '%s\n' "$ARCHIVE_PASSWORD" | 7z a -p -mx5 -mmt2 -t7z "$BACKUP_RUN_DIR/sqlserver.7z" ./*.bak >/dev/null

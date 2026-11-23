@@ -35,4 +35,4 @@ fi
 echo "openmrs: archiving $SRC" >&2
 cd /sources
 # Links are stored as links (-snl); the password on stdin, so it isn't on 7z's command line.
-printf '%s\n' "$ARCHIVE_PASSWORD" | 7z a -p -mx5 -t7z -snl "$BACKUP_RUN_DIR/openmrs.7z" "$TOP" "${EXCLUDES[@]}" >/dev/null
+printf '%s\n' "$ARCHIVE_PASSWORD" | 7z a -p -mx5 -mmt2 -t7z -snl "$BACKUP_RUN_DIR/openmrs.7z" "$TOP" "${EXCLUDES[@]}" >/dev/null

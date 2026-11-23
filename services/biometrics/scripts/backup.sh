@@ -38,4 +38,4 @@ if [ "$check" != ok ]; then
     exit 1
 fi
 cd "$STAGING"
-printf '%s\n' "$ARCHIVE_PASSWORD" | 7z a -p -mx5 -t7z "$BACKUP_RUN_DIR/biometrics.db.7z" biometrics.db >/dev/null
+printf '%s\n' "$ARCHIVE_PASSWORD" | 7z a -p -mx5 -mmt2 -t7z "$BACKUP_RUN_DIR/biometrics.db.7z" biometrics.db >/dev/null

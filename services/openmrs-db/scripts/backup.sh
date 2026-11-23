@@ -16,4 +16,4 @@ export MYSQL_PWD="$OPENMRS_DB_ROOT_PASSWORD"   # not on the command line
 echo "openmrs-db: dumping openmrs" >&2
 # shellcheck disable=SC2086 # the options are words
 mysqldump --protocol=TCP --column-statistics=0 -h openmrs-db -u root $MYSQLDUMP_BACKUP_OPTIONS openmrs |
-    7z a -si"openmrs-db.sql" -p"$ARCHIVE_PASSWORD" -mx5 -t7z "$BACKUP_RUN_DIR/openmrs-db.sql.7z" >/dev/null
+    7z a -si"openmrs-db.sql" -p"$ARCHIVE_PASSWORD" -mx5 -mmt2 -t7z "$BACKUP_RUN_DIR/openmrs-db.sql.7z" >/dev/null
