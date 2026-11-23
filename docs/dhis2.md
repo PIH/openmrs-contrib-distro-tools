@@ -7,7 +7,8 @@ which it's based on.
 
 **DHIS2's database migrations can't be undone, and can't skip a minor version.** An instance only
 ever moves forward, one version of [`scripts/versions`](../services/dhis2/scripts/versions) at a
-time. `dhis2-setup` refuses to start a version older than the last one started.
+time. `dhis2-setup` refuses to start a version older than the last one started, or one more than one
+step past it.
 
 ## Upgrading
 
@@ -140,3 +141,9 @@ pihx <test> start
 
 Then upgrade it as above if production is to be upgraded. Patient data stays on the host: the
 rehearsal is run by a person, who passes on only what `upgrade` prints.
+
+**`DHIS2_VERSION` must be the version the database last ran.** A backup taken by this service carries
+the version marker, so `dhis2-setup` refuses a downgrade or a skip from it. A restore from a legacy
+DHIS2 home (as at the cutover from a legacy server) has no marker, and nothing checks
+`DHIS2_VERSION` against the database: set it to exactly the source's version. An earlier one would run
+on a schema it doesn't know; a later one would run several versions' migrations at once.

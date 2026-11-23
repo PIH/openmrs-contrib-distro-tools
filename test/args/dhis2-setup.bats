@@ -94,6 +94,19 @@ STUB
     assert_success
 }
 
+@test "setup refuses a version that skips one in the list" {
+    echo 2.40.1 > home/.dhis2-version
+    DHIS2_VERSION=2.42.1 run sh "$SCRIPT"
+    assert_failure
+    assert_output "error: this instance last ran DHIS2 2.40.1; DHIS2_VERSION 2.42.1 skips versions: step with 'pihx <name> dhis2 upgrade'"
+    [ ! -e curl-calls ]
+    run cat home/.dhis2-version
+    assert_output 2.40.1
+    # The next version in the list starts.
+    run sh "$SCRIPT"
+    assert_success
+}
+
 @test "setup refuses a last-started version it can't place in the list" {
     echo 2.99.9 > home/.dhis2-version
     run sh "$SCRIPT"

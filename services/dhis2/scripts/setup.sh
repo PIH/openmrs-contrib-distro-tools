@@ -1,9 +1,9 @@
 #!/bin/sh
 # dhis2-setup (compose.yaml), before every start of dhis2, in the same Tomcat image: checks
-# DHIS2_VERSION and DHIS2_TOMCAT_TAG against the versions list, refuses a downgrade, makes sure the
-# version's release WAR is in DHIS2_WARS and verified, and writes dhis.conf and the version marker
-# into DHIS2_HOME. Values reach it only through its environment, never its command line, and it
-# never prints one that could be a secret.
+# DHIS2_VERSION and DHIS2_TOMCAT_TAG against the versions list, refuses a downgrade or a skipped
+# version, makes sure the version's release WAR is in DHIS2_WARS and verified, and writes dhis.conf
+# and the version marker into DHIS2_HOME. Values reach it only through its environment, never its
+# command line, and it never prints one that could be a secret.
 set -eu
 VERSION=${DHIS2_VERSION:?DHIS2_VERSION must be set}
 VERSIONS_FILE=${DHIS2_VERSIONS_FILE:-/versions}
@@ -29,8 +29,8 @@ TAG=$1 URL=$2 SHA256=$3
 [ "${DHIS2_TOMCAT_TAG:-}" = "$TAG" ] ||
     die "DHIS2 $VERSION runs on tomcat:$TAG; DHIS2_TOMCAT_TAG is ${DHIS2_TOMCAT_TAG:-}. Set DHIS2_TOMCAT_TAG=$TAG."
 
-# 3. DHIS2's database migrations can't be undone: an older version than the last one started would
-# run on a schema it doesn't know.
+# 3. DHIS2's database migrations can't be undone or skip a version: an older version than the last
+# one started would run on a schema it doesn't know, and a later one than the next would skip steps.
 if [ -f "$MARKER" ]; then
     last=$(cat "$MARKER")
     last_position=$(position "$last")
@@ -38,6 +38,8 @@ if [ -f "$MARKER" ]; then
         die "this instance last ran DHIS2 $last ($MARKER), which isn't in services/dhis2/scripts/versions, so it can't tell whether $VERSION is a downgrade."
     [ "$last_position" -le "$(position "$VERSION")" ] ||
         die "this instance last ran DHIS2 $last; DHIS2_VERSION is $VERSION. DHIS2 can't be downgraded: set DHIS2_VERSION to $last or later."
+    [ "$(position "$VERSION")" -le $((last_position + 1)) ] ||
+        die "this instance last ran DHIS2 $last; DHIS2_VERSION $VERSION skips versions: step with 'pihx <name> dhis2 upgrade'"
 fi
 
 # 4. The WAR, downloaded only when it isn't there already, verified.

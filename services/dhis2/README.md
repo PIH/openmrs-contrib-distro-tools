@@ -48,9 +48,11 @@ and `dhis2` starts only if it succeeds. In order, it:
 
 1. looks up `DHIS2_VERSION` in `scripts/versions`;
 2. checks that `DHIS2_TOMCAT_TAG` is that version's tag;
-3. refuses a downgrade: the DHIS2 home's `.dhis2-version` records the last version set up, and an
-   earlier `DHIS2_VERSION` fails the start (e.g. a Puppet apply that puts an old version back after
-   an upgrade);
+3. refuses a downgrade or a skipped version: the DHIS2 home's `.dhis2-version` records the last
+   version set up, and an earlier `DHIS2_VERSION` fails the start (e.g. a Puppet apply that puts an
+   old version back after an upgrade), as does one more than one line later in the list (step with
+   `pihx <name> dhis2 upgrade`). With no `.dhis2-version` (a new instance, or one restored from a
+   home that never ran this service) nothing is checked;
 4. makes sure `dhis2-wars` holds the version's WAR, `dhis2-<version>.war`. A WAR already there is
    kept if its SHA-256 matches; otherwise it's downloaded with `curl` and verified. **The host needs
    internet access at a start that needs a new WAR.**
@@ -81,6 +83,7 @@ before pihx can show its log. **The reason is in `pihx <name> logs dhis2-setup`*
 | `DHIS2_VERSION '<v>' isn't in services/dhis2/scripts/versions` | a version this repo doesn't list |
 | `DHIS2 <v> runs on tomcat:<tag>; DHIS2_TOMCAT_TAG is <other>` | set `DHIS2_TOMCAT_TAG` as it says |
 | `this instance last ran DHIS2 <old>; DHIS2_VERSION is <new>` | a downgrade: set `DHIS2_VERSION` back to `<old>` or later |
+| `this instance last ran DHIS2 <old>; DHIS2_VERSION <new> skips versions` | `<new>` is more than one step past `<old>`: set `DHIS2_VERSION` back to `<old>` and step with `pihx <name> dhis2 upgrade` |
 | `this instance last ran DHIS2 <old> (...), which isn't in services/dhis2/scripts/versions` | the version marker names a version this repo doesn't list, so setup can't tell whether `DHIS2_VERSION` is a downgrade: run it from tools that list `<old>` |
 | `couldn't download <url>` | no internet access, or the release moved |
 | `the download from <url> has SHA-256 ...` | the download isn't the release the list names: it's deleted, never used |
@@ -151,7 +154,8 @@ again, so they aren't backed up.
 unwrapped, so an archive of a legacy DHIS2 home (`files/` and `apps/` at the top, as RIMU keeps it)
 restores as it is, and so does the backup's `dhis2/`. A legacy `dhis.conf` in the archive is
 replaced by `dhis2-setup`'s on the first start; the version marker, if the archive has none, is
-written then. Set `DHIS2_ENCRYPTION_PASSWORD` to the source's if it had one.
+written then, so `DHIS2_VERSION` must be exactly the source's version ([Refreshing a test
+copy](../../docs/dhis2.md#refreshing-a-test-copy-from-production)). Set `DHIS2_ENCRYPTION_PASSWORD` to the source's if it had one.
 
 `pihx <name> summary` prints `[dhis2]`: `files <n>` and `apps <n>`, the number of files under
 `files/` and `apps/`, and `version <marker>` (`none` before the first start).
