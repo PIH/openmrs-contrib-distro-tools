@@ -10,7 +10,7 @@ instance's `dhis2-db.env`; defaults are in [`env.defaults`](env.defaults).
 | `DHIS2_DB_NAME`, `DHIS2_DB_USER` | `dhis`, `dhis` | the database and its owner |
 | `DHIS2_DB_PASSWORD` | must be set | the account's password; it is used when the data directory is first set up, so changing it later doesn't change the database account |
 | `DHIS2_DB_PORT` | `5432` | the port published on the host; set it differently to run more than one instance at once |
-| `DHIS2_DB_MEMORY_LIMIT` | `2g` | the container's memory limit |
+| `DHIS2_DB_MEMORY_LIMIT` | `4g` | the container's memory limit: at least `shared_buffers` + `maintenance_work_mem` + about 1 GB ([below](#server-options-dhis2_db_opt_)) |
 | `DHIS2_DB_OPT_<parameter>` | see below | PostgreSQL server settings |
 
 `TZ` comes from `instance.env`.
@@ -26,6 +26,14 @@ and the memory settings: `shared_buffers`, `work_mem`, `maintenance_work_mem`, `
 changes one in its `dhis2-db.env`, and adds any other there (at `create`, `DHIS2_DB_OPT_*` set in your
 shell go into `dhis2-db.env`, as the manifest's `capture-env` says). Defaults live in the tools
 directory, so one can't be dropped by deleting a line from an instance's file; set the value you want.
+
+**Sizing rule: `DHIS2_DB_MEMORY_LIMIT` >= `shared_buffers` + `maintenance_work_mem` + about 1 GB** (for
+connections' `work_mem` and autovacuum). An index build (a restore's `CREATE INDEX`, which runs with
+these settings in the image's temporary import server too), a `VACUUM` or DHIS2's analytics can use
+`maintenance_work_mem` on top of `shared_buffers`; past the limit the kernel kills the server, and
+with `synchronous_commit=off` and `wal_writer_delay=10s` that can lose transactions already
+committed. The defaults (1 GB each, limit `4g`) keep DHIS2's recommended values and leave 2 GB over;
+raise the limit with either setting.
 
 ## Restoring and summarizing
 
