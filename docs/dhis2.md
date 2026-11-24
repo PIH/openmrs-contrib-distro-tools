@@ -111,7 +111,7 @@ setup defaults to daily.
 ### After
 
 1. In DHIS2: Data Administration → Maintenance: clear and rebuild indexes, *Create SQL views*.
-2. Data Administration → Analytics tables: export them (the `dhis2-db` backup leaves them out).
+2. Data Administration → Analytics tables: export them (the `dhis2-db` backup leaves their rows out).
 3. On a Puppet host, set the final `DHIS2_VERSION` and `DHIS2_TOMCAT_TAG` in `site.pp`, then release
    the hold.
 

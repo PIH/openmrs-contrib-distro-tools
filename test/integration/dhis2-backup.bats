@@ -34,6 +34,8 @@ CREATE TABLE datavalue (id integer);
 INSERT INTO datavalue VALUES (1), (2), (3);
 CREATE TABLE analytics_2024 (id integer);
 INSERT INTO analytics_2024 VALUES (1);
+-- As a DHIS2 SQL view on an analytics table makes one.
+CREATE VIEW analytics_view AS SELECT id FROM analytics_2024;
 CREATE TABLE flyway_schema_history (installed_rank integer, version text, success boolean);
 INSERT INTO flyway_schema_history VALUES (1, '2.43.0.1', true);
 SQL
@@ -97,12 +99,15 @@ dhis2_backup() {
     assert_line 'Path = dhis2/.dhis2-version'
     assert_line 'Path = dhis2/files/2.txt'
     refute_output --partial 'dhis.conf'
-    # The dump is there (a failed extraction fails the test), and has no analytics tables.
+    # The dump is there (a failed extraction fails the test), with the analytics tables' definitions
+    # (a view can depend on one) but not their rows.
     run docker run --rm -v "$BATS_TEST_TMPDIR/out:/o:ro" --entrypoint bash "$IMAGE" -c \
         "set -eo pipefail; printf '%s\n' '$PW' | 7z x -so /o/dhis2-db.sql.7z"
     assert_success
     assert_output --partial 'COPY public.datavalue'
-    refute_output --partial 'analytics_'
+    assert_output --partial 'CREATE TABLE public.analytics_2024'
+    assert_output --partial 'CREATE VIEW public.analytics_view'
+    refute_output --partial 'COPY public.analytics_2024'
 
     docker rm -f "$NAME-dhis2-db" >/dev/null
     "$BIN/pihx" "$RESTORED" create --services=dhis2-db,dhis2 >/dev/null
@@ -111,6 +116,11 @@ dhis2_backup() {
     "$BIN/pihx" "$RESTORED" summary --output=after.txt
     run diff before.txt after.txt
     assert_success
+    # The view restored, on an empty analytics table.
+    instance_compose_of "$RESTORED" up -d dhis2-db >/dev/null 2>&1
+    "$UTILS/wait-for-healthy.sh" --container="$RESTORED-dhis2-db" --timeout=120 >/dev/null
+    run docker exec "$RESTORED-dhis2-db" psql -U dhis -d dhis -tAc 'SELECT count(*) FROM analytics_view'
+    assert_output 0
 }
 
 @test "the backups service gets both DHIS2 scripts and what they need" {
