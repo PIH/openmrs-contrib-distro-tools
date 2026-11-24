@@ -125,16 +125,17 @@ setup defaults to daily.
    *Permanently remove…* and *Prune periods* options alone: they delete data. (2.4x has no *Rebuild
    indexes*.)
 3. Scheduler: open the *Analytics* job (analytics tables), check its settings and save it, then
-   *Run now* and see it complete. A job made on 2.3x keeps that version's settings (e.g. *Last
-   years* 0), and its first run on 2.43 can fail. Check that every job that ran before is still
-   enabled with the schedule you expect; on a test copy, `dhis2-test-copy` keeps the sending ones
-   (notifications, alerts, sync) off on purpose.
-4. Data Administration → Analytics tables: export them (the `dhis2-db` backup leaves their rows out,
-   and dashboards stay empty until they're built).
-5. Check what users use: data entry for a recent period, Capture (tracker and event programs),
+   *Run now* and see it complete. That builds the analytics tables, which the `dhis2-db` backup
+   leaves out, so dashboards stay empty until it has run; it's also the check that the nightly job
+   works. A job made on 2.3x keeps that version's settings (e.g. *Last years* 0), and its first run
+   on 2.43 can fail. (Data Administration → Analytics tables builds them too, with settings chosen
+   there, for a one-off build.) Check that every job that ran before is still enabled with the
+   schedule you expect; on a test copy, `dhis2-test-copy` keeps the sending ones (notifications,
+   alerts, sync) off on purpose.
+4. Check what users use: data entry for a recent period, Capture (tracker and event programs),
    the main dashboards once analytics is done, and a quick look at each app in use. Apps shown in
    App Management that can't be uninstalled are DHIS2's own bundled ones, at the version it ships.
-6. On a Puppet host, set the final `DHIS2_VERSION` and `DHIS2_TOMCAT_TAG` in `site.pp`, then release
+5. On a Puppet host, set the final `DHIS2_VERSION` and `DHIS2_TOMCAT_TAG` in `site.pp`, then release
    the hold.
 
 What changes for users from 2.3x: the old web apps were replaced (Tracker Capture and Event Capture
