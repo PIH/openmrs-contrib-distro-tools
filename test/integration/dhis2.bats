@@ -41,6 +41,24 @@ in_home() { # <command...>, in the DHIS2 home volume
     run docker logs "$NAME-dhis2"
     assert_output --partial 'Aborting default log config, external config set through system prop log4j2.configurationFile'
     assert_output --partial 'Server startup in'
+    # reset-password on a running 2.43 (userinfo), just after a login has loaded the user: it stops
+    # DHIS2, which would otherwise write the old password back, and the new one logs in once it's
+    # started again; the old one no longer does.
+    run curl -s -o /dev/null -w '%{http_code}' -u admin:district "http://localhost:$port/dhis/api/me"
+    assert_output 200
+    run bash -c 'printf "New-pass-1\n" | "$1" "$2" dhis2 reset-password' _ "$BIN/pihx" "$NAME"
+    assert_success
+    assert_output --partial "DHIS2 is stopped"
+    run docker inspect -f '{{.State.Running}}' "$NAME-dhis2"
+    assert_output false
+    "$BIN/pihx" "$NAME" start >/dev/null 2>&1
+    run "$UTILS/wait-for-healthy.sh" --container="$NAME-dhis2" --timeout=1800
+    assert_success
+    port=$(docker port "$NAME-dhis2" 8080/tcp | head -n 1 | sed 's/.*://')
+    run curl -s -o /dev/null -w '%{http_code}' -u admin:New-pass-1 "http://localhost:$port/dhis/api/me"
+    assert_output 200
+    run curl -s -o /dev/null -w '%{http_code}' -u admin:district "http://localhost:$port/dhis/api/me"
+    assert_output 401
 }
 
 @test "a start with an older DHIS2_VERSION fails in setup" {

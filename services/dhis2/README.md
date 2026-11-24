@@ -168,6 +168,21 @@ failed migration is shown as its name and SQL state
 fixes and refreshing a test copy are in
 [DHIS2: upgrading, patching and test copies](../../docs/dhis2.md).
 
+## Resetting a password
+
+`pihx <name> dhis2 reset-password [<username>]` (default `admin`) sets a user's password in the
+database ([`commands/reset-password`](commands/reset-password)): for an instance restored from another
+server, whose logins nobody here has. It asks for the password twice without echoing it, or reads one
+line from stdin (`printf '%s\n' "$pw" | pihx <name> dhis2 reset-password <username>`). It also enables
+the account and turns off LDAP/external login and two-factor for it.
+
+**It stops DHIS2 and leaves it stopped**: start it with `pihx <name> start`. A running DHIS2 keeps the
+users it has loaded and writes one back, old password included, at that user's next login, so a change
+made under it doesn't last. A DHIS2 still starting (perhaps migrating) is refused instead, and
+`dhis2-db` is started if it isn't running. The password is hashed with bcrypt by Postgres's
+`pgcrypto`, installed only inside a transaction that's rolled back, so the database gains no
+extension; neither the password nor the hash is on a command line or printed.
+
 ## Backup, restore and summary
 
 The `backups` service runs [`scripts/backup.sh`](scripts/backup.sh) ([Backups](../../docs/backups.md)):

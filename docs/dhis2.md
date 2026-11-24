@@ -148,6 +148,7 @@ DHIS2_VERSION=<production's version> DHIS2_TOMCAT_TAG=<its tag> DHIS2_TEST_COPY=
 DHIS2_ENCRYPTION_PASSWORD=<production's> DHIS2_DB_PASSWORD=<...> \
     pihx <test> create --services=dhis2-db,dhis2
 ARCHIVE_PASSWORD=<the archive password> pihx <test> initialize --from <run directory>
+pihx <test> dhis2 reset-password [<username>]  # if nobody here has a login on the source
 pihx <test> start
 ```
 
