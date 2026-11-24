@@ -127,10 +127,29 @@ run_fix() { # <version>/<file>
         -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$FIXES_DIR/$1" >/dev/null
 }
 
+# How many DHIS2 SQL views (views and materialized views named _view_*) the database has.
+count_sql_views() {
+    # shellcheck disable=SC2016 # expanded in the container
+    docker exec -i "$SERVICE_NAME-dhis2-db" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -X -q -t -A \
+        -h 127.0.0.1 -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+SELECT (SELECT count(*) FROM pg_views WHERE schemaname = 'public' AND viewname LIKE '\_view\_%')
+     + (SELECT count(*) FROM pg_matviews WHERE schemaname = 'public' AND matviewname LIKE '\_view\_%');
+SQL
+}
+
+# Drops them (scripts/drop-sql-views.sql), in one transaction.
+drop_sql_views() {
+    # shellcheck disable=SC2016 # expanded in the container
+    docker exec -i "$SERVICE_NAME-dhis2-db" sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -X -q -1 \
+        -h 127.0.0.1 -v ON_ERROR_STOP=1 -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never \
+        -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$PIHX_TOOLS/services/dhis2/scripts/drop-sql-views.sql" >/dev/null
+}
+
 log_step() { # <from> <to> <fixes> <seconds> <ok|failed>
     printf '%s %s -> %s fixes=[%s] %ss %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$@" >> "$LOG"
 }
 
+DROPPED_VIEWS=no
 note "Upgrading $PIHX_INSTANCE from DHIS2 ${VERSIONS[$FROM]} to ${VERSIONS[$LAST]}, one version at a time."
 for ((i = FROM + 1; i <= LAST; i++)); do
     from=${VERSIONS[$((i - 1))]} v=${VERSIONS[$i]} tag=${TAGS[$i]} start=$(date +%s)
@@ -141,6 +160,16 @@ for ((i = FROM + 1; i <= LAST; i++)); do
     compose up -d dhis2-db
     "$PIHX_TOOLS/utils/wait-for-healthy.sh" --container="$SERVICE_NAME-dhis2-db" --timeout=600
     compose stop dhis2
+    # DHIS2 may rebuild its SQL views as it starts, so before every step.
+    views=$(count_sql_views)
+    if [ "$views" -gt 0 ]; then
+        if ! drop_sql_views; then
+            log_step "$from" "$v" "${step_fixes[*]}" $(($(date +%s) - start)) failed
+            die "dropping DHIS2's SQL views failed, and was rolled back. DHIS2 is stopped; its version is unchanged."
+        fi
+        note "Dropped $views DHIS2 SQL views: a migration can't change a column one reads."
+        DROPPED_VIEWS=yes
+    fi
     for file in "${step_fixes[@]}"; do
         if ! run_fix "$v/$file"; then
             log_step "$from" "$v" "${step_fixes[*]}" $(($(date +%s) - start)) failed
@@ -198,3 +227,6 @@ if [ -d "$PIHX_INSTANCE_DIR/tools" ] && [ ! -L "$PIHX_INSTANCE_DIR/tools" ]; the
     note "Set DHIS2_VERSION=$v and DHIS2_TOMCAT_TAG=$tag in site.pp (Puppet) before unholding the instance."
 fi
 note "$PIHX_INSTANCE is on DHIS2 $v."
+if [ "$DROPPED_VIEWS" = yes ]; then
+    note "DHIS2's SQL views were dropped: once it's up, rebuild them in Data Administration -> Maintenance -> Create SQL views."
+fi

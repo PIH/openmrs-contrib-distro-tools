@@ -197,3 +197,27 @@ SQL
     # The legacy trackedentityaudit is kept, renamed.
     assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc 'SELECT visitor FROM trackedentityaudit_legacy')" admin
 }
+
+@test "drop-sql-views.sql drops DHIS2's SQL views (views and materialized views named _view_*) and nothing else, and can run again" {
+    local db; db="$(res db)"
+    docker run -d --name "$db" -e POSTGRES_USER=dhis -e POSTGRES_DB=dhis -e POSTGRES_PASSWORD=Placeholder-1 \
+        --health-cmd "pg_isready -h 127.0.0.1 -U dhis -d dhis" --health-interval 1s postgis/postgis:16-3.5 >/dev/null
+    run "$UTILS/wait-for-healthy.sh" --container="$db" --timeout=300
+    assert_success
+    docker exec -i "$db" psql -U dhis -d dhis -q -v ON_ERROR_STOP=1 <<'SQL'
+CREATE TABLE datavalue (value text);
+CREATE VIEW _view_a AS SELECT value FROM datavalue;
+CREATE VIEW _view_on_a AS SELECT value FROM _view_a;
+CREATE MATERIALIZED VIEW _view_m AS SELECT value FROM datavalue;
+CREATE VIEW keep_me AS SELECT value FROM datavalue;
+CREATE VIEW x_view_y AS SELECT value FROM datavalue;
+SQL
+    run bash -c 'for i in 1 2; do docker exec -i "$1" psql -X -1 -U dhis -d dhis -q -v ON_ERROR_STOP=1 < "$2" || exit 1; done' \
+        _ "$db" "$REPO_ROOT/services/dhis2/scripts/drop-sql-views.sql"
+    assert_success
+    run docker exec "$db" psql -U dhis -d dhis -tAc \
+        "SELECT string_agg(viewname, ',' ORDER BY viewname) FROM pg_views WHERE schemaname = 'public'"
+    assert_output 'geography_columns,geometry_columns,keep_me,x_view_y'   # PostGIS's own two kept too
+    run docker exec "$db" psql -U dhis -d dhis -tAc "SELECT count(*) FROM pg_matviews"
+    assert_output 0
+}

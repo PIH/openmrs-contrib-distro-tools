@@ -22,12 +22,16 @@ step it:
 1. starts `dhis2-db` (an instance just restored with `initialize` has no containers yet) and waits
    for it, then stops `dhis2`. An instance never started or initialized has no database volume, and
    is refused;
-2. runs the known fixes chosen with `--with-fix` for that version, each in one transaction;
-3. sets `DHIS2_VERSION` and `DHIS2_TOMCAT_TAG` in the instance's `dhis2.env` to the step's;
-4. starts the instance (`dhis2-setup` fetches the WAR) and waits for DHIS2 to come up, its
+2. drops DHIS2's SQL views (views and materialized views named `_view_*`), as Data Administration →
+   Maintenance → *Drop SQL views* does, if there are any: a migration can't change a column one
+   reads ([`scripts/drop-sql-views.sql`](../services/dhis2/scripts/drop-sql-views.sql)). Their
+   definitions stay in DHIS2; *Create SQL views* rebuilds them after the upgrade (below);
+3. runs the known fixes chosen with `--with-fix` for that version, each in one transaction;
+4. sets `DHIS2_VERSION` and `DHIS2_TOMCAT_TAG` in the instance's `dhis2.env` to the step's;
+5. starts the instance (`dhis2-setup` fetches the WAR) and waits for DHIS2 to come up, its
    migrations included: up to `DHIS2_UPGRADE_STEP_TIMEOUT` seconds (default 7200; set it in
    `dhis2.env`);
-5. appends `<UTC time> <from> -> <to> fixes=[...] <seconds>s ok|failed` to
+6. appends `<UTC time> <from> -> <to> fixes=[...] <seconds>s ok|failed` to
    `<instance dir>/dhis2-upgrade.log`.
 
 It holds the instance lock throughout. At the end it prints `<name> is on DHIS2 <version>.`, and on a
@@ -37,10 +41,9 @@ and `DHIS2_TOMCAT_TAG` in `site.pp`.
 ### Before
 
 1. Take a backup (`pihx <name> backup`, [Backups](backups.md)).
-2. In DHIS2: Data Administration → Maintenance → *Drop SQL views*.
-3. On a Puppet host, hold the instance (`/etc/puppet/build-disabled-<name>`). Otherwise its next
+2. On a Puppet host, hold the instance (`/etc/puppet/build-disabled-<name>`). Otherwise its next
    apply puts the old version back into `dhis2.env`, and `dhis2-setup` then refuses to start it.
-4. Run the upgrade outside the backup schedule (`BACKUP_SCHEDULE`, default 01:30): a scheduled
+3. Run the upgrade outside the backup schedule (`BACKUP_SCHEDULE`, default 01:30): a scheduled
    backup doesn't take the instance lock, and its `pg_dump` holds locks on every table it dumps, which
    slows or blocks a step's migrations for as long as it runs.
 
