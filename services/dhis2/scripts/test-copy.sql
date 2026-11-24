@@ -4,7 +4,8 @@
 --
 -- Idempotent, and it works on every schema from 2.30 to 2.43: each part checks information_schema
 -- first, and skips a table that isn't there (an empty database, before DHIS2's first start makes
--- its tables). A column type it doesn't know fails the start rather than changing nothing.
+-- its tables). A table that is there without the column it works by (PX001, PX003), or a column type
+-- it doesn't know (PX002), fails the start rather than changing nothing.
 --
 -- The names below were checked (2026-11-23) against dhis2/dhis2-core: the JobType enum,
 -- dhis-2/dhis-api/src/main/java/org/hisp/dhis/scheduling/JobType.java, on the 2.30 branch and every
@@ -18,24 +19,36 @@
 -- no email. The value's type (bytea up to 2.33, text from 2.34) doesn't matter here.
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_schema = current_schema() AND table_name = 'systemsetting' AND column_name = 'name') THEN
-        DELETE FROM systemsetting WHERE name IN (
-            'keyEmailHostName', 'keyEmailPort', 'keyEmailUsername', 'keyEmailPassword',
-            'keyEmailSender', 'keyEmailTls',
-            'keySmsSetting',
-            'keyRemoteInstanceUrl', 'keyRemoteInstanceUsername', 'keyRemoteInstancePassword');
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+                   WHERE table_schema = current_schema() AND table_name = 'systemsetting') THEN
+        RETURN;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = current_schema() AND table_name = 'systemsetting' AND column_name = 'name') THEN
+        RAISE EXCEPTION 'systemsetting has no name column: the test-copy guard can''t delete the email settings'
+            USING ERRCODE = 'PX003';
+    END IF;
+    DELETE FROM systemsetting WHERE name IN (
+        'keyEmailHostName', 'keyEmailPort', 'keyEmailUsername', 'keyEmailPassword',
+        'keyEmailSender', 'keyEmailTls',
+        'keySmsSetting',
+        'keyRemoteInstanceUrl', 'keyRemoteInstanceUsername', 'keyRemoteInstancePassword');
 END $$;
 
 -- 2. The SMS gateways from 2.42 on: the datastore entry sms-config/config (migration
 -- V2_42_17__Move_sms_config_to_datastore.sql). Without it DHIS2 has no gateway.
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_schema = current_schema() AND table_name = 'keyjsonvalue' AND column_name = 'namespacekey') THEN
-        DELETE FROM keyjsonvalue WHERE namespace = 'sms-config' AND namespacekey = 'config';
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+                   WHERE table_schema = current_schema() AND table_name = 'keyjsonvalue') THEN
+        RETURN;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = current_schema() AND table_name = 'keyjsonvalue' AND column_name = 'namespacekey') THEN
+        RAISE EXCEPTION 'keyjsonvalue has no namespacekey column: the test-copy guard can''t delete the SMS gateways'
+            USING ERRCODE = 'PX003';
+    END IF;
+    DELETE FROM keyjsonvalue WHERE namespace = 'sms-config' AND namespacekey = 'config';
 END $$;
 
 -- 3. Scheduled jobs that send data out or message people: off. Their type is varchar in later

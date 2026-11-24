@@ -150,11 +150,36 @@ INSERT INTO jobconfiguration (jobconfigurationid, name, jobtype, enabled) VALUES
     set_env_value "$NAME" dhis2 DHIS2_TEST_COPY true
     run run_guard
     assert_line --partial "ERROR:  PX002"
-    assert_line "error: dhis2-test-copy: test-copy.sql failed with the SQL state above (PX001, PX002: a schema it doesn't know; see test-copy.sql), and changed nothing"
+    assert_line "error: dhis2-test-copy: test-copy.sql failed with the SQL state above (PX001, PX002, PX003: a schema it doesn't know; see test-copy.sql), and changed nothing"
     refute_output --partial "the test-copy guard doesn't know"
     refute_output --partial integer
     run docker inspect -f '{{.State.ExitCode}}' "$NAME-dhis2-test-copy"
     refute_output 0
+}
+
+@test "test-copy guard fails when a settings table it knows lacks the column it deletes by" {
+    set_env_value "$NAME" dhis2 DHIS2_TEST_COPY true
+    # systemsetting without name: the email settings would stay.
+    sql "CREATE TABLE systemsetting (systemsettingid bigint PRIMARY KEY, settingname varchar(255), value text);
+         INSERT INTO systemsetting VALUES (1, 'keyEmailHostName', 'secret-row');"
+    run run_guard
+    assert_line --partial "ERROR:  PX003"
+    assert_line "error: dhis2-test-copy: test-copy.sql failed with the SQL state above (PX001, PX002, PX003: a schema it doesn't know; see test-copy.sql), and changed nothing"
+    refute_output --partial secret-row
+    run docker inspect -f '{{.State.ExitCode}}' "$NAME-dhis2-test-copy"
+    refute_output 0
+
+    # keyjsonvalue without namespacekey: the SMS gateways would stay.
+    sql "DROP TABLE systemsetting;
+         CREATE TABLE keyjsonvalue (keyjsonvalueid bigint PRIMARY KEY, namespace varchar(255), key varchar(255), jbvalue jsonb);
+         INSERT INTO keyjsonvalue VALUES (1, 'sms-config', 'config', '{\"secret\": \"secret-row\"}');"
+    run run_guard
+    assert_line --partial "ERROR:  PX003"
+    refute_output --partial secret-row
+    run docker inspect -f '{{.State.ExitCode}}' "$NAME-dhis2-test-copy"
+    refute_output 0
+    run sql "SELECT count(*) FROM keyjsonvalue"
+    assert_output 1
 }
 
 @test "test-copy guard fails a start when DHIS2_TEST_COPY is neither true nor false" {

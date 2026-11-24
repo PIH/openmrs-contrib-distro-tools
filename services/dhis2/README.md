@@ -111,8 +111,10 @@ transaction) and prints `dhis2-test-copy: outbound email and sending jobs turned
 It runs on every start, so an admin who turns any of it back on during a training has it turned off
 again at the next start. It changes rows that are there and skips tables that aren't (an empty
 database, before DHIS2's first start), on every version from 2.30 to 2.43; a schema it doesn't
-recognize fails the start rather than changing nothing. Errors show only their SQL state (PX001 and
-PX002 are its own checks, in `test-copy.sql`), since a message could quote a row's values. A job DHIS2
+recognize fails the start rather than changing nothing: a table it changes that lacks the column it
+works by (PX001: `jobconfiguration.enabled`; PX003: `systemsetting.name` or `keyjsonvalue.namespacekey`),
+or a job type column it doesn't know (PX002). Errors show only their SQL state (PX001 to PX003 are its
+own checks, in `test-copy.sql`), since a message could quote a row's values. A job DHIS2
 itself creates during a start (a new version's built-in job, at an upgrade) is turned off at the next
 one; with no email server or SMS gateway it has nothing to send through meanwhile. A value other
 than `true` or `false` fails the start. Never set it on production.
