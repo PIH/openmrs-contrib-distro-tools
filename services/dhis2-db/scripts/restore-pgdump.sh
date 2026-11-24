@@ -18,6 +18,11 @@ if [ -z "$dump" ]; then
     echo "error: no dump (*.sql or *.sql.gz) in /restore" >&2
     exit 1
 fi
+# The mounted file keeps its host owner and mode, and this runs as the image's postgres user.
+if [ ! -r "$dump" ]; then
+    echo "error: can't read $(basename "$dump"): dhis2-db imports it as its own user (uid $(id -u)), not as the file's owner. Make it readable by others (chmod o+r) and try again." >&2
+    exit 1
+fi
 echo "Importing $dump into $POSTGRES_DB..."
 case "$dump" in
     *.gz) gunzip -c "$dump" | "${psql[@]}" ;;

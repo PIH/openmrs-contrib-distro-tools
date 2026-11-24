@@ -124,3 +124,20 @@ SQL
     assert_line 'rows trackedentity 2'
     assert_line 'rows event 3'
 }
+
+@test "initialize with a dump the database can't read says so, and keeps the failed database's log for the owner" {
+    create
+    mkdir from
+    write_dump dump.sql
+    gzip -c dump.sql > from/dhis2-db.sql.gz
+    chmod 600 from/dhis2-db.sql.gz   # Postgres reads it as its own user, not as the file's owner
+    run timeout 300 "$BIN/pihx" "$NAME" initialize --from from
+    assert_failure
+    local log="$PIHX_HOME/$NAME/initialize-dhis2-db.log"
+    assert_output --partial "dhis2-db didn't become healthy; its log is in $log"
+    refute_output --partial "docker logs"
+    run cat "$log"
+    assert_output --partial "can't read dhis2-db.sql.gz"
+    assert_output --partial "chmod o+r"
+    assert_equal "$(stat -c '%a %u' "$log")" "600 $(id -u)"
+}

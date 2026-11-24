@@ -465,10 +465,27 @@ class Restore:
         for svc, cid in healthy:
             result = subprocess.run(
                 [str(self.inst.tools / "utils" / "wait-for-healthy.sh"), f"--container={cid}",
-                 f"--timeout={timeout}"], env=self.env())
+                 f"--timeout={timeout}"], env=self.env(), stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True)
             if result.returncode != 0:
-                raise CliError(f"{svc} didn't become healthy")
+                # Its hint to read `docker logs` is stale: the container is removed next.
+                sys.stderr.write(re.sub(r" -- check 'docker logs [^']*'\.", ".", result.stdout))
+                raise CliError(f"{svc} didn't become healthy; its log is in "
+                               f"{self.save_log(svc, cid)}")
+            sys.stderr.write(result.stdout)
         self.compose.run("down")
+
+    def save_log(self, svc, cid):
+        """Writes container <cid>'s whole log to initialize-<svc>.log in the instance directory,
+        readable by its owner only, and returns its path. Kept rather than printed: a database's
+        errors can quote rows. The cleanup that follows removes the container."""
+        path = self.inst.dir / f"initialize-{svc}.log"
+        logs = _docker(self.env(), "logs", cid, capture_output=False, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT)
+        path.touch(mode=0o600)
+        path.chmod(0o600)
+        path.write_text(logs.stdout or "")
+        return path
 
     def remove_volumes(self, names):
         """Removes those of <names> that exist; returns those still there."""
