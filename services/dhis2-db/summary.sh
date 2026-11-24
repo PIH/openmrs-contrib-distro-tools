@@ -13,16 +13,27 @@ container="$SERVICE_NAME-dhis2-db"
 queries='
 q() { psql -X -tA -v ON_ERROR_STOP=1 -c "$1"; }
 exists() { [ "$(q "SELECT to_regclass('"'"'public.$1'"'"') IS NOT NULL")" = t ]; }
-count_first_of() {
-    for table in "$@"; do
-        if exists "$table"; then echo "rows $table $(q "SELECT count(*) FROM public.$table")"; return; fi
+# "rows <name> <count>", <name> the same on every DHIS2 version: the rows of the first of <tables> that
+# exists, each a +-joined list of tables whose rows are added up (all must exist).
+count_as() { # <name> <tables>...
+    local name=$1 group table sum; shift
+    for group in "$@"; do
+        sum=0
+        for table in ${group//+/ }; do
+            exists "$table" || continue 2
+            sum=$((sum + $(q "SELECT count(*) FROM public.$table")))
+        done
+        echo "rows $name $sum"
+        return
     done
 }
-count_first_of datavalue
-count_first_of trackedentityinstance trackedentity
-count_first_of programstageinstance event
-count_first_of userinfo
-count_first_of organisationunit
+count_as datavalue datavalue
+# trackedentityinstance first: up to 2.40 a trackedentity table can be the pre-2.29 types table.
+count_as trackedentity trackedentityinstance trackedentity
+# programstageinstance up to 2.40, event in 2.41 and 2.42, split in two from 2.43.
+count_as event programstageinstance event trackerevent+singleevent
+count_as userinfo userinfo
+count_as organisationunit organisationunit
 if exists flyway_schema_history; then
     version=$(q "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1")
     [ -z "$version" ] || echo "flyway $version"

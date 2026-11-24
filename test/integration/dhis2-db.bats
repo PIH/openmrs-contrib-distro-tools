@@ -97,3 +97,30 @@ EXPECTED_SUMMARY=$'[dhis2-db]\nflyway 2.43.0.1\nrows datavalue 3'
     assert_failure
     assert_output --partial "${NAME}_dhis2-db-data already exists"
 }
+
+@test "summary counts tracked entities and events under the same names on every DHIS2 version" {
+    create
+    "$BIN/pihx" "$NAME" start >/dev/null
+    "$UTILS/wait-for-healthy.sh" --container="$NAME-dhis2-db" --timeout=120 >/dev/null
+    sql() { docker exec -i "$NAME-dhis2-db" psql -U dhis -d dhis -q -v ON_ERROR_STOP=1; }
+    # 2.30: trackedentityinstance and programstageinstance, and the pre-2.29 trackedentity (types),
+    # which isn't tracked entities.
+    sql <<'SQL'
+CREATE TABLE trackedentityinstance (id int); INSERT INTO trackedentityinstance VALUES (1), (2);
+CREATE TABLE trackedentity (id int); INSERT INTO trackedentity VALUES (1);
+CREATE TABLE programstageinstance (id int); INSERT INTO programstageinstance VALUES (1), (2), (3);
+SQL
+    run "$BIN/pihx" "$NAME" summary
+    assert_line 'rows trackedentity 2'
+    assert_line 'rows event 3'
+    # 2.43: trackedentity, and events split into trackerevent and singleevent.
+    sql <<'SQL'
+DROP TABLE trackedentityinstance, trackedentity, programstageinstance;
+CREATE TABLE trackedentity (id int); INSERT INTO trackedentity VALUES (1), (2);
+CREATE TABLE trackerevent (id int); INSERT INTO trackerevent VALUES (1), (2);
+CREATE TABLE singleevent (id int); INSERT INTO singleevent VALUES (1);
+SQL
+    run "$BIN/pihx" "$NAME" summary
+    assert_line 'rows trackedentity 2'
+    assert_line 'rows event 3'
+}
