@@ -1,8 +1,9 @@
 #!/bin/bash
-# dhis2-test-copy (compose.yaml), before every start of dhis2, once dhis2-db is healthy: on an
+# dhis2-test-copy (compose.yaml), at each pihx start or update, once dhis2-db is healthy: on an
 # instance marked as a copy of production (DHIS2_TEST_COPY=true), turns off outbound email, SMS
 # gateways, the remote sync target and the jobs that send data out or message people
-# (test-copy.sql). Every start, so an admin who turns them back on in a training doesn't keep them.
+# (test-copy.sql). Each pihx start, so an admin who turns them back on in a training doesn't keep them;
+# not a reboot, where restart: unless-stopped brings dhis2 back without it (README.md).
 # On any other instance it changes nothing. The password reaches psql as PGPASSWORD, from the
 # environment; nothing here prints a value.
 set -euo pipefail

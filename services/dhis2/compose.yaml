@@ -29,8 +29,8 @@ services:
       - ${PIHX_TOOLS}/services/dhis2/scripts/versions:/versions:ro
     restart: "no"
 
-  # Before every start of dhis2 (service.yaml's setup), once dhis2-db is healthy: on a copy of
-  # production (DHIS2_TEST_COPY=true), turns off outbound email, SMS gateways and the jobs that send
+  # At each pihx start or update (service.yaml's setup; not a reboot), once dhis2-db is healthy: on
+  # a copy of production (DHIS2_TEST_COPY=true), turns off outbound email, SMS gateways and the jobs that send
   # data out (scripts/test-copy.sh, test-copy.sql); otherwise changes nothing. In dhis2-db's image, for
   # its psql, so nothing more is pulled.
   dhis2-test-copy:

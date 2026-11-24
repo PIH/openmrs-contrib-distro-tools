@@ -13,7 +13,7 @@ release WARs are in `dhis2-wars`. Settings are in the instance's `dhis2.env`; de
 | `DHIS2_BASE_URL` | `http://localhost:<DHIS2_HTTP_PORT>/dhis` | `server.base.url`: the address users reach DHIS2 at |
 | `DHIS2_ENCRYPTION_PASSWORD` | empty (none) | `encryption.password`. An instance restored from another must have that one's, or DHIS2 can't read what it encrypted |
 | `DHIS2_MEMORY_LIMIT`, `DHIS2_JAVA_OPTS` | `4g`, `-Xms1g -Xmx3g` | the container's memory limit, and Tomcat's Java options |
-| `DHIS2_TEST_COPY` | `false` | `true` only on a copy of production: every start turns off its outbound email and sending jobs ([below](#a-copy-of-production)) |
+| `DHIS2_TEST_COPY` | `false` | `true` only on a copy of production: each `pihx` start or update turns off its outbound email and sending jobs (not a reboot: [below](#a-copy-of-production)) |
 | `DHIS2_UPGRADE_STEP_TIMEOUT` | `7200` | seconds each version has to come up during an [upgrade](#upgrading) |
 | `DHIS2_CONF_<key>` | none | any other `dhis.conf` setting ([below](#dhisconf)) |
 
@@ -95,7 +95,8 @@ A failed `dhis2-test-copy` is in `pihx <name> logs dhis2-test-copy` in the same 
 ## A copy of production
 
 An instance that holds a copy of production (lsdata-test, for trainings) sets `DHIS2_TEST_COPY=true` in
-its `dhis2.env`. Then, before every start of DHIS2, `dhis2-test-copy` runs
+its `dhis2.env`. Then, at each `pihx <name> start` or `update` (and a Puppet apply, which runs one),
+before DHIS2 starts, `dhis2-test-copy` runs
 [`scripts/test-copy.sql`](scripts/test-copy.sql) on the database (`psql` in `dhis2-db`'s image, in one
 transaction) and prints `dhis2-test-copy: outbound email and sending jobs turned off`. It:
 
@@ -110,8 +111,8 @@ transaction) and prints `dhis2-test-copy: outbound email and sending jobs turned
   expiry alerts (the list, with the versions each exists in, is in `test-copy.sql`). Other jobs, such
   as analytics, are left alone.
 
-It runs on every start, so an admin who turns any of it back on during a training has it turned off
-again at the next start. It changes rows that are there and skips tables that aren't (an empty
+It runs at each `pihx` start or update, so an admin who turns any of it back on during a training has
+it turned off again at the next one. It changes rows that are there and skips tables that aren't (an empty
 database, before DHIS2's first start), on every version from 2.30 to 2.43; a schema it doesn't
 recognize fails the start rather than changing nothing: a table it changes that lacks the column it
 works by (PX001: `jobconfiguration.enabled`; PX003: `systemsetting.name` or `keyjsonvalue.namespacekey`),
@@ -120,6 +121,17 @@ own checks, in `test-copy.sql`), since a message could quote a row's values. A j
 itself creates during a start (a new version's built-in job, at an upgrade) is turned off at the next
 one; with no email server or SMS gateway it has nothing to send through meanwhile. A value other
 than `true` or `false` fails the start. Never set it on production.
+
+**It runs only when pihx starts the instance, not whenever DHIS2 starts:**
+
+- **After a host reboot or a Docker restart**, `restart: unless-stopped` brings DHIS2 back without
+  `dhis2-test-copy` (or `dhis2-setup`); and `pihx <name> restart` (`docker compose restart`) restarts
+  containers in place without waiting for the guard before DHIS2. Whatever an admin turned back on stays on. On a test copy, after a reboot run
+  `pihx <name> stop && pihx <name> start`.
+- **A start or update that doesn't recreate `dhis2`** (nothing about it changed: a Puppet apply, a
+  second `pihx <name> start`) still runs the guard, but under a running DHIS2. DHIS2 caches its
+  settings, so it may keep the old email or SMS settings until it restarts, and before 2.41 its
+  scheduler can write `enabled = true` back to a job it holds. Stop and start it to be sure.
 
 ## dhis.conf
 

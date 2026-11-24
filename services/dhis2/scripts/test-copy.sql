@@ -1,5 +1,5 @@
--- dhis2-test-copy (test-copy.sh), on an instance with DHIS2_TEST_COPY=true, before every start of
--- DHIS2: a copy of production must not email or message anyone, or send data anywhere, even after an
+-- dhis2-test-copy (test-copy.sh), on an instance with DHIS2_TEST_COPY=true, at each pihx start or
+-- update: a copy of production must not email or message anyone, or send data anywhere, even after an
 -- admin turns any of it back on. Run in one transaction, with ON_ERROR_STOP.
 --
 -- Idempotent, and it works on every schema from 2.30 to 2.43: each part checks information_schema

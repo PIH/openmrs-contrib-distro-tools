@@ -132,7 +132,11 @@ Take a backup first either way: a patch can carry migrations too.
 ## Refreshing a test copy from production
 
 A test copy (lsdata-test) holds production's data, so it sets `DHIS2_TEST_COPY=true`, which turns
-off outbound email and sending jobs on every start ([A copy of production](../services/dhis2/README.md#a-copy-of-production)).
+off outbound email and sending jobs at each `pihx <test> start` or `update`, before DHIS2 starts
+([A copy of production](../services/dhis2/README.md#a-copy-of-production)). Not after a host reboot or
+a Docker restart, which bring DHIS2 back without it: then run `pihx <test> stop && pihx <test> start`.
+A start that doesn't recreate `dhis2` changes the rows under a running DHIS2, which may not see it
+until it restarts.
 To refresh it from a production backup run ([Restoring](backups.md#restoring)):
 
 ```bash
