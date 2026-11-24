@@ -16,10 +16,14 @@ teardown() {
     timeout 300 "$BIN/openmrs-docker" "$NAME" initialize --from "$(from_folder openmrs-db.sql dump.sql)" \
         > init.log 2>&1 3>&- &
     local init=$!
-    until grep -q 'Waiting for' init.log; do
+    until grep -q 'Waiting for' init.log 2>/dev/null; do
         kill -0 "$init" 2>/dev/null || { cat init.log; fail "initialize ended early"; }
         sleep 0.2
     done
+    # initialize passes the wait's output on as it comes, not once it's over: the database is
+    # still starting when the line shows.
+    run docker inspect -f '{{.State.Health.Status}}' "$NAME-openmrs-db"
+    assert_output starting
     run "$BIN/openmrs-docker" "$NAME" start
     assert_failure
     assert_output --partial "$NAME is busy: pihx $NAME initialize (pid"
