@@ -463,16 +463,18 @@ class Restore:
                 raise CliError(f"{svc} failed (exit {code or 'unknown'}; its output is above)")
         timeout = os.environ.get("PIHX_INITIALIZE_TIMEOUT") or str(DEFAULT_TIMEOUT)
         for svc, cid in healthy:
-            result = subprocess.run(
-                [str(self.inst.tools / "utils" / "wait-for-healthy.sh"), f"--container={cid}",
-                 f"--timeout={timeout}"], env=self.env(), stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, text=True)
-            if result.returncode != 0:
-                # Its hint to read `docker logs` is stale: the container is removed next.
-                sys.stderr.write(re.sub(r" -- check 'docker logs [^']*'\.", ".", result.stdout))
+            # Its output passed on line by line as it comes (a restore can wait an hour), less its
+            # hint to read `docker logs`, which is stale: on failure the container is removed next.
+            with subprocess.Popen(
+                    [str(self.inst.tools / "utils" / "wait-for-healthy.sh"), f"--container={cid}",
+                     f"--timeout={timeout}"], env=self.env(), stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, text=True) as wait:
+                for line in wait.stdout:
+                    sys.stderr.write(re.sub(r" -- check 'docker logs [^']*'\.", ".", line))
+                    sys.stderr.flush()
+            if wait.returncode != 0:
                 raise CliError(f"{svc} didn't become healthy; its log is in "
                                f"{self.save_log(svc, cid)}")
-            sys.stderr.write(result.stdout)
         self.compose.run("down")
 
     def save_log(self, svc, cid):
