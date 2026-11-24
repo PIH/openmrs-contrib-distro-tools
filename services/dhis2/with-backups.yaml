@@ -1,0 +1,7 @@
+# Added when the instance has the backups service: dhis2's backup script, and what it needs.
+services:
+  backups:
+    volumes:
+      - ${PIHX_TOOLS}/services/dhis2/scripts:/opt/backup-services/dhis2:ro
+      # Mounted as dhis2, so the archive's top directory has that name (scripts/backup.sh).
+      - dhis2-data:/sources/dhis2:ro

@@ -95,6 +95,15 @@ class EnsureTest(TempDirTest):
         self.ensure("services:\n  app:\n    image: ${PIHX_IMAGE_BACKUP_TOOLS:?}\n")
         self.assertTrue([c for c in self.calls if c[0] == "build"])
 
+    def test_a_tag_not_published_is_built_with_the_containerd_image_store_wording(self):
+        # Docker with the containerd image store (GitHub's runners) says this instead of "manifest unknown".
+        self.results = {"image": done(returncode=1), "pull": not_published(
+            'Error response from daemon: failed to resolve reference '
+            '"docker.io/partnersinhealth/backup-tools:abc123": '
+            'docker.io/partnersinhealth/backup-tools:abc123: not found')}
+        self.ensure("services:\n  app:\n    image: ${PIHX_IMAGE_BACKUP_TOOLS:?}\n")
+        self.assertTrue([c for c in self.calls if c[0] == "build"])
+
     def test_a_pull_that_fails_for_another_reason_is_an_error_not_a_build(self):
         self.results = {"image": done(returncode=1), "pull": not_published(
             "Get \"https://registry-1.docker.io/v2/\": net/http: request canceled while waiting "

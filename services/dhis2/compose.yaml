@@ -1,0 +1,124 @@
+services:
+  # Before every start of dhis2 (service.yaml's setup), in the same Tomcat image, so nothing more is
+  # pulled: checks DHIS2_VERSION and DHIS2_TOMCAT_TAG against the versions list, refuses a
+  # downgrade, fetches the version's WAR into dhis2-wars and verifies it, and writes dhis.conf and
+  # the version marker into the DHIS2 home (scripts/setup.sh). The database password reaches only
+  # this container, which writes it into dhis.conf.
+  dhis2-setup:
+    container_name: ${SERVICE_NAME}-dhis2-setup
+    image: tomcat:${DHIS2_TOMCAT_TAG}
+    entrypoint: ["sh", "/setup.sh"]
+    env_file:
+      - path: ${PIHX_TOOLS}/services/dhis2/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/dhis2.env
+        required: false
+    environment:
+      DHIS2_VERSION: ${DHIS2_VERSION:?DHIS2_VERSION must be set (a version in services/dhis2/scripts/versions)}
+      DHIS2_TOMCAT_TAG: ${DHIS2_TOMCAT_TAG}
+      DHIS2_HOME: /opt/dhis2
+      DHIS2_WARS: /wars
+      DHIS2_VERSIONS_FILE: /versions
+      DHIS2_BASE_URL: ${DHIS2_BASE_URL:-http://localhost:${DHIS2_HTTP_PORT}/dhis}
+      DHIS2_DB_NAME: ${DHIS2_DB_NAME}
+      DHIS2_DB_USER: ${DHIS2_DB_USER}
+      DHIS2_DB_PASSWORD: ${DHIS2_DB_PASSWORD:?DHIS2_DB_PASSWORD must be set (the password of the DHIS2 database account)}
+    volumes:
+      - dhis2-data:/opt/dhis2
+      - dhis2-wars:/wars
+      - ${PIHX_TOOLS}/services/dhis2/scripts/setup.sh:/setup.sh:ro
+      - ${PIHX_TOOLS}/services/dhis2/scripts/versions:/versions:ro
+    restart: "no"
+
+  # At each pihx start or update (service.yaml's setup; not a reboot), once dhis2-db is healthy: on
+  # a copy of production (DHIS2_TEST_COPY=true), turns off outbound email, SMS gateways and the jobs that send
+  # data out (scripts/test-copy.sh, test-copy.sql); otherwise changes nothing. In dhis2-db's image, for
+  # its psql, so nothing more is pulled.
+  dhis2-test-copy:
+    container_name: ${SERVICE_NAME}-dhis2-test-copy
+    image: ${DHIS2_DB_IMAGE_NAME}:${DHIS2_DB_IMAGE_TAG}
+    depends_on:
+      dhis2-db:
+        condition: service_healthy
+    entrypoint: ["bash", "/test-copy.sh"]
+    env_file:
+      - path: ${PIHX_TOOLS}/services/dhis2/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/dhis2.env
+        required: false
+    environment:
+      DHIS2_DB_NAME: ${DHIS2_DB_NAME}
+      DHIS2_DB_USER: ${DHIS2_DB_USER}
+      PGPASSWORD: ${DHIS2_DB_PASSWORD:?DHIS2_DB_PASSWORD must be set (the password of the DHIS2 database account)}
+    volumes:
+      - ${PIHX_TOOLS}/services/dhis2/scripts/test-copy.sh:/test-copy.sh:ro
+      - ${PIHX_TOOLS}/services/dhis2/scripts/test-copy.sql:/test-copy.sql:ro
+    restart: "no"
+
+  # DHIS2 in the stock Tomcat for its Java (DHIS2_TOMCAT_TAG), as the image's user, root. Our
+  # server.xml deploys the WAR named by the dhis2.war system property at /dhis.
+  dhis2:
+    container_name: ${SERVICE_NAME}-dhis2
+    image: tomcat:${DHIS2_TOMCAT_TAG}
+    depends_on:
+      dhis2-setup:
+        condition: service_completed_successfully
+      dhis2-test-copy:
+        condition: service_completed_successfully
+      dhis2-db:
+        condition: service_healthy
+        restart: true
+    env_file:
+      - path: ${PIHX_TOOLS}/services/dhis2/env.defaults
+      - path: ${PIHX_INSTANCE_DIR}/dhis2.env
+        required: false
+    environment:
+      DHIS2_HOME: /opt/dhis2
+      # The log4j properties name the WAR's own console-only config, so DHIS2 logs only to docker logs:
+      # with either set, DHIS2 skips adding its log files under DHIS2_HOME/logs, among them an audit
+      # log it never deletes. log4j.configuration is log4j 1's (DHIS2 up to 2.33) and the one DHIS2
+      # checks up to 2.36; log4j2.configurationFile is log4j 2's.
+      CATALINA_OPTS: >-
+        ${DHIS2_JAVA_OPTS} -Ddhis2.war=/wars/dhis2-${DHIS2_VERSION}.war
+        -Dlog4j.configuration=log4j.properties -Dlog4j2.configurationFile=log4j2.xml
+      TZ: ${TZ}
+    ports:
+      - ${DHIS2_HTTP_PORT}:8080
+    # Java 8 (DHIS2 up to 2.37) fails at startup ("unable to allocate file descriptor table") under
+    # Docker's default open-files limit, which is far higher than it can handle.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    # Reaps what the healthcheck leaves behind; Tomcat isn't an init.
+    init: true
+    # Time for Tomcat to stop DHIS2 cleanly (its scheduler, open connections) before it's killed.
+    stop_grace_period: 2m
+    volumes:
+      - dhis2-data:/opt/dhis2
+      - dhis2-wars:/wars:ro
+      - ${PIHX_TOOLS}/services/dhis2/scripts/server.xml:/usr/local/tomcat/conf/server.xml:ro
+      - ${PIHX_TOOLS}/services/dhis2/scripts/logging.properties:/usr/local/tomcat/conf/logging.properties:ro
+      - ${PIHX_TOOLS}/services/dhis2/scripts/healthcheck.sh:/healthcheck.sh:ro
+    healthcheck:
+      test: ["CMD", "bash", "/healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      # An upgrade's database migrations run before Tomcat answers at all.
+      start_period: 2h
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${DHIS2_MEMORY_LIMIT}
+
+# External, named as Compose named them: pihx creates them (pihx/volumes.py) and only `pihx
+# <instance> destroy` removes them, so no `docker compose down -v` can delete them.
+volumes:
+  # The DHIS2 home: dhis.conf, the version marker, files/ and apps/.
+  dhis2-data:
+    external: true
+    name: ${SERVICE_NAME}_dhis2-data
+  # The release WARs, dhis2-<version>.war, fetched by dhis2-setup.
+  dhis2-wars:
+    external: true
+    name: ${SERVICE_NAME}_dhis2-wars

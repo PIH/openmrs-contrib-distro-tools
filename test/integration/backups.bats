@@ -31,8 +31,9 @@ start_backed_up_instance() { # <name>
     mkdir -p run/openmrs/skip && echo s > run/openmrs/skip/s.txt
     "$BIN/pihx" "$1" create --services=openmrs-db,openmrs,backups >/dev/null
     set_env_value "$1" openmrs OPENMRS_DATA_BACKUP_EXCLUDES 'skip missing'
-    timeout 300 "$BIN/pihx" "$1" initialize --from run >/dev/null 2>&1
-    "$BIN/pihx" "$1" start >/dev/null 2>&1
+    # The output is shown only when a step fails.
+    timeout 300 "$BIN/pihx" "$1" initialize --from run > setup.log 2>&1 || { cat setup.log; return 1; }
+    "$BIN/pihx" "$1" start > setup.log 2>&1 || { cat setup.log; return 1; }
 }
 
 @test "a backup run copied out restores into a new instance" {

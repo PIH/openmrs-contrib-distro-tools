@@ -1,0 +1,16 @@
+# initialize, dhis2-db.sql or dhis2-db.sql.gz: mounts the dump where scripts/restore-pgdump.sh, which
+# the Postgres image's entrypoint runs on first start, imports it.
+
+services:
+  dhis2-db:
+    # A failed import should stop, not restart into a half-initialized data directory.
+    restart: "no"
+    volumes:
+      - ${PIHX_TOOLS}/services/dhis2-db/scripts/restore-pgdump.sh:/docker-entrypoint-initdb.d/20-restore-pgdump.sh:ro
+      # Long syntax: a missing source fails, instead of Docker creating an empty directory.
+      - type: bind
+        source: ${DHIS2_DB_RESTORE_PATH:?DHIS2_DB_RESTORE_PATH must be set}
+        target: /restore/${DHIS2_DB_RESTORE_NAME:?DHIS2_DB_RESTORE_NAME must be set}
+        read_only: true
+        bind:
+          create_host_path: false

@@ -274,3 +274,31 @@ create_sqlserver() { # <name> <services>
     run ls out
     assert_output ''
 }
+
+# --- Postgres client (for dhis2) --------------------------------------------------------------------
+
+@test "backup-tools has a Postgres client that dumps a PostGIS 16 server" {
+    docker run -d --name "$(res pg)" -e POSTGRES_PASSWORD=pg-placeholder-1 postgis/postgis:16-3.5 >/dev/null
+    local i
+    for i in $(seq 60); do
+        docker exec "$(res pg)" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1 && break
+        sleep 1
+    done
+    # The image restarts its server once after first boot; wait until a query works.
+    for i in $(seq 60); do
+        docker exec "$(res pg)" psql -U postgres -tAc 'SELECT 1' >/dev/null 2>&1 && break
+        sleep 1
+    done
+    docker exec "$(res pg)" psql -U postgres -c "CREATE TABLE t(id int); INSERT INTO t VALUES (1);" >/dev/null
+    local ip
+    ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$(res pg)")
+
+    run docker run --rm --entrypoint bash "$IMAGE" -c 'pg_dump --version | sed -E "s/.* ([0-9]+)[.].*/\1/"'
+    assert_success
+    [ "$output" -ge 16 ]
+
+    run docker run --rm -e PGPASSWORD=pg-placeholder-1 --entrypoint pg_dump "$IMAGE" \
+        -h "$ip" -U postgres postgres
+    assert_success
+    assert_output --partial 'CREATE TABLE'
+}

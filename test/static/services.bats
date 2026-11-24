@@ -37,6 +37,8 @@ ENV
     printf '%s\n' ADVAPACS_GATEWAY_REGION=placeholder-region ADVAPACS_GATEWAY_ACCESS_KEY_ID=placeholder-id \
         ADVAPACS_GATEWAY_ACCESS_KEY_SECRET=placeholder-secret > "$dir/advapacs-gateway.env"
     echo "BACKUP_ARCHIVE_PASSWORD=Placeholder-1" > "$dir/backups.env"
+    echo "DHIS2_DB_PASSWORD=Placeholder-1" > "$dir/dhis2-db.env"
+    echo "DHIS2_VERSION=2.43.2.1" > "$dir/dhis2.env"
 }
 
 # <service> and, recursively, the services its manifest requires.
@@ -96,7 +98,7 @@ assert_valid() {
     EXTRA_ENV=()
     make_instance "$dir"
     for pair in openmrs:OPENMRS_IMAGE_NAME petl:PETL_MYSQL_PASSWORD sqlserver:SQLSERVER_SA_PASSWORD \
-            biometrics:BIOMETRICS_LICENSE_BASE64 \
+            biometrics:BIOMETRICS_LICENSE_BASE64 dhis2-db:DHIS2_DB_PASSWORD dhis2:DHIS2_VERSION \
             advapacs-gateway:ADVAPACS_GATEWAY_REGION openhim:OPENHIM_PASSWORD \
             openhim-advapacs-mediator:ADVAPACS_MEDIATOR_INBOUND_SECRET \
             openhim-advapacs-mediator:ADVAPACS_MEDIATOR_OPENHIM_INBOUND_CLIENT_PASSWORD \
@@ -146,7 +148,8 @@ ENV
 # overlays (services/<svc>/restore/), checked with the values the extension and initialize set.
 overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     EXTRA_ENV=(OPENMRS_DB_RESTORE_PATH=/tmp/openmrs-db.sql OPENMRS_DB_RESTORE_NAME=openmrs-db.sql
-        OPENMRS_DB_RESTORE_ARCHIVE=archive.7z OPENMRS_RESTORE_PATH=/tmp/openmrs.7z
+        OPENMRS_DB_RESTORE_ARCHIVE=archive.7z DHIS2_DB_RESTORE_PATH=/tmp/dhis2-db.sql
+        DHIS2_DB_RESTORE_NAME=dhis2-db.sql DHIS2_DB_RESTORE_ARCHIVE=archive.7z OPENMRS_RESTORE_PATH=/tmp/openmrs.7z
         OPENMRS_RESTORE_NAME=openmrs.7z OPENMRS_RESTORE_ARCHIVE=archive.7z OPENMRS_DATA_OWNER=1:1
         OPENMRS_DISTRO_DIR=/tmp/distro ALPINE_IMAGE=placeholder/alpine P7ZIP_IMAGE=placeholder/p7zip
         PERCONA_IMAGE=placeholder/percona)
@@ -158,7 +161,8 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
 @test "dev, build and every restore overlay is valid with the services" {
     local o failures=""
     for o in openmrs/modes/dev.yaml openmrs/modes/build.yaml services/openmrs-db/restore/dump.yaml \
-            services/openmrs-db/restore/dump-archive.yaml services/openmrs/restore/archive.yaml \
+            services/openmrs-db/restore/dump-archive.yaml services/dhis2-db/restore/dump.yaml \
+            services/dhis2-db/restore/dump-archive.yaml services/openmrs/restore/archive.yaml \
             services/openmrs/restore/directory.yaml; do
         run overlay_config "$o"
         if [ "$status" -ne 0 ] || [[ "$output" == *'variable is not set'* ]]; then failures+="$o: $output"$'\n'; fi
@@ -486,4 +490,41 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_success
     run bash -c "grep -n '7z a ' '$REPO_ROOT'/services/*/scripts/backup.sh | grep -v -e ' -mmt2 '"
     assert_output ""
+}
+
+@test "no restore runs find -exec with \\;, whose exit status ignores a failed command" {
+    run grep -rn -e '-exec .*\\;' "$REPO_ROOT"/services/*/restore/
+    assert_output ""
+}
+
+@test "dhis2 runs its version's WAR at /dhis in the Tomcat tag it's given, and gets the database password from dhis2.env, where create puts it" {
+    local dir="$BATS_TEST_TMPDIR/instance" config
+    EXTRA_ENV=()
+    make_instance "$dir"
+    # create writes DHIS2_DB_PASSWORD into dhis2.env, the first service by name that refers to it
+    # (captured_values), not dhis2-db.env.
+    : > "$dir/dhis2-db.env"
+    echo "DHIS2_DB_PASSWORD=Placeholder-1" >> "$dir/dhis2.env"
+    run instance_compose "$dir" dhis2-db,dhis2 -- config --format json
+    assert_success
+    config=$output
+    run jq -r '.services["dhis2-setup"].image, .services.dhis2.image' <<< "$config"
+    assert_output $'tomcat:10.1-jdk17-temurin-noble\ntomcat:10.1-jdk17-temurin-noble'
+    run jq -r '.services.dhis2.environment.CATALINA_OPTS' <<< "$config"
+    assert_output '-Xms1g -Xmx3g -Ddhis2.war=/wars/dhis2-2.43.2.1.war -Dlog4j.configuration=log4j.properties -Dlog4j2.configurationFile=log4j2.xml'
+    run jq -r '.services["dhis2-setup"].environment | .DHIS2_VERSION, .DHIS2_TOMCAT_TAG, .DHIS2_DB_PASSWORD, .DHIS2_BASE_URL' <<< "$config"
+    assert_output $'2.43.2.1\n10.1-jdk17-temurin-noble\nPlaceholder-1\nhttp://localhost:8080/dhis'
+    # Tomcat's container has it too, through env_file (dhis2.env); DHIS2 reads it from dhis.conf.
+    run jq -r '.services.dhis2.environment.DHIS2_DB_PASSWORD, .services["dhis2-db"].environment.POSTGRES_PASSWORD' <<< "$config"
+    assert_output $'Placeholder-1\nPlaceholder-1'
+    run jq -r '.services.dhis2 | .init, .stop_grace_period, .ulimits.nofile.soft, .healthcheck.start_period' <<< "$config"
+    assert_output $'true\n2m0s\n65536\n2h0m0s'
+    run jq -r '.services.dhis2.depends_on | .["dhis2-setup"].condition, .["dhis2-db"].condition' <<< "$config"
+    assert_output $'service_completed_successfully\nservice_healthy'
+    # An instance sets its own tag (one before 2.41) and base URL.
+    printf 'DHIS2_DB_PASSWORD=Placeholder-1\nDHIS2_VERSION=2.40.12\nDHIS2_TOMCAT_TAG=9-jdk11-temurin-noble\nDHIS2_BASE_URL=https://example.org/dhis\n' > "$dir/dhis2.env"
+    run instance_compose "$dir" dhis2-db,dhis2 -- config --format json
+    assert_success
+    run jq -r '.services.dhis2.image, .services["dhis2-setup"].environment.DHIS2_BASE_URL' <<< "$output"
+    assert_output $'tomcat:9-jdk11-temurin-noble\nhttps://example.org/dhis'
 }

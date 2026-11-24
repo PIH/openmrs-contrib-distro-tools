@@ -7,6 +7,8 @@ means removing it.
 | Service | What it is | Docs |
 |---|---|---|
 | `openmrs-db` | The OpenMRS database (MySQL or MariaDB), and the setup that keeps its declared accounts in place | [README](../services/openmrs-db/README.md) |
+| `dhis2-db` | The DHIS2 database (PostgreSQL with PostGIS) | [README](../services/dhis2-db/README.md) |
+| `dhis2` | DHIS2, in the stock Tomcat for its Java (requires `dhis2-db`) | [README](../services/dhis2/README.md), [Upgrading](dhis2.md) |
 | `openmrs` | The OpenMRS application (requires `openmrs-db`) | [README](../services/openmrs/README.md) |
 | `openhim` | OpenHIM: core, console and MongoDB | [README](../services/openhim/README.md) |
 | `openhim-advapacs-mediator` | The AdvaPACS radiology-order mediator (requires `openhim`) | [README](../services/openhim-advapacs-mediator/README.md) |
@@ -205,7 +207,7 @@ The script's contract:
 - Its `7z a` runs with `-mmt2`. 7z otherwise starts a thread per CPU of the host, not of the container,
   and on a large host needs more memory than `BACKUP_MEMORY_LIMIT` (1 GB by default) allows: the
   kernel kills it. Two threads at `-mx5` peak at about 400 MB.
-- The image holds the client tools (`mysqldump`, `sqlite3`, `mongodump`, `sqlcmd`, `7z`, `jq`, ...);
+- The image holds the client tools (`mysqldump`, `pg_dump`, `sqlite3`, `mongodump`, `sqlcmd`, `7z`, `jq`, ...);
   a restore overlay can run it too (`${PIHX_IMAGE_BACKUP_TOOLS}`). A new kind of database adds its
   client to [`images/backup-tools`](../images/backup-tools), which is a new image tag.
 

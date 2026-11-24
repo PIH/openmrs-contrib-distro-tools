@@ -1,0 +1,12 @@
+# Added when the instance has the backups service: dhis2-db's backup script, and what it needs.
+services:
+  backups:
+    depends_on:
+      dhis2-db:
+        condition: service_healthy
+    environment:
+      DHIS2_DB_USER: ${DHIS2_DB_USER}
+      DHIS2_DB_NAME: ${DHIS2_DB_NAME}
+      DHIS2_DB_PASSWORD: ${DHIS2_DB_PASSWORD:?DHIS2_DB_PASSWORD must be set}
+    volumes:
+      - ${PIHX_TOOLS}/services/dhis2-db/scripts:/opt/backup-services/dhis2-db:ro

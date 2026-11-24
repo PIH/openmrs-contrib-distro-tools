@@ -1,0 +1,11 @@
+description: The DHIS2 database (PostgreSQL with PostGIS)
+# Server options set when the instance is created, as DHIS2_DB_OPT_<parameter> (see compose.yaml).
+capture-env: [DHIS2_DB_OPT_]
+# Run by the backups service (scripts/backup.sh).
+backup: scripts/backup.sh
+# initialize: one entry, named after the service, in the directory it restores from (restore/*.yaml).
+restore:
+  - names: [dhis2-db.sql, dhis2-db.sql.gz]
+    overlay: restore/dump.yaml
+  - names: [dhis2-db.sql.7z, dhis2-db.sql.zip]
+    overlay: restore/dump-archive.yaml

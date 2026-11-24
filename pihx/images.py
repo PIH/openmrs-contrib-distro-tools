@@ -26,9 +26,11 @@ REPOSITORY = "partnersinhealth"
 PREFIX = "PIHX_IMAGE_"
 # Docker's names for the architectures platform.machine() reports.
 ARCHITECTURES = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}
-# What `docker pull` says when the registry has no such tag ("manifest unknown") or, before an
-# image's first publish, no such repository. Other failures (network, rate limit) don't match.
-_NOT_PUBLISHED = re.compile(r"manifest unknown|repository does not exist")
+# What `docker pull` says when the registry has no such tag ("manifest unknown"; with the containerd
+# image store, as on GitHub's runners, 'failed to resolve reference "<ref>": <ref>: not found') or,
+# before an image's first publish, no such repository. Other failures (network, rate limit) don't match.
+_NOT_PUBLISHED = re.compile(
+    r'manifest unknown|repository does not exist|failed to resolve reference "[^"]+": \S+: not found')
 
 
 class ImageError(Exception):

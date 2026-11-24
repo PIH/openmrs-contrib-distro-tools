@@ -51,7 +51,8 @@ class ServiceTreeTest(unittest.TestCase):
         self.assertEqual(
             set(SERVICES),
             {"openmrs-db", "openmrs", "openmrs-smoke-tests", "openhim", "openhim-advapacs-mediator",
-             "advapacs-gateway", "modality-simulator", "biometrics", "sqlserver", "petl", "backups"})
+             "advapacs-gateway", "modality-simulator", "biometrics", "sqlserver", "petl", "backups",
+             "dhis2-db", "dhis2"})
 
     def test_manifests_follow_the_old_directives(self):
         self.assertEqual(SERVICES["openmrs-db"].manifest.setup, ["openmrs-db-accounts"])
@@ -168,7 +169,9 @@ class ServiceTreeTest(unittest.TestCase):
              "modality-simulator": [],
              "biometrics": ["BIOMETRICS_LICENSE_BASE64"],
              "sqlserver": ["SQLSERVER_SA_PASSWORD"], "petl": ["PETL_MYSQL_PASSWORD"],
-             "backups": ["BACKUP_ARCHIVE_PASSWORD", "PIHX_IMAGE_BACKUP_TOOLS"], "x": []})
+             "backups": ["BACKUP_ARCHIVE_PASSWORD", "PIHX_IMAGE_BACKUP_TOOLS"],
+             "dhis2-db": ["DHIS2_DB_PASSWORD"],
+             "dhis2": ["DHIS2_DB_PASSWORD", "DHIS2_DB_PASSWORD", "DHIS2_VERSION"], "x": []})
 
     def test_a_service_does_not_name_another_services_variables_outside_a_with_file(self):
         for name in ("openmrs-db", "sqlserver"):
@@ -220,7 +223,8 @@ class ServiceTreeTest(unittest.TestCase):
             "openhim": "scripts/backup.sh", "biometrics": "scripts/backup.sh",
             "sqlserver": "scripts/backup.sh",
             "petl": "none", "openmrs-smoke-tests": "none", "openhim-advapacs-mediator": "none",
-            "modality-simulator": "none", "backups": "none", "advapacs-gateway": "none"})
+            "modality-simulator": "none", "backups": "none", "advapacs-gateway": "none",
+            "dhis2-db": "scripts/backup.sh", "dhis2": "scripts/backup.sh"})
 
     def test_a_backup_script_is_mounted_by_its_with_backups_file(self):
         """The backups service runs /opt/backup-services/<svc>/backup.sh for a service whose plan says
@@ -284,7 +288,13 @@ class ServiceTreeTest(unittest.TestCase):
                 (["openmrs/"], "restore/directory.yaml", None)],
             "biometrics": [(["biometrics.db.7z", "biometrics.db"], "restore/archive.yaml", None)],
             "openhim": [(["openhim.archive.7z", "openhim.archive"], "restore/archive.yaml", None)],
-            "sqlserver": [(["sqlserver.7z"], "restore/archive.yaml", None)]})
+            "sqlserver": [(["sqlserver.7z"], "restore/archive.yaml", None)],
+            "dhis2-db": [
+                (["dhis2-db.sql", "dhis2-db.sql.gz"], "restore/dump.yaml", None),
+                (["dhis2-db.sql.7z", "dhis2-db.sql.zip"], "restore/dump-archive.yaml", None)],
+            "dhis2": [
+                (["dhis2.7z", "dhis2.tar.gz", "dhis2.tgz", "dhis2.tar", "dhis2.zip"],
+                 "restore/archive.yaml", None)]})
         for name, svc in SERVICES.items():
             for restore in svc.manifest.restore:
                 for entry in restore.names:

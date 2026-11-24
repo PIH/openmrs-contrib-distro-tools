@@ -28,10 +28,13 @@ archive password.
 | `openmrs-db` | `openmrs-db.sql.7z`, `openmrs-db.sql.zip` | an archive holding one dump (e.g. from `backup-mysqldump`) |
 | `openmrs-db` | `openmrs-db.percona.7z`, `openmrs-db.percona/` | a Percona/xtrabackup backup ([below](#percona-backups)), then the [accounts reset](#database-accounts-after-a-physical-restore) |
 | `openmrs-db` | `openmrs-db.datadir/` | a ready MySQL data directory, copied in, then the accounts reset |
+| `dhis2-db` | `dhis2-db.sql`, `dhis2-db.sql.gz` | a plain-format `pg_dump`, imported by PostgreSQL on first start |
+| `dhis2-db` | `dhis2-db.sql.7z`, `dhis2-db.sql.zip` | an archive holding one dump |
+| `dhis2` | `dhis2.7z`, `dhis2.tar.gz`, `dhis2.tgz`, `dhis2.tar`, `dhis2.zip` | `dhis2-data`, from an archive: one holding a `dhis2/` directory (from the backups service), or `files/` and `apps/` at the top (a legacy DHIS2 home; rename its `dhis2-db` dump `dhis2-db.sql.gz` and its files archive `dhis2.tar.gz`) |
 | `openmrs` | `openmrs.7z`, `openmrs.tar.gz`, `openmrs.tgz`, `openmrs.tar`, `openmrs.zip`, `openmrs/` | `openmrs-data`, from an archive (e.g. from `backup-openmrs-data-directory`) or a directory |
 
 An entry may be a link: its host path is what the restore containers mount, and one that doesn't
-resolve on the host is an error before anything runs. A relative `--from`
+resolve on the host is an error before anything runs. The containers read an entry as their own user (`dhis2-db`'s Postgres, for one), not as its owner, so it must be readable by others (`chmod o+r`); the directory holding it can still be private. A relative `--from`
 is the caller's directory's. `--from-image` copies the image's `/seed` directory (a distribution's
 seed image, built by `.github/workflows/build-seeded-image.yml` from `openmrs/seed/Dockerfile`,
 holds `openmrs-db.sql.gz` and `openmrs.tar.gz`) to a temporary directory in the instance directory and restores
@@ -63,7 +66,7 @@ down, and removes the staging volumes the overlays declare. A restored service m
 `restore/prepare`, run first, whose `KEY=value` output is used for that run only (`openmrs`'s finds
 the owner for `openmrs-data`), and `restore/finish`, run once the restore has worked. It creates the
 instance's volumes that don't exist yet (labelled `pihx.instance=<name>`, as `start` would). If
-anything fails, it removes the containers and every volume it made in that run, and only those, and undoes what a `finish` wrote to the instance's env files. Archives are extracted by
+anything fails, it removes the containers and every volume it made in that run, and only those, and undoes what a `finish` wrote to the instance's env files. A database that doesn't become healthy (e.g. a dump it can't import) leaves its whole log in `<instance dir>/initialize-<service>.log`, readable by its owner only: not printed, since a database's errors can quote rows. Archives are extracted by
 `utils/lib/in-container/extract.sh`, into a volume, never onto the host.
 
 `openmrs-docker <name> initialize` is the same command (it also says when an image given to
@@ -228,7 +231,7 @@ pihx <name> summary --output=after.txt
 diff before.txt after.txt
 ```
 
-Other services add their own sections (`[biometrics]`, `[openhim]`, `[sqlserver]`;
+Other services add their own sections (`[biometrics]`, `[dhis2-db]`, `[dhis2]`, `[openhim]`, `[sqlserver]`;
 [Backups](backups.md#restoring)), which `openmrs-utils fingerprint` doesn't print: compare those
 with the source instance's own `pihx <name> summary`.
 
