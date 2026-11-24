@@ -185,6 +185,19 @@ CREATE TABLE program_attribute_group (programtrackedentityattributegroupid int);
 CREATE TABLE trackedentityaudit (trackedentityauditid int, visitor varchar(255), accessedmodule varchar(255));
 INSERT INTO trackedentityaudit VALUES (1, 'admin', 'tracker');
 CREATE TABLE trackedentityinstanceaudit (trackedentityinstanceauditid int);
+CREATE TABLE trackedentity (trackedentityid int CONSTRAINT trackedentity_pkey PRIMARY KEY, name text);
+INSERT INTO trackedentity VALUES (1, 'Person');
+CREATE TABLE trackedentityinstance (trackedentityinstanceid int PRIMARY KEY, trackedentitytypeid int,
+    trackedentityid int CONSTRAINT fk_trackedentityinstance_trackedentityid REFERENCES trackedentity);
+-- 2.30's types and enrollments: 1 typeless with the legacy link only (gets Person by name), 2 typed (kept),
+-- 3 typeless, legacy link and enrolled in a program of type 2 (gets the program's type), 4 neither (stays NULL).
+INSERT INTO trackedentityinstance VALUES (1, NULL, 1), (2, 5, NULL), (3, NULL, 1), (4, NULL, NULL);
+CREATE TABLE trackedentitytype (trackedentitytypeid int PRIMARY KEY, name text);
+INSERT INTO trackedentitytype VALUES (1, 'Person'), (2, 'QI- Person'), (5, 'Cylinder');
+CREATE TABLE program (programid int PRIMARY KEY, trackedentitytypeid int);
+INSERT INTO program VALUES (7, 2), (8, NULL);
+CREATE TABLE programinstance (programinstanceid int PRIMARY KEY, programid int, trackedentityinstanceid int);
+INSERT INTO programinstance VALUES (1, 8, 3), (2, 7, 3), (3, 8, 4);
 SQL
     local f
     for f in "$REPO_ROOT"/services/dhis2/known-fixes/*/*.sql; do
@@ -196,6 +209,13 @@ SQL
     assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc 'SELECT userroleid FROM program_userroles')" 1
     # The legacy trackedentityaudit is kept, renamed.
     assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc 'SELECT visitor FROM trackedentityaudit_legacy')" admin
+    # Typeless tracked entities get their program's type, else the type named as their legacy one.
+    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT string_agg(trackedentityinstanceid || '=' || coalesce(trackedentitytypeid::text, 'null'), ',' ORDER BY trackedentityinstanceid) FROM trackedentityinstance")" '1=1,2=5,3=2,4=null'
+    # The legacy trackedentity is kept, renamed with its primary key, and so is the column pointing at it.
+    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc 'SELECT name FROM trackedentity_legacy')" Person
+    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT count(*) FROM pg_indexes WHERE indexname = 'trackedentity_legacy_pkey'")" 1
+    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc 'SELECT count(trackedentityid_legacy) FROM trackedentityinstance')" 2
+    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT count(*) FROM pg_constraint WHERE conname = 'fk_trackedentityinstance_trackedentityid_legacy'")" 1
 }
 
 @test "drop-sql-views.sql drops DHIS2's SQL views (views and materialized views named _view_*) and nothing else, and can run again" {
