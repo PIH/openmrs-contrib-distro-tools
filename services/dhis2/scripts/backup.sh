@@ -3,7 +3,7 @@
 # /sources/dhis2 (the dhis2-data volume), into dhis2.7z, holding one directory, dhis2/: files/,
 # apps/ and the version marker .dhis2-version. Not dhis.conf, which dhis2-setup writes on every start
 # and which holds the database password, nor .dhis.conf.new (left by a setup that failed before
-# renaming it, with the password too), nor DHIS2's logs/. Needs BACKUP_RUN_DIR and ARCHIVE_PASSWORD.
+# renaming it, with the password too), nor logs/ (from a restored legacy home). Needs BACKUP_RUN_DIR and ARCHIVE_PASSWORD.
 set -euo pipefail
 : "${BACKUP_RUN_DIR:?}" "${ARCHIVE_PASSWORD:?}"
 

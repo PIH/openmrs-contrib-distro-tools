@@ -33,6 +33,14 @@ in_home() { # <command...>, in the DHIS2 home volume
     assert_output 2.43.2.1
     run in_home stat -c '%a' /home/dhis.conf
     assert_output 600
+    # Logs go only to docker logs: none in the home volume, nor Tomcat's in the container.
+    run in_home ls -A /home
+    refute_line logs
+    run docker exec "$NAME-dhis2" ls -A /usr/local/tomcat/logs
+    assert_output ""
+    run docker logs "$NAME-dhis2"
+    assert_output --partial 'Aborting default log config, external config set through system prop log4j2.configurationFile'
+    assert_output --partial 'Server startup in'
 }
 
 @test "a start with an older DHIS2_VERSION fails in setup" {

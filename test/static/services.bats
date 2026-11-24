@@ -511,7 +511,7 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     run jq -r '.services["dhis2-setup"].image, .services.dhis2.image' <<< "$config"
     assert_output $'tomcat:10.1-jdk17-temurin-noble\ntomcat:10.1-jdk17-temurin-noble'
     run jq -r '.services.dhis2.environment.CATALINA_OPTS' <<< "$config"
-    assert_output '-Xms1g -Xmx3g -Ddhis2.war=/wars/dhis2-2.43.2.1.war'
+    assert_output '-Xms1g -Xmx3g -Ddhis2.war=/wars/dhis2-2.43.2.1.war -Dlog4j.configuration=log4j.properties -Dlog4j2.configurationFile=log4j2.xml'
     run jq -r '.services["dhis2-setup"].environment | .DHIS2_VERSION, .DHIS2_TOMCAT_TAG, .DHIS2_DB_PASSWORD, .DHIS2_BASE_URL' <<< "$config"
     assert_output $'2.43.2.1\n10.1-jdk17-temurin-noble\nPlaceholder-1\nhttp://localhost:8080/dhis'
     # Tomcat's container has it too, through env_file (dhis2.env); DHIS2 reads it from dhis.conf.

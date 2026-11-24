@@ -78,6 +78,14 @@ starting ([When a step fails](../../docs/dhis2.md#when-a-step-fails)).
 
 DHIS2 runs as root, the stock Tomcat image's user.
 
+DHIS2 and Tomcat log only to the console, so to `docker logs` (`pihx <name> logs dhis2`), as the
+other services do ([Starting, stopping and logs](../../docs/instances.md#starting-stopping-and-logs)).
+DHIS2 would otherwise also write log files under `logs/` in its home, among them an audit log it
+never deletes: the Java options in `compose.yaml` point log4j at the WAR's own console-only
+configuration, which makes DHIS2 skip them, and [`scripts/logging.properties`](scripts/logging.properties)
+replaces Tomcat's, which writes files in the container. The `logging.file.*` settings in `dhis.conf`
+have no effect.
+
 ### When a start fails
 
 `pihx <name> start` fails saying only that `dhis2-setup` didn't complete successfully: Compose stops
@@ -166,7 +174,7 @@ The `backups` service runs [`scripts/backup.sh`](scripts/backup.sh) ([Backups](.
 the `dhis2-data` volume into `dhis2.7z`, holding one directory, `dhis2/`, with the instance running.
 It holds everything in the volume but three: `dhis.conf` (`dhis2-setup` writes it on every start, and
 it holds the database password), `.dhis.conf.new` (left by a setup that failed before renaming it,
-with the password too) and DHIS2's `logs/`. So: `files/`, `apps/`, the version marker
+with the password too) and `logs/` (DHIS2 doesn't write it here, but a restored legacy home can have one). So: `files/`, `apps/`, the version marker
 `.dhis2-version`, and anything else DHIS2 keeps in its home. The WARs in `dhis2-wars` are fetched
 again, so they aren't backed up.
 

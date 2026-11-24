@@ -72,7 +72,13 @@ services:
         required: false
     environment:
       DHIS2_HOME: /opt/dhis2
-      CATALINA_OPTS: ${DHIS2_JAVA_OPTS} -Ddhis2.war=/wars/dhis2-${DHIS2_VERSION}.war
+      # The log4j properties name the WAR's own console-only config, so DHIS2 logs only to docker logs:
+      # with either set, DHIS2 skips adding its log files under DHIS2_HOME/logs, among them an audit
+      # log it never deletes. log4j.configuration is log4j 1's (DHIS2 up to 2.33) and the one DHIS2
+      # checks up to 2.36; log4j2.configurationFile is log4j 2's.
+      CATALINA_OPTS: >-
+        ${DHIS2_JAVA_OPTS} -Ddhis2.war=/wars/dhis2-${DHIS2_VERSION}.war
+        -Dlog4j.configuration=log4j.properties -Dlog4j2.configurationFile=log4j2.xml
       TZ: ${TZ}
     ports:
       - ${DHIS2_HTTP_PORT}:8080
@@ -90,6 +96,7 @@ services:
       - dhis2-data:/opt/dhis2
       - dhis2-wars:/wars:ro
       - ${PIHX_TOOLS}/services/dhis2/scripts/server.xml:/usr/local/tomcat/conf/server.xml:ro
+      - ${PIHX_TOOLS}/services/dhis2/scripts/logging.properties:/usr/local/tomcat/conf/logging.properties:ro
       - ${PIHX_TOOLS}/services/dhis2/scripts/healthcheck.sh:/healthcheck.sh:ro
     healthcheck:
       test: ["CMD", "bash", "/healthcheck.sh"]
