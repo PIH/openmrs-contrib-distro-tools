@@ -40,6 +40,9 @@ and `DHIS2_TOMCAT_TAG` in `site.pp`.
 2. In DHIS2: Data Administration → Maintenance → *Drop SQL views*.
 3. On a Puppet host, hold the instance (`/etc/puppet/build-disabled-<name>`). Otherwise its next
    apply puts the old version back into `dhis2.env`, and `dhis2-setup` then refuses to start it.
+4. Run the upgrade outside the backup schedule (`BACKUP_SCHEDULE`, default 01:30): a scheduled
+   backup doesn't take the instance lock, and its `pg_dump` holds locks on every table it dumps, which
+   slows or blocks a step's migrations for as long as it runs.
 
 ### When a step fails
 
@@ -147,6 +150,9 @@ DHIS2_ENCRYPTION_PASSWORD=<production's> DHIS2_DB_PASSWORD=<...> \
 ARCHIVE_PASSWORD=<the archive password> pihx <test> initialize --from <run directory>
 pihx <test> start
 ```
+
+A large production database can take more than an hour to import: give `initialize` longer with
+`PIHX_INITIALIZE_TIMEOUT=<seconds>` (default 3600, [Initializing an instance](restore.md)).
 
 Then upgrade it as above if production is to be upgraded. Patient data stays on the host: the
 rehearsal is run by a person, who passes on only what `upgrade` prints.

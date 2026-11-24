@@ -49,6 +49,10 @@ write_home() { # <dir>
     echo app > "$1/apps/app.zip"
     echo 'connection.password = hunter2-synthetic' > "$1/dhis.conf"
     echo 2.43.2.1 > "$1/.dhis2-version"
+    # DHIS2's logs, and what a setup that failed before its rename leaves (it holds the password).
+    mkdir -p "$1/logs"
+    echo log > "$1/logs/dhis.log"
+    echo 'connection.password = hunter2-synthetic' > "$1/.dhis.conf.new"
 }
 
 # The two backup scripts as the backups container runs them (with-backups.yaml). Extra docker args first.
@@ -92,13 +96,14 @@ dhis2_backup() {
     refute_output --partial "$PW"
     run ls out
     assert_output $'dhis2-db.sql.7z\ndhis2.7z'
-    # No dhis.conf (setup writes it).
+    # Only files/, apps/ and the version marker: no dhis.conf (setup writes it), .dhis.conf.new or logs/.
     run docker run --rm -v "$BATS_TEST_TMPDIR/out:/o:ro" --entrypoint bash "$IMAGE" -c \
         "set -eo pipefail; printf '%s\n' '$PW' | 7z l -slt /o/dhis2.7z | grep '^Path ='"
     assert_success
     assert_line 'Path = dhis2/.dhis2-version'
     assert_line 'Path = dhis2/files/2.txt'
     refute_output --partial 'dhis.conf'
+    refute_output --partial 'logs'
     # The dump is there (a failed extraction fails the test), with the analytics tables' definitions
     # (a view can depend on one) but not their rows.
     run docker run --rm -v "$BATS_TEST_TMPDIR/out:/o:ro" --entrypoint bash "$IMAGE" -c \

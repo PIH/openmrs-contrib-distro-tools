@@ -17,8 +17,11 @@ release WARs are in `dhis2-wars`. Settings are in the instance's `dhis2.env`; de
 | `DHIS2_UPGRADE_STEP_TIMEOUT` | `7200` | seconds each version has to come up during an [upgrade](#upgrading) |
 | `DHIS2_CONF_<key>` | none | any other `dhis.conf` setting ([below](#dhisconf)) |
 
-The database's name, user and password come from `dhis2-db.env`: `dhis2` doesn't redefine them. `TZ`
-comes from `instance.env`.
+The database's name and user are `dhis2-db`'s settings: `dhis2` doesn't redefine them. `DHIS2_DB_PASSWORD`,
+which has no default, is written by `create` into `dhis2.env` (the first service by name that refers to
+it), so the `dhis2` Tomcat container has it in its environment through that file, as well as
+`dhis2-setup`, which writes it into `dhis.conf`. DHIS2 reads it from `dhis.conf` either way; anyone who
+can `docker inspect` the container could read the volume too. `TZ` comes from `instance.env`.
 
 **Nothing in this repo changes the version an instance runs on its own.** `DHIS2_VERSION` has no default, and
 DHIS2's database migrations can't be undone, so the instance's own env (Puppet's `site.pp`) names the
@@ -136,7 +139,7 @@ than `true` or `false` fails the start. Never set it on production.
 ## dhis.conf
 
 `dhis.conf` is written on every start, so edits to it are lost: change the instance's settings
-instead. It has the database connection (`dhis2-db`, with `dhis2-db.env`'s name, user and password),
+instead. It has the database connection (`dhis2-db`, with `DHIS2_DB_NAME`, `DHIS2_DB_USER` and `DHIS2_DB_PASSWORD`),
 `connection.schema = update`, `server.base.url` and, if set, `encryption.password`. Each
 `DHIS2_CONF_<key>` adds a line, `_` in `<key>` becoming `.` and `__` becoming `_`: for example,
 `DHIS2_CONF_connection_pool_max__size=40` gives `connection.pool.max_size = 40`. Such a line comes
@@ -160,9 +163,11 @@ fixes and refreshing a test copy are in
 ## Backup, restore and summary
 
 The `backups` service runs [`scripts/backup.sh`](scripts/backup.sh) ([Backups](../../docs/backups.md)):
-the `dhis2-data` volume into `dhis2.7z`, holding one directory, `dhis2/` (`files/`, `apps/` and the
-version marker `.dhis2-version`), with the instance running. `dhis.conf` is left out: `dhis2-setup`
-writes it on every start, and it holds the database password. The WARs in `dhis2-wars` are fetched
+the `dhis2-data` volume into `dhis2.7z`, holding one directory, `dhis2/`, with the instance running.
+It holds everything in the volume but three: `dhis.conf` (`dhis2-setup` writes it on every start, and
+it holds the database password), `.dhis.conf.new` (left by a setup that failed before renaming it,
+with the password too) and DHIS2's `logs/`. So: `files/`, `apps/`, the version marker
+`.dhis2-version`, and anything else DHIS2 keeps in its home. The WARs in `dhis2-wars` are fetched
 again, so they aren't backed up.
 
 `initialize --from` restores `dhis2.7z`, `dhis2.tar.gz`, `dhis2.tgz`, `dhis2.tar` or `dhis2.zip` into

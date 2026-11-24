@@ -492,10 +492,14 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_output ""
 }
 
-@test "dhis2 runs its version's WAR at /dhis in the Tomcat tag it's given, and only dhis2-setup gets the database password" {
+@test "dhis2 runs its version's WAR at /dhis in the Tomcat tag it's given, and gets the database password from dhis2.env, where create puts it" {
     local dir="$BATS_TEST_TMPDIR/instance" config
     EXTRA_ENV=()
     make_instance "$dir"
+    # create writes DHIS2_DB_PASSWORD into dhis2.env, the first service by name that refers to it
+    # (captured_values), not dhis2-db.env.
+    : > "$dir/dhis2-db.env"
+    echo "DHIS2_DB_PASSWORD=Placeholder-1" >> "$dir/dhis2.env"
     run instance_compose "$dir" dhis2-db,dhis2 -- config --format json
     assert_success
     config=$output
@@ -505,14 +509,15 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_output '-Xms1g -Xmx3g -Ddhis2.war=/wars/dhis2-2.43.2.1.war'
     run jq -r '.services["dhis2-setup"].environment | .DHIS2_VERSION, .DHIS2_TOMCAT_TAG, .DHIS2_DB_PASSWORD, .DHIS2_BASE_URL' <<< "$config"
     assert_output $'2.43.2.1\n10.1-jdk17-temurin-noble\nPlaceholder-1\nhttp://localhost:8080/dhis'
-    run jq -r '.services.dhis2.environment | has("DHIS2_DB_PASSWORD")' <<< "$config"
-    assert_output false
+    # Tomcat's container has it too, through env_file (dhis2.env); DHIS2 reads it from dhis.conf.
+    run jq -r '.services.dhis2.environment.DHIS2_DB_PASSWORD, .services["dhis2-db"].environment.POSTGRES_PASSWORD' <<< "$config"
+    assert_output $'Placeholder-1\nPlaceholder-1'
     run jq -r '.services.dhis2 | .init, .stop_grace_period, .ulimits.nofile.soft, .healthcheck.start_period' <<< "$config"
     assert_output $'true\n2m0s\n65536\n2h0m0s'
     run jq -r '.services.dhis2.depends_on | .["dhis2-setup"].condition, .["dhis2-db"].condition' <<< "$config"
     assert_output $'service_completed_successfully\nservice_healthy'
     # An instance sets its own tag (one before 2.41) and base URL.
-    printf 'DHIS2_VERSION=2.40.12\nDHIS2_TOMCAT_TAG=9-jdk11-temurin-noble\nDHIS2_BASE_URL=https://example.org/dhis\n' > "$dir/dhis2.env"
+    printf 'DHIS2_DB_PASSWORD=Placeholder-1\nDHIS2_VERSION=2.40.12\nDHIS2_TOMCAT_TAG=9-jdk11-temurin-noble\nDHIS2_BASE_URL=https://example.org/dhis\n' > "$dir/dhis2.env"
     run instance_compose "$dir" dhis2-db,dhis2 -- config --format json
     assert_success
     run jq -r '.services.dhis2.image, .services["dhis2-setup"].environment.DHIS2_BASE_URL' <<< "$output"

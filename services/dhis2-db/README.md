@@ -7,7 +7,7 @@ instance's `dhis2-db.env`; defaults are in [`env.defaults`](env.defaults).
 | Variable | Default | |
 |---|---|---|
 | `DHIS2_DB_IMAGE_NAME`, `DHIS2_DB_IMAGE_TAG` | `postgis/postgis`, `16-3.5` | any PostGIS image |
-| `DHIS2_DB_NAME`, `DHIS2_DB_USER` | `dhis`, `dhis` | the database and its owner |
+| `DHIS2_DB_NAME`, `DHIS2_DB_USER` | `dhis`, `dhis` | the database and its owner, the server's superuser ([below](#the-dhis2-account-is-the-superuser)) |
 | `DHIS2_DB_PASSWORD` | must be set | the account's password; it is used when the data directory is first set up, so changing it later doesn't change the database account |
 | `DHIS2_DB_PORT` | `5432` | the port published on the host; set it differently to run more than one instance at once |
 | `DHIS2_DB_MEMORY_LIMIT` | `4g` | the container's memory limit: at least `shared_buffers` + `maintenance_work_mem` + about 1 GB ([below](#server-options-dhis2_db_opt_)) |
@@ -34,6 +34,15 @@ these settings in the image's temporary import server too), a `VACUUM` or DHIS2'
 with `synchronous_commit=off` and `wal_writer_delay=10s` that can lose transactions already
 committed. The defaults (1 GB each, limit `4g`) keep DHIS2's recommended values and leave 2 GB over;
 raise the limit with either setting.
+
+## The DHIS2 account is the superuser
+
+`DHIS2_DB_USER` is the account the image's setup makes (`POSTGRES_USER`), so DHIS2 connects as the
+server's superuser. That was decided for simplicity: DHIS2 2.38 and later create extensions
+(such as `pg_trgm` and `btree_gin`) in their migrations, which needs that right, and a restored dump recreates
+its extensions itself. The cost is a wider blast radius: anything that runs SQL as DHIS2 (a SQL view,
+a compromised DHIS2) can do anything on the server, including reading files the server can. A
+separate, non-superuser DHIS2 account with the extensions made in advance would narrow that.
 
 ## Restoring and summarizing
 

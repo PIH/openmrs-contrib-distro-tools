@@ -13,6 +13,10 @@
 -- dhis-2/dhis-services/dhis-service-setting/src/main/java/org/hisp/dhis/setting/SettingKey.java
 -- (2.30) and dhis-2/dhis-api/src/main/java/org/hisp/dhis/setting/SystemSettings.java (2.43.2.1);
 -- the column types in an empty 2.30 and 2.43.2.1 database.
+--
+-- Not covered: outbound features newer than lsdata's inventory (2.30), such as webhook notification
+-- recipients, event hooks and routes (2.38 and later). On a test copy upgraded past 2.38, check them
+-- by hand, or add them here.
 
 -- 1. The email server and the remote instance (where DATA_SYNC and META_DATA_SYNC send to), in
 -- every version, and the SMS gateways up to 2.41 (keySmsSetting). Without a host name DHIS2 sends
