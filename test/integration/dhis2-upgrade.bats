@@ -76,9 +76,20 @@ create_restored() { # <tools dir>
     docker volume create --label "pihx.instance=$NAME" "${NAME}_dhis2-db-data" >/dev/null
 }
 
-@test "a step that times out while DHIS2 is still starting says so, and a run then refuses to stop it; once it's up, the next run retries that version, its fixes only when chosen" {
+@test "a step that times out while DHIS2 is still starting says so, and a run then refuses to stop it, healthcheck starting or unhealthy; once it's up, the next run retries that version, its fixes only when chosen, and its wait outlasts unhealthy" {
     tools_with_test_fix "$BATS_TEST_TMPDIR/tools"
     create_restored "$BATS_TEST_TMPDIR/tools"
+    # A test-only override (the service's 2h start_period stays as it is): DHIS2 reports unhealthy
+    # about 13 s after it starts, long before its first start on an empty database is done, as a
+    # long migration does after 2h.
+    cat > "$DIR/dhis2.override.yaml" <<'YAML'
+services:
+  dhis2:
+    healthcheck:
+      start_period: 10s
+      interval: 3s
+      retries: 1
+YAML
 
     # A second isn't long enough for DHIS2 to come up: the wait times out, DHIS2 carries on.
     set_env_value "$NAME" dhis2 DHIS2_UPGRADE_STEP_TIMEOUT 1
@@ -92,10 +103,22 @@ create_restored() { # <tools dir>
     run tail -n 1 "$DIR/dhis2-upgrade.log"
     assert_output --regexp ' 2\.42\.7\.1 -> 2\.43\.2\.1 fixes=\[10-test-fix\.sql\] [0-9]+s failed$'
 
-    # Run again at once: refused, DHIS2 left running, nothing logged.
+    # Run again at once, its healthcheck still starting: refused, DHIS2 left running, nothing logged.
     local started logged
     started=$(docker inspect -f '{{.State.StartedAt}}' "$NAME-dhis2")
     logged=$(wc -l < "$DIR/dhis2-upgrade.log")
+    run "$BIN/pihx" "$NAME" dhis2 upgrade
+    assert_failure
+    assert_output --partial "$NAME-dhis2 is still starting on DHIS2 2.43.2.1"
+    assert_equal "$(docker inspect -f '{{.State.Running}} {{.State.StartedAt}}' "$NAME-dhis2")" "true $started"
+
+    # Past its start_period, still building its schema: unhealthy, and still refused.
+    local i
+    for i in $(seq 60); do
+        [ "$(docker inspect -f '{{.State.Health.Status}}' "$NAME-dhis2")" != unhealthy ] || break
+        sleep 1
+    done
+    assert_equal "$(docker inspect -f '{{.State.Running}} {{.State.Health.Status}}' "$NAME-dhis2")" "true unhealthy"
     run "$BIN/pihx" "$NAME" dhis2 upgrade
     assert_failure
     assert_output --partial "$NAME-dhis2 is still starting on DHIS2 2.43.2.1"
@@ -104,7 +127,8 @@ create_restored() { # <tools dir>
     assert_equal "$(cat "$DIR/dhis2-upgrade.pending")" 2.43.2.1
 
     # Once it's up, the version is retried, not skipped (2.43.2.1 is the last version: a skip would
-    # say "nothing to do"), and without the fix this time.
+    # say "nothing to do"), and without the fix this time. DHIS2's restart takes longer than the
+    # override's 13 s, so the step's wait sees unhealthy and waits on.
     run "$UTILS/wait-for-healthy.sh" --container="$NAME-dhis2" --timeout=1800
     assert_success
     sed -i '/^DHIS2_UPGRADE_STEP_TIMEOUT=/d' "$DIR/dhis2.env"
@@ -116,6 +140,10 @@ create_restored() { # <tools dir>
     assert [ ! -e "$DIR/dhis2-upgrade.pending" ]
     run tail -n 1 "$DIR/dhis2-upgrade.log"
     assert_output --regexp ' 2\.42\.7\.1 -> 2\.43\.2\.1 fixes=\[\] [0-9]+s ok$'
+    local seconds
+    seconds=$(tail -n 1 "$DIR/dhis2-upgrade.log" | sed 's/.* \([0-9]*\)s ok$/\1/')
+    echo "# retry step: ${seconds}s" >&3
+    assert [ "$seconds" -gt 20 ]
 }
 
 @test "a step whose setup fails prints a fixed line, never the setup containers' logs, and the next run retries it" {

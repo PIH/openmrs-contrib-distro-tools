@@ -68,8 +68,10 @@ Then `dhis2` runs Tomcat with our [`scripts/server.xml`](scripts/server.xml), wh
 version's WAR at `/dhis`. It has one HTTP connector with the query characters DHIS2's API uses
 allowed, no AJP and no shutdown port. Its `RemoteIpValve` takes the scheme from `X-Forwarded-Proto`,
 so behind a TLS-ending proxy DHIS2's redirects are https. The healthcheck
-([`scripts/healthcheck.sh`](scripts/healthcheck.sh)) passes once `/dhis/` answers. It has two hours
-to do so, for an upgrade's migrations.
+([`scripts/healthcheck.sh`](scripts/healthcheck.sh)) passes once `/dhis/` answers. Its first two hours
+(`start_period`) don't count against it, for an upgrade's migrations; a migration that runs longer
+leaves it `unhealthy` while it carries on, which `pihx <name> dhis2 upgrade` still treats as
+starting ([When a step fails](../../docs/dhis2.md#when-a-step-fails)).
 
 DHIS2 runs as root, the stock Tomcat image's user.
 

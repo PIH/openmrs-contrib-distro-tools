@@ -67,7 +67,12 @@ ends in one of three ways:
   but is still starting`. Its migrations may still be running: **don't stop it**. Wait until
   `pihx <name> status` shows `<name>-dhis2` healthy, then run `upgrade` again to finish the step. Until
   then `upgrade` refuses to run (`<name>-dhis2 is still starting`), rather than stopping DHIS2
-  mid-migration. A DHIS2 that has logged a failed deploy doesn't count as starting.
+  mid-migration. Still starting means running and not yet healthy: `starting`, or `unhealthy`, which
+  its healthcheck reports once its two-hour `start_period` is over though a long migration may still
+  be running. The step's wait doesn't give up on `unhealthy` either: only a failed deploy in the log,
+  the container stopping, or `DHIS2_UPGRADE_STEP_TIMEOUT` ends it. A DHIS2 that has logged a failed
+  deploy doesn't count as starting. One that stays unhealthy without that, its log showing no
+  migration running, can be stopped by hand (`pihx <name> stop`) before running `upgrade` again.
 
 `dhis2.env` already names the failed version, and `<instance dir>/dhis2-upgrade.pending` records that
 it hasn't come up. Run `upgrade` again and it **retries that version**, never going past it: the
