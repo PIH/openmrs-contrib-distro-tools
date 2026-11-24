@@ -117,10 +117,32 @@ setup defaults to daily.
 
 ### After
 
-1. In DHIS2: Data Administration → Maintenance: clear and rebuild indexes, *Create SQL views*.
-2. Data Administration → Analytics tables: export them (the `dhis2-db` backup leaves their rows out).
-3. On a Puppet host, set the final `DHIS2_VERSION` and `DHIS2_TOMCAT_TAG` in `site.pp`, then release
+1. If nobody here has a login on the source: `pihx <name> dhis2 reset-password [<username>]`, then
+   `pihx <name> start` ([Resetting a password](../services/dhis2/README.md#resetting-a-password)).
+2. Data Administration → Maintenance, with these ticked, then *Perform maintenance*:
+   *Create SQL views* (`upgrade` dropped them), *Update category option combinations*, *Update
+   organisation unit paths*, *Clear application cache* and *Reload apps*. Leave the *Remove…*,
+   *Permanently remove…* and *Prune periods* options alone: they delete data. (2.4x has no *Rebuild
+   indexes*.)
+3. Scheduler: open the *Analytics* job (analytics tables), check its settings and save it, then
+   *Run now* and see it complete. A job made on 2.3x keeps that version's settings (e.g. *Last
+   years* 0), and its first run on 2.43 can fail. Check that every job that ran before is still
+   enabled with the schedule you expect; on a test copy, `dhis2-test-copy` keeps the sending ones
+   (notifications, alerts, sync) off on purpose.
+4. Data Administration → Analytics tables: export them (the `dhis2-db` backup leaves their rows out,
+   and dashboards stay empty until they're built).
+5. Check what users use: data entry for a recent period, Capture (tracker and event programs),
+   the main dashboards once analytics is done, and a quick look at each app in use. Apps shown in
+   App Management that can't be uninstalled are DHIS2's own bundled ones, at the version it ships.
+6. On a Puppet host, set the final `DHIS2_VERSION` and `DHIS2_TOMCAT_TAG` in `site.pp`, then release
    the hold.
+
+What changes for users from 2.3x: the old web apps were replaced (Tracker Capture and Event Capture
+by Capture, the old data entry screen by the Data Entry app, pivot tables and charts by Data
+Visualizer), so bookmarks into old app paths break, and users may need to clear their browser cache
+once. Logins and passwords carry over. Outside DHIS2, check the DHIS2 Android Capture versions in
+use, and every API client: the old tracker API (`/api/trackedEntityInstances`, `/api/events`, ...)
+is gone from 2.41, replaced by `/api/tracker`.
 
 ### Rehearsing
 
