@@ -19,6 +19,8 @@
 -- lsdata: 6 typeless tracked entities, all QI- Person (3 by enrollment, 3 by their QI- attributes); the
 -- pre-2.29 type they pointed at was a generic "Person" from 2017, not today's (training) Person.
 DO $$
+DECLARE
+    fk record;
 BEGIN
     IF to_regclass('trackedentityinstance') IS NULL OR to_regclass('programinstance') IS NULL THEN
         RETURN;  -- not 2.30's tables
@@ -73,7 +75,9 @@ BEGIN
     $sql$;
 
     -- 2. The leftovers, all or none: not while a typeless tracked entity points at them, nor while the
-    -- old join table holds rows. Without CASCADE, so a reference this doesn't know of fails the fix.
+    -- old join table holds rows. Foreign keys to the old table go first, from any table (2.30 still
+    -- uses trackedentitytranslations, for the current types, which has one): only the constraints,
+    -- never their tables. The table itself without CASCADE, so anything else on it (a view) fails the fix.
     IF EXISTS (SELECT 1 FROM trackedentityinstance WHERE trackedentitytypeid IS NULL AND trackedentityid IS NOT NULL) THEN
         RETURN;
     END IF;
@@ -83,6 +87,10 @@ BEGIN
         END IF;
         DROP TABLE trackedentityattributevalues;
     END IF;
+    FOR fk IN SELECT conrelid::regclass AS tbl, conname FROM pg_constraint
+              WHERE confrelid = 'trackedentity'::regclass AND contype = 'f' LOOP
+        EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', fk.tbl, fk.conname);
+    END LOOP;
     ALTER TABLE trackedentityinstance DROP COLUMN trackedentityid;
     IF EXISTS (SELECT 1 FROM information_schema.columns
                WHERE table_schema = current_schema() AND table_name = 'program' AND column_name = 'trackedentityid') THEN

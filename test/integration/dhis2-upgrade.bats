@@ -189,6 +189,8 @@ CREATE TABLE trackedentityinstanceaudit (trackedentityinstanceauditid int);
 CREATE TABLE trackedentity (trackedentityid int PRIMARY KEY, name text);
 INSERT INTO trackedentity VALUES (1, 'Person');
 CREATE TABLE trackedentityattributevalues (trackedentityid int REFERENCES trackedentity, attributevalueid int);
+-- A table 2.30 still uses (translations of the current types) with a pre-2.29 key to the old table.
+CREATE TABLE trackedentitytranslations (trackedentityid int REFERENCES trackedentity, objecttranslationid int, trackedentitytypeid int);
 CREATE TABLE trackedentitytype (trackedentitytypeid int PRIMARY KEY, name text);
 INSERT INTO trackedentitytype VALUES (1, 'Person'), (2, 'QI- Person'), (5, 'Cylinder');
 CREATE TABLE trackedentitytypeattribute (trackedentitytypeid int, trackedentityattributeid int);
@@ -222,6 +224,8 @@ SQL
     assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT string_agg(trackedentityinstanceid || '=' || coalesce(trackedentitytypeid::text, 'null'), ',' ORDER BY trackedentityinstanceid) FROM trackedentityinstance")" '1=2,2=5,3=2,4=null,6=1,7=1'
     assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT to_regclass('trackedentity') IS NULL AND to_regclass('trackedentityattributevalues') IS NULL")" t
     assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT count(*) FROM information_schema.columns WHERE table_name IN ('trackedentityinstance', 'program') AND column_name = 'trackedentityid'")" 0
+    # A table still in use loses only its key to the old table.
+    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT to_regclass('trackedentitytranslations') IS NOT NULL, (SELECT count(*) FROM pg_constraint WHERE conrelid = 'trackedentitytranslations'::regclass AND contype = 'f')")" 't|0'
 }
 
 @test "drop-sql-views.sql drops DHIS2's SQL views (views and materialized views named _view_*) and nothing else, and can run again" {
