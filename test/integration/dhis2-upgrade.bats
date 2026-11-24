@@ -185,17 +185,25 @@ CREATE TABLE program_attribute_group (programtrackedentityattributegroupid int);
 CREATE TABLE trackedentityaudit (trackedentityauditid int, visitor varchar(255), accessedmodule varchar(255));
 INSERT INTO trackedentityaudit VALUES (1, 'admin', 'tracker');
 CREATE TABLE trackedentityinstanceaudit (trackedentityinstanceauditid int);
-CREATE TABLE trackedentity (trackedentityid int CONSTRAINT trackedentity_pkey PRIMARY KEY, name text);
+-- 2.30 with pre-2.29 leftovers: the old types table, the columns pointing at it, the old join table.
+CREATE TABLE trackedentity (trackedentityid int PRIMARY KEY, name text);
 INSERT INTO trackedentity VALUES (1, 'Person');
-CREATE TABLE trackedentityinstance (trackedentityinstanceid int PRIMARY KEY, trackedentitytypeid int,
-    trackedentityid int CONSTRAINT fk_trackedentityinstance_trackedentityid REFERENCES trackedentity);
--- 2.30's types and enrollments: 1 typeless with the legacy link only (gets Person by name), 2 typed (kept),
--- 3 typeless, legacy link and enrolled in a program of type 2 (gets the program's type), 4 neither (stays NULL).
-INSERT INTO trackedentityinstance VALUES (1, NULL, 1), (2, 5, NULL), (3, NULL, 1), (4, NULL, NULL);
+CREATE TABLE trackedentityattributevalues (trackedentityid int REFERENCES trackedentity, attributevalueid int);
 CREATE TABLE trackedentitytype (trackedentitytypeid int PRIMARY KEY, name text);
 INSERT INTO trackedentitytype VALUES (1, 'Person'), (2, 'QI- Person'), (5, 'Cylinder');
-CREATE TABLE program (programid int PRIMARY KEY, trackedentitytypeid int);
-INSERT INTO program VALUES (7, 2), (8, NULL);
+CREATE TABLE trackedentitytypeattribute (trackedentitytypeid int, trackedentityattributeid int);
+INSERT INTO trackedentitytypeattribute VALUES (1, 10), (2, 20), (2, 21);
+CREATE TABLE trackedentityinstance (trackedentityinstanceid int PRIMARY KEY, trackedentitytypeid int,
+    trackedentityid int REFERENCES trackedentity);
+-- 1: typeless, values fitting type 2 only (gets 2 by its attributes, not 1 by the legacy name);
+-- 2: typed (kept); 3: typeless, enrolled in a program of type 2 (gets 2); 4: nothing to go on (stays
+-- NULL; no legacy link, so the leftovers can still go); 6: typeless, legacy link, no values (gets 1 by
+-- name); 7: values fitting no single type (gets 1 by name).
+INSERT INTO trackedentityinstance VALUES (1, NULL, 1), (2, 5, NULL), (3, NULL, 1), (4, NULL, NULL), (6, NULL, 1), (7, NULL, 1);
+CREATE TABLE trackedentityattributevalue (trackedentityinstanceid int, trackedentityattributeid int, value text);
+INSERT INTO trackedentityattributevalue VALUES (1, 20, 'x'), (1, 21, 'y'), (7, 20, 'x'), (7, 10, 'z');
+CREATE TABLE program (programid int PRIMARY KEY, trackedentitytypeid int, trackedentityid int REFERENCES trackedentity);
+INSERT INTO program VALUES (7, 2, 1), (8, NULL, NULL);
 CREATE TABLE programinstance (programinstanceid int PRIMARY KEY, programid int, trackedentityinstanceid int);
 INSERT INTO programinstance VALUES (1, 8, 3), (2, 7, 3), (3, 8, 4);
 SQL
@@ -209,13 +217,11 @@ SQL
     assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc 'SELECT userroleid FROM program_userroles')" 1
     # The legacy trackedentityaudit is kept, renamed.
     assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc 'SELECT visitor FROM trackedentityaudit_legacy')" admin
-    # Typeless tracked entities get their program's type, else the type named as their legacy one.
-    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT string_agg(trackedentityinstanceid || '=' || coalesce(trackedentitytypeid::text, 'null'), ',' ORDER BY trackedentityinstanceid) FROM trackedentityinstance")" '1=1,2=5,3=2,4=null'
-    # The legacy trackedentity is kept, renamed with its primary key, and so is the column pointing at it.
-    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc 'SELECT name FROM trackedentity_legacy')" Person
-    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT count(*) FROM pg_indexes WHERE indexname = 'trackedentity_legacy_pkey'")" 1
-    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc 'SELECT count(trackedentityid_legacy) FROM trackedentityinstance')" 2
-    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT count(*) FROM pg_constraint WHERE conname = 'fk_trackedentityinstance_trackedentityid_legacy'")" 1
+    # Typeless tracked entities get their program's type, else the one type their attribute values fit,
+    # else the type named as their pre-2.29 one; then the pre-2.29 tables and columns are dropped.
+    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT string_agg(trackedentityinstanceid || '=' || coalesce(trackedentitytypeid::text, 'null'), ',' ORDER BY trackedentityinstanceid) FROM trackedentityinstance")" '1=2,2=5,3=2,4=null,6=1,7=1'
+    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT to_regclass('trackedentity') IS NULL AND to_regclass('trackedentityattributevalues') IS NULL")" t
+    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT count(*) FROM information_schema.columns WHERE table_name IN ('trackedentityinstance', 'program') AND column_name = 'trackedentityid'")" 0
 }
 
 @test "drop-sql-views.sql drops DHIS2's SQL views (views and materialized views named _view_*) and nothing else, and can run again" {
@@ -240,4 +246,31 @@ SQL
     assert_output 'geography_columns,geometry_columns,keep_me,x_view_y'   # PostGIS's own two kept too
     run docker exec "$db" psql -U dhis -d dhis -tAc "SELECT count(*) FROM pg_matviews"
     assert_output 0
+}
+
+@test "the pre-2.29 tracked entity tables stay while a tracked entity still typeless points at them" {
+    local db; db="$(res db)"
+    docker run -d --name "$db" -e POSTGRES_USER=dhis -e POSTGRES_DB=dhis -e POSTGRES_PASSWORD=Placeholder-1 \
+        --health-cmd "pg_isready -h 127.0.0.1 -U dhis -d dhis" --health-interval 1s postgis/postgis:16-3.5 >/dev/null
+    run "$UTILS/wait-for-healthy.sh" --container="$db" --timeout=300
+    assert_success
+    # Its legacy type's name matches no current type, and it has no enrollment or values to go on.
+    docker exec -i "$db" psql -U dhis -d dhis -q -v ON_ERROR_STOP=1 <<'SQL'
+CREATE TABLE trackedentity (trackedentityid int PRIMARY KEY, name text);
+INSERT INTO trackedentity VALUES (1, 'Old type');
+CREATE TABLE trackedentitytype (trackedentitytypeid int PRIMARY KEY, name text);
+INSERT INTO trackedentitytype VALUES (1, 'Person');
+CREATE TABLE trackedentitytypeattribute (trackedentitytypeid int, trackedentityattributeid int);
+CREATE TABLE trackedentityinstance (trackedentityinstanceid int PRIMARY KEY, trackedentitytypeid int,
+    trackedentityid int REFERENCES trackedentity);
+INSERT INTO trackedentityinstance VALUES (1, NULL, 1);
+CREATE TABLE trackedentityattributevalue (trackedentityinstanceid int, trackedentityattributeid int, value text);
+CREATE TABLE program (programid int PRIMARY KEY, trackedentitytypeid int);
+CREATE TABLE programinstance (programinstanceid int PRIMARY KEY, programid int, trackedentityinstanceid int);
+SQL
+    run docker exec -i "$db" psql -X -1 -U dhis -d dhis -q -v ON_ERROR_STOP=1 \
+        < "$REPO_ROOT/services/dhis2/known-fixes/2.31.9/20-assign-missing-tracked-entity-types.sql"
+    assert_success
+    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc 'SELECT trackedentitytypeid IS NULL, trackedentityid FROM trackedentityinstance')" 't|1'
+    assert_equal "$(docker exec "$db" psql -U dhis -d dhis -tAc "SELECT name FROM trackedentity")" 'Old type'
 }

@@ -103,13 +103,12 @@ the production upgrade runs the same one.
 | Version | Fix | When |
 |---|---|---|
 | 2.31.9 | `10-orphaned-program-userroles.sql` | `violates foreign key constraint "fk_program_userroles"` (rows for user roles that no longer exist) |
-| 2.31.9 | `20-assign-missing-tracked-entity-types.sql` | from 2.30, when tracked entities have no type: 2.42 makes it required, and its `V2_42_26__Add_not_null_constraint_to_trackedentity.sql` stops (SQL state P0001) on any it can't type from an enrollment. Gives each its enrolled program's type, else the current type named as its pre-2.29 one (lsdata: 3 and 3) |
+| 2.31.9 | `20-assign-missing-tracked-entity-types.sql` | from 2.30, when tracked entities have no type, or the tables from before 2.29 renamed tracked entity types are still there. Otherwise 2.41's `V2_41_24__TrackedEntityInstanceToTrackedEntity.sql` fails with `relation "trackedentity" already exists` and 2.42's `V2_42_26__Add_not_null_constraint_to_trackedentity.sql` stops (SQL state P0001). Types each by its enrolled program, else by its attribute values, else by its pre-2.29 type's name; then drops the pre-2.29 tables and columns, unless a typeless one still needs them (lsdata: 6, all QI- Person) |
 | 2.35.14 | `10-excess-dataelementoperands.sql` | the step fails on `dataelementoperand` |
 | 2.35.14 | `20-drop-color-translations.sql` | the step can't drop `colorsettranslations` / `colortranslations` |
 | 2.37.10 | `10-drop-old-translation-tables.sql` | the step can't drop `charttranslations`, `reporttabletranslations`, `dashboarditem_*` or `objecttranslation`. Try without it first: the 2.37 migration reads `objecttranslation` |
 | 2.39.10.1 | `10-recreate-program-attribute-group.sql` | the step fails on `program_attribute_group` |
 | 2.41.11.0 | `10-rename-legacy-trackedentityaudit.sql` | `V2_41_24__TrackedEntityInstanceToTrackedEntity.sql`: `relation "trackedentityaudit" already exists` (a leftover from much older versions; kept as `trackedentityaudit_legacy`) |
-| 2.41.11.0 | `20-rename-legacy-trackedentity.sql` | `V2_41_24__TrackedEntityInstanceToTrackedEntity.sql`: `relation "trackedentity" already exists` (the tracked entity types table from before 2.29, still in lsdata; kept as `trackedentity_legacy`, and `trackedentityinstance`'s column pointing at it as `trackedentityid_legacy`) |
 
 Known warnings that don't stop a step: from 2.34, *Could not perform upgrade of table
 'trackedentityattributevalue'. Column 'value' should be altered to data type varchar(1200)* asks
