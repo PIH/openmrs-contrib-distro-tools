@@ -28,6 +28,8 @@ services:
         set -e
         STAGING=/target/.restore-staging
         ROOT=$$(sh /extract.sh "/source/$$ARCHIVE_NAME" "$$STAGING" --print-root)
-        find "$$ROOT" -mindepth 1 -maxdepth 1 -exec mv {} /target/ \;
+        # + (not \;) so a failed move makes find, and so the restore, fail: the staging directory is
+        # deleted next, and with it whatever didn't move.
+        find "$$ROOT" -mindepth 1 -maxdepth 1 -exec mv {} /target/ +
         rm -rf "$$STAGING"
         sh /finish-data-restore.sh

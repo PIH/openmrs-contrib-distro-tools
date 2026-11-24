@@ -492,6 +492,11 @@ overlay_config() { # <overlay...>, under openmrs/modes/ or services/
     assert_output ""
 }
 
+@test "no restore runs find -exec with \\;, whose exit status ignores a failed command" {
+    run grep -rn -e '-exec .*\\;' "$REPO_ROOT"/services/*/restore/
+    assert_output ""
+}
+
 @test "dhis2 runs its version's WAR at /dhis in the Tomcat tag it's given, and gets the database password from dhis2.env, where create puts it" {
     local dir="$BATS_TEST_TMPDIR/instance" config
     EXTRA_ENV=()
