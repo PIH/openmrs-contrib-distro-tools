@@ -62,4 +62,4 @@ jobs:
 
       - name: Backup and restore round trips
         # Twice the runner's CPUs: the tests mostly wait on containers starting.
-        run: TEST_JOBS=8 test/run test/integration/backups.bats  # TEMP (TASKS-572): only the failing tests; revert before merge
+        run: TEST_JOBS=8 test/run integration
