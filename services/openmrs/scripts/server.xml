@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Tomcat's server.xml for OpenMRS (compose.yaml mounts it over the image's). It is the openmrs-core
+     image's server.xml (Tomcat 9, core 2.8.x: stock Tomcat with the 8080 Connector's attributes from
+     core's Dockerfile), with Tomcat's explanatory comments removed and one addition, the
+     RemoteIpValve.
+     RemoteIpValve: behind a proxy that forwards plain HTTP (Caddy), the client address, scheme and
+     port come from X-Forwarded-For and X-Forwarded-Proto, so OpenMRS records each user's own IP
+     address (e.g. Active Users) and sees https. Only from the valve's default internal proxies
+     (private, loopback and 100.64/10 addresses, which include Docker's bridge); from anywhere else
+     the headers are ignored. Requests without them are unchanged.
+     TRUNK-6881 adds the valve to the openmrs-core image; once our images are on a core release with
+     it, remove this file and its mount. Until then, keep it in step with the image's server.xml. -->
+<Server port="8005" shutdown="SHUTDOWN">
+  <Listener className="org.apache.catalina.startup.VersionLoggerListener" />
+  <Listener className="org.apache.catalina.core.JreMemoryLeakPreventionListener" />
+  <Listener className="org.apache.catalina.mbeans.GlobalResourcesLifecycleListener" />
+  <Listener className="org.apache.catalina.core.ThreadLocalLeakPreventionListener" />
+  <GlobalNamingResources>
+    <Resource name="UserDatabase" auth="Container"
+              type="org.apache.catalina.UserDatabase"
+              description="User database that can be updated and saved"
+              factory="org.apache.catalina.users.MemoryUserDatabaseFactory"
+              pathname="conf/tomcat-users.xml" />
+  </GlobalNamingResources>
+  <Service name="Catalina">
+    <Connector port="8080" protocol="HTTP/1.1"
+               URIEncoding="UTF-8" relaxedPathChars="[]|" relaxedQueryChars="[]|{}^&#x5c;&#x60;&quot;&lt;&gt;"
+               connectionTimeout="20000"
+               redirectPort="8443"
+               maxParameterCount="1000"
+               />
+    <Engine name="Catalina" defaultHost="localhost">
+      <Valve className="org.apache.catalina.valves.RemoteIpValve"
+             remoteIpHeader="X-Forwarded-For"
+             protocolHeader="X-Forwarded-Proto" />
+      <Realm className="org.apache.catalina.realm.LockOutRealm">
+        <Realm className="org.apache.catalina.realm.UserDatabaseRealm"
+               resourceName="UserDatabase"/>
+      </Realm>
+      <Host name="localhost"  appBase="webapps"
+            unpackWARs="true" autoDeploy="true">
+        <Valve className="org.apache.catalina.valves.AccessLogValve" directory="logs"
+               prefix="localhost_access_log" suffix=".txt"
+               pattern="%h %l %u %t &quot;%r&quot; %s %b" />
+      </Host>
+    </Engine>
+  </Service>
+</Server>

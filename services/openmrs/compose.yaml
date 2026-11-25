@@ -39,6 +39,9 @@ services:
       start_period: 3600s
     volumes:
       - openmrs-data:/openmrs/data/
+      # The image's server.xml plus a RemoteIpValve, for the client's IP and scheme behind a proxy
+      # (until the openmrs-core image has it: TRUNK-6881).
+      - ${PIHX_TOOLS}/services/openmrs/scripts/server.xml:/usr/local/tomcat/conf/server.xml:ro
     restart: unless-stopped
     deploy:
       resources:

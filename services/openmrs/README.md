@@ -18,6 +18,16 @@ defaults are in [`env.defaults`](env.defaults).
 
 The database password and user come from `openmrs-db.env`: `openmrs` doesn't redefine them.
 
+## Behind a proxy
+
+`openmrs` runs Tomcat with our [`scripts/server.xml`](scripts/server.xml): the openmrs-core image's
+own `server.xml` plus a `RemoteIpValve`. Behind a proxy that forwards plain HTTP (e.g. Caddy), OpenMRS
+then sees each client's IP address (e.g. in Active Users) and the https scheme, from
+`X-Forwarded-For` and `X-Forwarded-Proto`, instead of the proxy's. The valve trusts those headers
+only from private, loopback and 100.64/10 addresses; requests without them are unchanged.
+TRUNK-6881 adds the valve to the openmrs-core image. Until our images are on a core release with
+it, keep the file in step with the image's `server.xml`; then remove it and its mount.
+
 ## Creating the tables
 
 OpenMRS creates its tables (`create_tables`) only when it has just been found to have none. Before
